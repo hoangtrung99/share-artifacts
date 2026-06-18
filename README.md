@@ -73,14 +73,29 @@ hoặc yêu cầu agent chạy `./protect.sh`. Quy tắc bắt buộc khi agent 
 - KHÔNG commit mật khẩu vào git.
 - Sau khi set secret xong, chạy `./deploy.sh` để badge 🔒 cập nhật.
 
-## Dùng trên máy khác
+## Dùng trên máy khác (vd MacBook)
 
-Repo này chỉ là **file + 1 tài khoản cloud**. Để dùng trên máy khác:
+Repo này chỉ là **file + 1 tài khoản cloud**, đồng bộ giữa các máy bằng git.
+Remote: `git@github.com:hoangtrung99/share-artifacts.git` (private).
 
-1. Push repo này lên một git remote riêng tư.
-2. Trên máy kia: `git clone` về.
-3. Xác thực Cloudflare trên máy kia bằng **API token** (chạy được headless, không cần browser):
-   tạo token "Edit Cloudflare Pages" trên dashboard rồi `export CLOUDFLARE_API_TOKEN=...`
-   (đặt trong shell profile). Sau đó `./deploy.sh` / `./protect.sh` chạy bình thường.
+Trên máy mới:
 
-Vì `public/` là source of truth, git đồng bộ giữa các máy là cách sạch nhất.
+```bash
+git clone git@github.com:hoangtrung99/share-artifacts.git
+cd share-artifacts
+```
+
+Xác thực Cloudflare bằng **API token** (chạy headless, không cần browser — `wrangler login`
+qua SSH thường hỏng):
+
+1. Dashboard → My Profile → API Tokens → Create Token → Custom Token →
+   Permissions: `Account` · `Cloudflare Pages` · **Edit** → tạo token.
+2. Đặt biến môi trường (cho vào `~/.zshrc`):
+   ```bash
+   export CLOUDFLARE_API_TOKEN='<token>'
+   export CLOUDFLARE_ACCOUNT_ID='a921107437f45254a6fd280a25e0c617'
+   ```
+3. `./deploy.sh` và `./protect.sh` chạy bình thường.
+
+Quy trình giữa 2 máy: `git pull` → thêm artifact vào `public/` → `./deploy.sh` → `git commit && git push`.
+Luôn `git pull` trước khi deploy để `public/` (source of truth) không bị lệch.
