@@ -118,6 +118,8 @@ Sau khi tạo một artifact HTML ở bất kỳ đâu, publish bằng **một l
 Project mặc định là `shared`.
 
 ### Cho agent (Claude) sau khi tạo artifact
+- **Skill `deploy-artifacts`** (`.claude/skills/`): agent tự **phân loại** artifact vào project (hỏi nếu không rõ),
+  deploy, và trả về link chia sẻ. Kích hoạt khi nói "deploy artifact này" / "publish lên site".
 - Trong repo này: gõ `/deliver <file.html> [project] [--protect]`.
 - Từ session/agent ở repo khác (cùng máy): bảo agent chạy
   `~/Local/Work/solashi/share-artifacts/deliver.sh <file.html> <project>` rồi báo lại URL.
@@ -126,7 +128,7 @@ Project mặc định là `shared`.
 
 ### Sửa / xoá page
 - **Sửa:** deliver lại cùng tên file (ghi đè) — tự deploy.
-- **Xoá 1 page:** `rm public/<project>/<file>.html && ./deploy.sh`
-- **Xoá cả project:** `rm -rf public/<project>` → nếu có mật khẩu thì `./protect.sh --unprotect <project>` → `./deploy.sh`
+- **Xoá 1 page:** `./unpublish.sh <project>/<file>.html`
+- **Xoá cả project:** `./unpublish.sh <project>` (tự gỡ mật khẩu nếu project có)
 
 (Deploy upload toàn bộ `public/` dạng atomic, nên xoá local + deploy là page biến mất khỏi web.)
