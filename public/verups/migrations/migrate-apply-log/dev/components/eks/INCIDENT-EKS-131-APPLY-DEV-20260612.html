@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Incident Report — EKS eks/1.31 apply failures · point-dev · 2026-06-12</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f5f1; --surface:#ffffff; --surface2:#f1ede6; --border:rgba(30,40,50,.10);
+  --text:#1c2733; --text-dim:#5b6873;
+  --navy:#1e3a5f; --navy-dim:#e7edf4;
+  --gold:#b8860b; --gold-dim:#f6efdc;
+  --red:#b42318; --red-dim:#fbeae8;
+  --amber:#b54708; --amber-dim:#fdf0e3;
+  --green:#067647; --green-dim:#e6f4ee;
+  --mono:'Geist Mono',ui-monospace,SFMono-Regular,monospace;
+  --body:'Geist',-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11161c; --surface:#181f27; --surface2:#1f2832; --border:rgba(255,255,255,.09);
+    --text:#e8e4dc; --text-dim:#98a3ad;
+    --navy:#7da7d4; --navy-dim:#1c2a3a;
+    --gold:#d4a73a; --gold-dim:#2e2716;
+    --red:#f08577; --red-dim:#3a1f1c;
+    --amber:#e8a25c; --amber-dim:#352718;
+    --green:#5dc294; --green-dim:#16302a;
+  }
+}
+*{box-sizing:border-box;margin:0;min-width:0}
+body{font-family:var(--body);background:var(--bg);color:var(--text);line-height:1.55;
+  background-image:radial-gradient(ellipse 80% 50% at 50% -10%, var(--navy-dim), transparent 65%);
+  background-repeat:no-repeat;}
+.wrap{max-width:1060px;margin:0 auto;padding:48px 28px 90px}
+a{color:var(--navy)}
+code{font-family:var(--mono);font-size:.86em;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;overflow-wrap:anywhere}
+h1{font-size:clamp(26px,3.6vw,38px);font-weight:800;letter-spacing:-.02em;line-height:1.15}
+h2{font-size:22px;font-weight:700;letter-spacing:-.01em;margin-bottom:14px}
+h3{font-size:16px;font-weight:600;margin-bottom:10px}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:10px}
+.kicker::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:8px;vertical-align:1px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:22px}
+.meta div{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:13.5px}
+.meta b{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:3px;font-weight:500}
+section{margin-top:54px}
+.seclabel{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px}
+.seclabel b{color:var(--navy);font-weight:600}
+.lead{font-size:17.5px;color:var(--text);max-width:72ch}
+.lead strong{color:var(--navy)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:26px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 18px 14px;position:relative;overflow:hidden}
+.kpi.hero{background:linear-gradient(135deg,var(--red-dim),var(--surface));border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.kpi .n{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1}
+.kpi.hero .n{color:var(--red)}
+.kpi .l{font-size:12.5px;color:var(--text-dim);margin-top:7px;line-height:1.4}
+.kpi .tag{position:absolute;top:12px;right:12px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;padding:2px 7px;border-radius:99px;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim)}
+.tblwrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.8px}
+thead th{position:sticky;top:0;background:var(--surface2);text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-dim);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--border)}
+td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface2) 45%,transparent)}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.pill.red{background:var(--red-dim);color:var(--red)}
+.pill.amber{background:var(--amber-dim);color:var(--amber)}
+.pill.green{background:var(--green-dim);color:var(--green)}
+.pill.navy{background:var(--navy-dim);color:var(--navy)}
+.tl{position:relative;margin-top:18px;padding-left:30px}
+.tl::before{content:"";position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--navy),var(--red),var(--green))}
+.tl-item{position:relative;margin-bottom:18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px}
+.tl-item::before{content:"";position:absolute;left:-27px;top:18px;width:12px;height:12px;border-radius:50%;background:var(--navy);border:2.5px solid var(--bg)}
+.tl-item.bad::before{background:var(--red)}
+.tl-item.warn::before{background:var(--amber)}
+.tl-item.ok::before{background:var(--green)}
+.tl-item .t{font-family:var(--mono);font-size:12px;color:var(--gold);font-weight:600;letter-spacing:.04em}
+.tl-item .e{font-size:14px;margin-top:4px}
+.tl-item .ev{font-size:12.5px;color:var(--text-dim);margin-top:6px;border-left:3px solid var(--border);padding-left:10px}
+.tl-phase{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin:24px 0 12px;font-weight:600}
+.callout{border-radius:14px;padding:18px 22px;margin-top:18px;border:1px solid}
+.callout.danger{background:var(--red-dim);border-color:color-mix(in srgb,var(--red) 35%,transparent)}
+.callout.warn{background:var(--amber-dim);border-color:color-mix(in srgb,var(--amber) 35%,transparent)}
+.callout.good{background:var(--green-dim);border-color:color-mix(in srgb,var(--green) 35%,transparent)}
+.callout h3{margin-bottom:6px}
+.callout p{font-size:14px}
+.evgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:18px}
+.ev-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;font-size:13.5px}
+.ev-card .num{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--gold);letter-spacing:.1em;margin-bottom:6px}
+.ev-card h4{font-size:14px;font-weight:600;margin-bottom:6px}
+.ev-card p{color:var(--text-dim);font-size:13px}
+.ev-card.proof{border-color:color-mix(in srgb,var(--green) 40%,transparent);background:linear-gradient(160deg,var(--green-dim),var(--surface) 55%)}
+pre{background:#10161d;color:#dfe7ee;border:1px solid var(--border);border-radius:12px;padding:18px 20px;font-family:var(--mono);font-size:12.6px;line-height:1.6;overflow-x:auto;white-space:pre;margin-top:12px}
+@media (prefers-color-scheme: dark){ pre{background:#0b1016} }
+pre .c{color:#7f93a5}
+pre .hl{color:#ffd479}
+.codehead{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-top:18px}
+.diagram-shell{margin-top:18px;border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden}
+.mermaid-wrap{position:relative}
+.zoom-controls{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px}
+.zoom-controls button{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:var(--mono);font-size:14px;cursor:pointer}
+.zoom-controls button:hover{background:var(--surface2)}
+.mermaid-viewport{height:420px;overflow:hidden;cursor:grab;display:flex;justify-content:center;align-items:center}
+.mermaid-viewport:active{cursor:grabbing}
+.mermaid-canvas{transform-origin:0 0}
+.lessons{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin-top:18px}
+.lesson{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:15px 18px;font-size:13.5px}
+.lesson b{display:block;margin-bottom:4px;color:var(--navy)}
+footer{margin-top:70px;font-family:var(--mono);font-size:11.5px;color:var(--text-dim);border-top:1px solid var(--border);padding-top:16px}
+@media (prefers-reduced-motion: no-preference){
+  .kpi,.tl-item,.ev-card,.lesson{animation:fadeUp .5s ease both}
+  .kpi:nth-child(2){animation-delay:.06s}.kpi:nth-child(3){animation-delay:.12s}.kpi:nth-child(4){animation-delay:.18s}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Incident Report · CloudTrail-confirmed</div>
+  <h1>EKS <code style="font-size:.7em">eks/1.31</code> apply failures — point-dev</h1>
+  <div class="meta">
+    <div><b>Date</b>2026-06-12 (UTC)</div>
+    <div><b>Environment</b>point dev · <code>905418018638</code> · cluster <code>point</code> · ap-northeast-1</div>
+    <div><b>Change</b>module v17→v21 + auth <code>CONFIG_MAP→API_AND_CONFIG_MAP</code> @ 1.31</div>
+    <div><b>Workload impact</b><span class="pill green">Zero downtime</span> — old nodes kept serving</div>
+  </div>
+</header>
+
+<section>
+  <div class="seclabel"><b>01</b> · Executive summary</div>
+  <h2>Three independent failures, at three different layers</h2>
+  <p class="lead">Both <code>terraform apply</code> attempts failed at the node roll. The root cause of both is a <strong>CNI IAM deadlock</strong>: the apply detached the CNI's EC2 permissions from the node role while the replacement permission path (IRSA) is scheduled <em>after</em> the node roll by the module — so every new node booted with a permissionless CNI and never became Ready. Every conclusion is backed by CloudTrail/API records; no speculation remains.</p>
+
+  <div class="kpis">
+    <div class="kpi hero"><span class="tag">attempt #2</span><div class="n">48×</div><div class="l"><code>DescribeNetworkInterfaces</code> → <b>UnauthorizedOperation</b> from the new node (CloudTrail)</div></div>
+    <div class="kpi hero"><span class="tag">attempt #1</span><div class="n">19×</div><div class="l">The same denial — both attempts failed for one recorded reason</div></div>
+    <div class="kpi"><span class="tag">old fleet ⚠</span><div class="n" style="color:var(--amber)">16×</div><div class="l"><code>AssignPrivateIpAddresses</code> denied on the OLD nodes — the current fleet is degraded</div></div>
+    <div class="kpi"><span class="tag">auth OK</span><div class="n" style="color:var(--green)">8s</div><div class="l">New node authenticated successfully 8 seconds after launch — auth was never the blocker</div></div>
+  </div>
+
+  <div class="tblwrap" style="margin-top:22px">
+  <table>
+    <thead><tr><th style="width:36px">#</th><th>Symptom</th><th style="width:140px">Layer</th><th>Root cause</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>ResourceInUseException</code> (409) creating the <code>bs-developer</code> access entry</td><td><span class="pill navy">Terraform state</span></td><td>Entry existed on the cluster since 2024-10-08, never in state → Terraform tried to create a duplicate</td></tr>
+      <tr><td>2</td><td><code>NodeCreationFailure</code> on all 5 node groups, <b>both apply attempts</b></td><td><span class="pill red">EKS / CNI / IAM</span></td><td><b>CNI IAM deadlock</b> — <code>AmazonEKS_CNI_Policy</code> detached from the node role while the IRSA wiring is ordered after the node roll → new nodes never became Ready</td></tr>
+      <tr><td>3</td><td><code>kubectl</code> Forbidden from the bastion</td><td><span class="pill amber">Kubernetes RBAC</span></td><td>The STANDARD access entry overrides aws-auth the moment it is created, but the ClusterRoleBinding for group <code>admin</code> was not yet applied</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <div class="seclabel"><b>02</b> · Timeline</div>
+  <h2>Detailed timeline (UTC)</h2>
+
+  <div class="tl-phase">Apply attempt #1 — bundled v21 + auth switch + node roll</div>
+  <div class="tl">
+    <div class="tl-item"><div class="t">~09:35</div><div class="e">Apply starts. Auth mode → <code>API_AND_CONFIG_MAP</code>; <b>the <code>AmazonEKS_CNI_Policy</code> attachment on <code>eks-worker-role</code> is destroyed</b> (by design: CNI moves to IRSA); access entries are created.</div><div class="ev"><code>list-attached-role-policies</code> afterwards returns only CloudWatch / ECR / WorkerNode — no CNI policy</div></div>
+    <div class="tl-item"><div class="t">09:52:08</div><div class="e">EKS auto-creates the <code>EC2_LINUX</code> entry for <code>eks-worker-role</code> (<code>system:nodes</code>).</div><div class="ev"><code>describe-access-entry</code> → <code>createdAt: 09:52:08Z</code></div></div>
+    <div class="tl-item warn"><div class="t">09:58:25</div><div class="e">Node groups launch one new instance each (api: <code>i-0640b19837242bb8a</code>) — AMI <code>1.31.14-20260529</code> + launch template v5.</div><div class="ev">ASG activity: Launching … 09:58:25Z</div></div>
+    <div class="tl-item bad"><div class="t">09:58 – 10:15</div><div class="e">New nodes boot, <b>register with the API server but stay NotReady</b>: the <code>aws-node</code> pods crash because ipamd has no EC2 permissions.</div><div class="ev">CloudTrail: 19× <code>DescribeNetworkInterfaces → UnauthorizedOperation</code></div></div>
+    <div class="tl-item bad"><div class="t">~10:01</div><div class="e">Health window (~15 min) expires → update Failed → <code>NodeCreationFailure</code> ×5 + the 409 (6 errors, 26 min).</div></div>
+    <div class="tl-item"><div class="t">10:15:36</div><div class="e">Rollback: the ASG terminates the new instance and keeps the old node (June-10 fleet). Node groups show ACTIVE <code>-20260512</code> = <b>the old fleet restored</b>, not newly joined nodes.</div></div>
+  </div>
+
+  <div class="tl-phase">Between attempts — 409 import + bastion Forbidden discovered</div>
+  <div class="tl">
+    <div class="tl-item ok"><div class="t">~10:20–10:40</div><div class="e"><code>terraform import</code> of the <code>bs-developer</code> entry succeeded. The bastion's <code>kubectl</code> found Forbidden (failure #3) — recovered via <code>associate-access-policy</code> + applying the RBAC manifests.</div></div>
+  </div>
+
+  <div class="tl-phase">Apply attempt #2 — node-roll retry</div>
+  <div class="tl">
+    <div class="tl-item warn"><div class="t">10:45:34</div><div class="e">Node groups roll again (same AMI + LT v5). New instance: <code>i-0408441335e0214cf</code>.</div></div>
+    <div class="tl-item ok"><div class="t">10:45:53</div><div class="e">The new node <b>authenticates to the API server 8 seconds after launch</b>, and again at 10:53 and 10:59 — eliminating every auth-based theory.</div><div class="ev">Authenticator log: <code>assumed-role/eks-worker-role/i-0408… path=/authenticate</code> ×3</div></div>
+    <div class="tl-item bad"><div class="t">10:46 – 11:00</div><div class="e">All 5 <code>aws-node</code> pods on the 5 new nodes fail probes continuously → CrashLoopBackOff.</div><div class="ev">Events: <code>timeout: failed to connect service ":50051" within 5s</code>; CloudTrail: 48× denied</div></div>
+    <div class="tl-item bad"><div class="t">~11:05</div><div class="e"><code>NodeCreationFailure</code> ×5 again (20 min 22 s) → rollback at 11:02:55, the new node objects deleted.</div></div>
+    <div class="tl-item warn"><div class="t">11:18:48</div><div class="e">A targeted apply is interrupted midway → a <b>stale state lock</b> <code>243ab085-…</code> remains on <code>dev/eks.tfstate</code>.</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="seclabel"><b>03</b> · Root cause</div>
+  <h2>The CNI ↔ IAM deadlock cycle</h2>
+  <div class="diagram-shell">
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button data-z="in" title="Zoom in">+</button><button data-z="out" title="Zoom out">−</button><button data-z="reset" title="Reset">⟳</button><button data-z="expand" title="Open full size">⛶</button>
+      </div>
+      <div class="mermaid-viewport"><div class="mermaid-canvas"><pre class="mermaid">
+flowchart TD
+  A["New nodes need a working CNI<br/>(aws-node Ready) to become Ready"] --> B["The CNI's EC2 permissions moved<br/>from the node role to IRSA<br/>point-vpc-cni-aws-node"]
+  B --> C["IRSA is only wired when the<br/>vpc-cni ADDON updates<br/>(service_account_role_arn)"]
+  C --> D["Module v21 orders addon updates<br/>AFTER node groups<br/>(aws_eks_addon.this depends_on<br/>eks_managed_node_group)"]
+  D --> E["The addon update never runs —<br/>the node groups fail first"]
+  E --> A
+  E -.->|"Retrying can<br/>NEVER succeed"| A
+  classDef bad fill:#fbeae8,stroke:#b42318,color:#1c2733
+  classDef neutral fill:#e7edf4,stroke:#1e3a5f,color:#1c2733
+  class A,E bad
+  class B,C,D neutral
+      </pre></div></div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:28px">Evidence chain — 8 links, each verified live</h3>
+  <div class="evgrid">
+    <div class="ev-card"><div class="num">EVIDENCE 1</div><h4>The CNI policy is gone from the node role</h4><p><code>list-attached-role-policies eks-worker-role</code> → only CloudWatch / ECR / WorkerNode remain. <code>worker-role-attach.tf</code> deliberately drops the CNI attachment.</p></div>
+    <div class="ev-card"><div class="num">EVIDENCE 2</div><h4>The IRSA role is correct but wired to nothing</h4><p>OIDC trust + policy are right, but the addon shows <code>serviceAccountRoleArn: null</code> and the <code>aws-node</code> SA has no annotation.</p></div>
+    <div class="ev-card"><div class="num">EVIDENCE 3</div><h4>The CNI pods crashed exactly as predicted</h4><p>All 5 <code>aws-node</code> pods on the new nodes: probe failures on <code>:50051</code> → CrashLoopBackOff → nodes NotReady.</p></div>
+    <div class="ev-card"><div class="num">EVIDENCE 4</div><h4>Authentication was not the problem</h4><p>Authenticator log: the new node authenticated 8 seconds after launch and continuously after — while its CNI was crash-looping.</p></div>
+    <div class="ev-card"><div class="num">EVIDENCE 5</div><h4>Why the old fleet survives</h4><p>Its ipamd processes started before the policy detach; a warm ipamd only calls EC2 when attaching new ENIs/IPs.</p></div>
+    <div class="ev-card"><div class="num">EVIDENCE 6</div><h4><code>-target</code> cannot break the cycle</h4><p>Module source: the addon <code>depends_on</code> the node groups → targeting the addon drags all 5 node groups in (verified with a real plan: 6 changes).</p></div>
+    <div class="ev-card proof"><div class="num">EVIDENCE 7 · SMOKING GUN</div><h4>CloudTrail recorded the denial itself</h4><p><b>48×</b> (attempt #2) + <b>19×</b> (attempt #1) <code>ec2:DescribeNetworkInterfaces → Client.UnauthorizedOperation</code>, errorMessage naming <code>eks-worker-role/i-…</code>, userAgent <code>aws-sdk-go-v2</code> (ipamd's startup call).</p></div>
+    <div class="ev-card proof"><div class="num">EVIDENCE 8 · EXCLUSION</div><h4>LT v5 and the new AMI are exonerated</h4><p>The same instances called <code>sts:GetCallerIdentity</code> successfully (credentials only come via IMDS) and authenticated to the API server → the IMDS hardening did not break the host; ipamd booted and reached the EC2 endpoint → the AMI is fine. <b>The failure is authorization, full stop.</b></p></div>
+  </div>
+
+  <div class="callout danger">
+    <h3>Why the error looks like a timeout</h3>
+    <p>The 15–20 minutes is EKS's per-node-group health window. The timeout is the <b>messenger</b>; the message is "new nodes never became Ready" — and under this deadlock they never could, no matter how many retries.</p>
+  </div>
+  <div class="callout warn">
+    <h3>⚠ Latent risk found during verification — the OLD fleet is degraded RIGHT NOW</h3>
+    <p>CloudTrail for the surviving June-10 node <code>i-00b3389c5d1abcfe0</code>: <b>16× <code>AssignPrivateIpAddresses → UnauthorizedOperation</code></b>. The warm ipamd still serves already-attached IPs but can no longer expand the pool — new pods will fail with "failed to assign an IP address to container" once the warm pool is exhausted. The IRSA wiring (step A1) is <b>URGENT</b>, not merely a prerequisite for the node roll.</p>
+  </div>
+</section>
+
+<section>
+  <div class="seclabel"><b>04</b> · Solutions</div>
+  <h2>The code change — primary fix</h2>
+  <p class="lead" style="font-size:15px">The permanent fix is a Terraform-native code change. <code>before_compute = true</code> on the vpc-cni add-on moves it from <code>aws_eks_addon.this</code> (which carries <code>depends_on</code> the node groups) to <code>aws_eks_addon.before_compute</code> (no such dependency), so the IRSA role wires before/parallel to the node roll. A <code>moved</code> block keeps the existing add-on an in-place update — without it Terraform plans destroy+create, and with <code>preserve = false</code> that destroy deletes the live CNI.</p>
+
+  <div class="codehead">main.tf — local.cluster_addons["vpc-cni"]  +  moves.tf</div>
+  <pre>"vpc-cni" = {
+  addon_version            = var.eks.addon_vpc_cni_version
+  <span class="hl">before_compute           = true</span>   <span class="c"># provision the CNI before the node groups</span>
+  service_account_role_arn = aws_iam_role.vpc_cni_aws_node.arn
+  ...
+}
+
+<span class="hl">moved {
+  from = module.eks.aws_eks_addon.this["vpc-cni"]
+  to   = module.eks.aws_eks_addon.before_compute["vpc-cni"]
+}</span></pre>
+
+  <p style="font-size:14px"><b>Plan-verified read-only on both clusters.</b> DEV: <code>0 to add, 0 to destroy</code>; the add-on shows <code>updated in-place</code> + <code>(moved from …this["vpc-cni"])</code> + <code>service_account_role_arn</code> set. STG (still on the v17 module): the move chains <code>vpc_cni[0] → this → before_compute</code> and still resolves to a single in-place update — no CNI destroy. <b>Caveat:</b> <code>before_compute</code> adds no reverse edge, so the add-on update (~15 s) and the node roll run in parallel; the add-on wins in practice and the ~15-min node-group health window absorbs any flake. For a hard guarantee, use the strict variant below.</p>
+
+  <h2 style="margin-top:34px">DEV — finish the apply from the current state</h2>
+  <p class="lead" style="font-size:15px">Cluster 1.31 + <code>API_AND_CONFIG_MAP</code>; node groups ACTIVE on the June-10 fleet; RBAC applied; vpc-cni add-on <b>not yet IRSA-wired</b>; a stale state lock remains. With the code change in place, one apply finishes the job.</p>
+
+  <div class="codehead">D0 → D2 — clear the lock, plan against the expected diff, apply, verify</div>
+  <pre>../../terraform.sh --env dev force-unlock &lt;LOCK_ID&gt;   <span class="c"># confirm no terraform process runs first</span>
+<span class="c"># GATE the plan: add-on "updated in-place" + "(moved from …this[\"vpc-cni\"])" + role wired;</span>
+<span class="c"># 5 node groups ~ in-place; only 2 destroys (AmazonEKSServicePolicy, AmazonEKSVPCResourceController); 0 add / 0 replace</span>
+../../terraform.sh --env dev plan
+../../terraform.sh --env dev apply   <span class="c"># node roll ~15-20 min/group — joins succeed now</span>
+kubectl get nodes -o wide &amp;&amp; kubectl auth can-i '*' '*'  <span class="c"># expect yes</span></pre>
+
+  <div class="codehead">Strict-ordering variant (optional) — pure Terraform, no AWS write</div>
+  <pre>terraform state mv 'module.eks.aws_eks_addon.this["vpc-cni"]' 'module.eks.aws_eks_addon.before_compute["vpc-cni"]'
+../../terraform.sh --env dev apply -target='module.eks.aws_eks_addon.before_compute["vpc-cni"]'  <span class="c"># role only, no node roll</span>
+../../terraform.sh --env dev apply  <span class="c"># then rolls nodes onto a ready CNI</span></pre>
+
+  <div class="callout" style="margin-top:14px">
+    <h3>Fallback — no code change</h3>
+    <p>Wire the add-on out-of-band, then apply. A <code>-target</code> on <code>aws_eks_addon.this</code> does <b>not</b> isolate it (its <code>depends_on</code> drags the node groups in):</p>
+    <pre>aws eks update-addon --cluster-name point --addon-name vpc-cni <span class="hl">--service-account-role-arn …/point-vpc-cni-aws-node</span> --resolve-conflicts OVERWRITE --configuration-values '{"enableNetworkPolicy":"true"}' --region ap-northeast-1</pre>
+  </div>
+
+  <h2 style="margin-top:34px">STG / PRD — fresh apply sequence</h2>
+  <div class="tblwrap">
+  <table>
+    <thead><tr><th style="width:70px">Step</th><th>Action</th><th>Failure class it prevents</th></tr></thead>
+    <tbody>
+      <tr><td><b>0</b></td><td>Account guard + checkout branch + init. <b>Gate:</b> <code>stg.tfvars</code> pins <code>cluster_version</code> to <code>1.31</code> (stage), NOT <code>1.34</code> — a 1.31→1.34 jump is AWS-rejected (laddered later)</td><td><span class="pill amber">version skip</span></td></tr>
+      <tr><td><b>1</b></td><td><code>list-access-entries</code> + <code>terraform import</code> every collision</td><td><span class="pill red">409 (state)</span></td></tr>
+      <tr><td><b>2</b></td><td><code>kubectl apply -f k8s-manifests/rbac/</code> BEFORE creating entries</td><td><span class="pill amber">RBAC lockout</span></td></tr>
+      <tr><td><b>3</b></td><td>Create the IRSA role via <code>-target</code> (scope verified clean — no node groups dragged in)</td><td rowspan="2"><span class="pill red">CNI IAM deadlock</span></td></tr>
+      <tr><td><b>4</b></td><td>Full plan + apply with <code>before_compute</code> + <code>moved</code> in code — the add-on wires the role without waiting for the node roll. Gates: add-on in-place + moved-from; node groups <code>~</code> in-place (replace ×5 if names pinned to <code>…-1-34-</code> vs live <code>…-20260508</code> — decide first); only 2 destroys</td></tr>
+      <tr><td><b>5</b></td><td>Post-verify: cluster / node groups / nodes / can-i</td><td>—</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout good" style="margin-top:18px">
+    <h3>The code change is the primary method — out-of-band update-addon is the fallback</h3>
+    <p><code>before_compute = true</code> + the <code>moved</code> block is the plan-verified primary fix on both DEV and STG; the out-of-band <code>aws eks update-addon</code> is retained only for when the code cannot be changed. The fix is committed on every branch in the apply chain — the <code>1.31</code> stage, the <code>→API</code> stage, the <code>1.32/1.33/1.34</code> ladder, and the release branch — so the add-on is never reverted (and the live CNI never deleted) mid-sequence.</p>
+  </div>
+</section>
+
+<section>
+  <div class="seclabel"><b>05</b> · Lessons learned</div>
+  <h2>Lessons</h2>
+  <div class="lessons">
+    <div class="lesson"><b>A timeout is a messenger, not a cause</b>NodeCreationFailure after ~15–20 min means "nodes never became Ready inside the health window" — diagnose the readiness path (CNI first); don't retry blind.</div>
+    <div class="lesson"><b>Never move a permission path and roll its consumers in one apply</b>when the IaC graph orders the new path's wiring AFTER the consumers. Wire first, roll second.</div>
+    <div class="lesson"><b><code>-target</code> includes dependencies</b>It narrows scope downward along the graph; it cannot reverse an ordering edge. The correct escape is an out-of-band API call, then letting Terraform converge.</div>
+    <div class="lesson"><b>Verify rollback states before concluding</b>"ACTIVE + healthy" after a failed update usually means "the old fleet is back". Check ASG activities and node ages.</div>
+    <div class="lesson"><b>Access entries override aws-auth instantly</b>Apply the in-cluster RBAC bindings BEFORE creating STANDARD entries for principals you depend on.</div>
+    <div class="lesson"><b>Enumerate + import out-of-band resources</b><code>aws eks list-access-entries</code> before declaring them in Terraform — cluster-creation-era entries are easy to forget.</div>
+  </div>
+</section>
+
+<footer>Incident report · point-dev 905418018638 · cluster point · 2026-06-12 · evidence: CloudTrail / EKS authenticator log / cluster events / ASG activities / terraform-aws-eks v21.1.0 source · companion file: INCIDENT-EKS-131-APPLY-DEV-20260612.md</footer>
+</div>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+mermaid.initialize({
+  startOnLoad:false, theme:'base', fontFamily:'Geist Mono, monospace',
+  themeVariables: dark ? {
+    primaryColor:'#1f2832', primaryTextColor:'#e8e4dc', primaryBorderColor:'#7da7d4',
+    lineColor:'#98a3ad', fontSize:'15px', background:'#181f27', clusterBkg:'#1f2832'
+  } : {
+    primaryColor:'#e7edf4', primaryTextColor:'#1c2733', primaryBorderColor:'#1e3a5f',
+    lineColor:'#5b6873', fontSize:'15px', background:'#ffffff', clusterBkg:'#f1ede6'
+  }
+});
+await mermaid.run({querySelector:'.mermaid'});
+
+document.querySelectorAll('.mermaid-wrap').forEach(wrap=>{
+  const vp = wrap.querySelector('.mermaid-viewport');
+  const canvas = wrap.querySelector('.mermaid-canvas');
+  let z=1.25, tx=0, ty=0, drag=null, moved=false;
+  const apply=()=>canvas.style.transform=`translate(${tx}px,${ty}px) scale(${z})`;
+  apply();
+  wrap.querySelectorAll('.zoom-controls button').forEach(b=>b.addEventListener('click',e=>{
+    const a=b.dataset.z;
+    if(a==='in') z=Math.min(4,z*1.25);
+    else if(a==='out') z=Math.max(.3,z/1.25);
+    else if(a==='reset'){z=1.25;tx=0;ty=0;}
+    else if(a==='expand') return openFull();
+    apply(); e.stopPropagation();
+  }));
+  vp.addEventListener('wheel',e=>{ if(!(e.ctrlKey||e.metaKey)) return; e.preventDefault();
+    z=Math.min(4,Math.max(.3, z*(e.deltaY<0?1.1:0.9))); apply(); },{passive:false});
+  vp.addEventListener('pointerdown',e=>{drag={x:e.clientX-tx,y:e.clientY-ty};moved=false;vp.setPointerCapture(e.pointerId);});
+  vp.addEventListener('pointermove',e=>{ if(!drag) return; tx=e.clientX-drag.x; ty=e.clientY-drag.y;
+    if(Math.abs(e.movementX)+Math.abs(e.movementY)>1) moved=true; apply(); });
+  vp.addEventListener('pointerup',()=>{ if(!moved && drag) openFull(); drag=null; });
+  function openFull(){
+    const svg = canvas.querySelector('svg'); if(!svg) return;
+    const s = new XMLSerializer().serializeToString(svg);
+    const w = window.open('','_blank');
+    w.document.write(`<!DOCTYPE html><html><head><title>Deadlock diagram</title><style>body{margin:0;display:grid;place-items:center;min-height:100vh;background:${dark?'#11161c':'#f7f5f1'}}svg{width:90vw;height:auto}</style></head><body>${s}</body></html>`);
+    w.document.close();
+  }
+});
+</script>
+</body>
+</html>

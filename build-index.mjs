@@ -105,7 +105,7 @@ function renderPage(dir) {
         name: d,
         href: encodeURIComponent(d) + '/',
         icon: locked ? '🔒' : '📁',
-        meta: locked ? 'cần mật khẩu' : c ? `${c} file` : '—',
+        meta: locked ? 'password required' : c ? `${c} file${c > 1 ? 's' : ''}` : '—',
       })
     );
   }
@@ -124,11 +124,11 @@ function renderPage(dir) {
   const total = dirs.length + files.length;
   const body = total
     ? `<ul class="list">${rows.join('\n')}</ul>`
-    : `<p class="empty">Thư mục trống.</p>`;
+    : `<p class="empty">This folder is empty.</p>`;
 
   return `${MARKER}
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -168,11 +168,11 @@ function renderPage(dir) {
   <nav class="crumb">${breadcrumb(parts)}</nav>
   <div class="bar">
     <h1>${esc('/' + title.replace(/^artifacts$/, ''))}</h1>
-    <span class="count">${total} mục</span>
+    <span class="count">${total} item${total > 1 ? 's' : ''}</span>
   </div>
-  ${total ? `<input id="q" type="search" placeholder="Lọc theo tên…" autocomplete="off">` : ''}
+  ${total ? `<input id="q" type="search" placeholder="Filter by name…" autocomplete="off">` : ''}
   ${body}
-  <p class="foot">artifacts.hoangtrung.dev — tự sinh khi deploy</p>
+  <p class="foot">artifacts.hoangtrung.dev — generated on deploy</p>
 </div>
 <script>
   const q = document.getElementById('q');

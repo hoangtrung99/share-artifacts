@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CloudWatch Logs Insights Cost Spike — 2026-05-25 — Forensic Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c1320;
+  --bg-grid: rgba(180, 200, 230, 0.025);
+  --surface: #141d2e;
+  --surface-2: #1a2538;
+  --surface-recessed: #0a111d;
+  --border: rgba(180, 200, 230, 0.10);
+  --border-strong: rgba(180, 200, 230, 0.20);
+  --text: #e6e8ed;
+  --text-dim: #8a93a6;
+  --text-very-dim: #5a6378;
+  --accent-amber: #d4a73a;
+  --accent-amber-dim: rgba(212, 167, 58, 0.15);
+  --accent-rose: #e11d48;
+  --accent-rose-dim: rgba(225, 29, 72, 0.12);
+  --accent-teal: #14b8a6;
+  --accent-teal-dim: rgba(20, 184, 166, 0.12);
+  --accent-slate: #64748b;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-body: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f3ee;
+    --bg-grid: rgba(30, 41, 59, 0.03);
+    --surface: #ffffff;
+    --surface-2: #faf8f3;
+    --surface-recessed: #ede9e0;
+    --border: rgba(30, 41, 59, 0.10);
+    --border-strong: rgba(30, 41, 59, 0.20);
+    --text: #1e293b;
+    --text-dim: #475569;
+    --text-very-dim: #94a3b8;
+    --accent-amber-dim: rgba(212, 167, 58, 0.18);
+    --accent-rose-dim: rgba(225, 29, 72, 0.10);
+    --accent-teal-dim: rgba(20, 184, 166, 0.10);
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--bg);
+  background-image:
+    linear-gradient(var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.65;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Layout */
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 32px;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 56px;
+}
+@media (max-width: 960px) {
+  .page { display: block; padding: 0 20px; }
+  .sidebar { position: static !important; height: auto !important; padding-top: 24px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+  .sidebar nav { display: flex; flex-wrap: wrap; gap: 4px; }
+  .sidebar a { font-size: 11px; padding: 4px 10px; border-radius: 4px; background: var(--surface); }
+}
+
+/* Sidebar TOC */
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 64px 0 32px;
+  overflow-y: auto;
+  border-right: none;
+}
+.sidebar .logo {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-very-dim);
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar .logo::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: var(--accent-rose);
+  border-radius: 1px;
+  display: inline-block;
+}
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar a {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+}
+.sidebar a:hover { color: var(--text); border-left-color: var(--accent-amber); }
+.sidebar a .num {
+  display: inline-block;
+  width: 24px;
+  color: var(--text-very-dim);
+}
+
+/* Main */
+.main { padding: 56px 0 96px; min-width: 0; }
+
+/* Hero */
+.hero {
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  padding: 48px 0 56px;
+  margin-bottom: 64px;
+  position: relative;
+}
+.hero::before {
+  content: 'CONFIDENTIAL · INTERNAL FORENSIC RECORD';
+  position: absolute;
+  top: 12px;
+  left: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  color: var(--accent-rose);
+  opacity: 0.7;
+}
+.hero .meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.hero .meta span::before { content: '·'; margin-right: 16px; color: var(--text-very-dim); }
+.hero .meta span:first-child::before { content: none; margin: 0; }
+.hero h1 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(40px, 5vw, 64px);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.hero h1 em {
+  font-style: italic;
+  color: var(--accent-amber);
+}
+.hero .subtitle {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--text-dim);
+  margin: 0 0 40px;
+  max-width: 720px;
+  line-height: 1.4;
+}
+
+/* KPI grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+@media (max-width: 760px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+.kpi {
+  background: var(--surface);
+  padding: 24px 20px;
+  position: relative;
+}
+.kpi .label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+.kpi .value {
+  font-family: var(--font-serif);
+  font-size: 38px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.kpi .value.danger { color: var(--accent-rose); }
+.kpi .value.warning { color: var(--accent-amber); }
+.kpi .value .unit {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 4px;
+  letter-spacing: 0;
+}
+.kpi .sub {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-very-dim);
+  font-family: var(--font-mono);
+}
+
+/* Sections */
+section { margin-bottom: 80px; scroll-margin-top: 24px; }
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+.section-label::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--accent-amber);
+  border-radius: 50%;
+}
+.section-label .num {
+  font-weight: 600;
+  color: var(--accent-amber);
+}
+section h2 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 36px;
+  line-height: 1.1;
+  letter-spacing: -0.005em;
+  margin: 0 0 24px;
+  color: var(--text);
+}
+section h3 {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+  margin: 32px 0 12px;
+  color: var(--text);
+}
+section p {
+  margin: 0 0 16px;
+  color: var(--text);
+  max-width: 70ch;
+}
+section p.lead {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  font-style: italic;
+  max-width: 64ch;
+  margin: 0 0 32px;
+  padding-left: 20px;
+  border-left: 2px solid var(--accent-amber);
+}
+
+/* Callouts */
+.callout {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 24px 28px;
+  margin: 24px 0;
+  border-radius: 2px;
+  position: relative;
+}
+.callout.danger { border-left: 3px solid var(--accent-rose); background: linear-gradient(90deg, var(--accent-rose-dim) 0%, var(--surface) 60%); }
+.callout.warning { border-left: 3px solid var(--accent-amber); background: linear-gradient(90deg, var(--accent-amber-dim) 0%, var(--surface) 60%); }
+.callout.safe { border-left: 3px solid var(--accent-teal); background: linear-gradient(90deg, var(--accent-teal-dim) 0%, var(--surface) 60%); }
+.callout .tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.callout.danger .tag { color: var(--accent-rose); }
+.callout.warning .tag { color: var(--accent-amber); }
+.callout.safe .tag { color: var(--accent-teal); }
+.callout p:last-child { margin-bottom: 0; }
+
+/* Suspect card */
+.suspect-card {
+  border: 1px solid var(--accent-rose);
+  background: var(--surface);
+  padding: 32px;
+  margin: 24px 0;
+  border-radius: 2px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  position: relative;
+  overflow: hidden;
+}
+.suspect-card::before {
+  content: 'PRIMARY SUSPECT';
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--accent-rose);
+  font-weight: 600;
+}
+@media (max-width: 760px) { .suspect-card { grid-template-columns: 1fr; gap: 20px; } }
+.suspect-card h3 {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  margin: 0 0 4px;
+  color: var(--accent-rose);
+}
+.suspect-card .arn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  word-break: break-all;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+.suspect-card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 20px;
+  font-size: 13px;
+}
+.suspect-card dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-very-dim);
+  align-self: center;
+}
+.suspect-card dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.suspect-card .stat-block {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+.suspect-card .big-stat {
+  font-family: var(--font-serif);
+  font-size: 48px;
+  line-height: 1;
+  color: var(--accent-rose);
+  margin-bottom: 4px;
+}
+.suspect-card .big-stat-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.suspect-card .mini-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 24px;
+}
+.suspect-card .mini-stat {
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+.suspect-card .mini-stat .v {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  color: var(--text);
+  line-height: 1;
+}
+.suspect-card .mini-stat .l {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-very-dim);
+  margin-top: 4px;
+}
+
+/* Tables */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface);
+  margin: 24px 0;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+thead {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+}
+th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--text);
+}
+tbody tr:hover { background: var(--surface-2); }
+tbody tr:last-child td { border-bottom: none; }
+td.mono, th.mono { font-family: var(--font-mono); font-size: 12px; }
+td.num { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+td.danger { color: var(--accent-rose); font-weight: 500; }
+td.warning { color: var(--accent-amber); font-weight: 500; }
+td.dim { color: var(--text-dim); }
+.row-rank {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-very-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status pills */
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  border: 1px solid;
+}
+.pill-danger { color: var(--accent-rose); border-color: var(--accent-rose); background: var(--accent-rose-dim); }
+.pill-warning { color: var(--accent-amber); border-color: var(--accent-amber); background: var(--accent-amber-dim); }
+.pill-safe { color: var(--accent-teal); border-color: var(--accent-teal); background: var(--accent-teal-dim); }
+.pill-dim { color: var(--text-dim); border-color: var(--border-strong); }
+
+/* Code blocks */
+pre, code { font-family: var(--font-mono); font-size: 12.5px; }
+code {
+  background: var(--surface-recessed);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 12px;
+  color: var(--accent-amber);
+  border: 1px solid var(--border);
+}
+pre.code-block {
+  background: var(--surface-recessed);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-rose);
+  padding: 20px 24px;
+  border-radius: 2px;
+  margin: 24px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  color: var(--text);
+  font-size: 12.5px;
+  position: relative;
+}
+pre.code-block::before {
+  content: attr(data-label);
+  position: absolute;
+  top: -10px;
+  left: 16px;
+  background: var(--bg);
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-rose);
+  font-weight: 600;
+}
+pre.code-block .kw { color: var(--accent-amber); }
+pre.code-block .str { color: var(--accent-teal); }
+pre.code-block .com { color: var(--text-very-dim); font-style: italic; }
+
+/* Hourly bars */
+.hourly-chart {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 32px;
+  margin: 24px 0;
+}
+.hourly-chart .x-axis {
+  display: grid;
+  grid-template-columns: 80px 1fr 100px 80px;
+  gap: 16px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.hourly-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 100px 80px;
+  gap: 16px;
+  align-items: center;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.hourly-row:not(:last-child) { border-bottom: 1px solid var(--border); }
+.hourly-row .time { color: var(--text-dim); }
+.hourly-row .bar-wrap {
+  height: 20px;
+  background: var(--surface-recessed);
+  border-radius: 1px;
+  overflow: hidden;
+  position: relative;
+}
+.hourly-row .bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-amber) 0%, var(--accent-rose) 100%);
+  border-radius: 1px;
+  transition: width 0.6s ease;
+}
+.hourly-row .bar.small { background: var(--accent-slate); opacity: 0.5; }
+.hourly-row .gb { text-align: right; color: var(--text); }
+.hourly-row .cost { text-align: right; color: var(--accent-rose); font-weight: 500; }
+.hourly-row.peak .gb, .hourly-row.peak .time { color: var(--accent-amber); font-weight: 500; }
+.hourly-row.peak { background: var(--accent-amber-dim); margin: 0 -16px; padding: 8px 16px; }
+
+/* Mermaid */
+.diagram-shell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  margin: 24px 0;
+  padding: 16px;
+}
+.mermaid-wrap {
+  position: relative;
+  overflow: hidden;
+}
+.mermaid-viewport {
+  overflow: hidden;
+  min-height: 400px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: grab;
+}
+.mermaid-viewport:active { cursor: grabbing; }
+.mermaid-canvas {
+  transform-origin: center center;
+  transition: transform 0.1s ease-out;
+}
+.mermaid-canvas svg { max-width: none !important; height: auto !important; }
+.zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+.zoom-controls button {
+  width: 32px;
+  height: 32px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.zoom-controls button:hover { background: var(--accent-amber); color: var(--bg); border-color: var(--accent-amber); }
+
+/* Evidence list */
+.evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface);
+}
+.evidence-list li {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 32px 1fr 2fr;
+  gap: 16px;
+  align-items: baseline;
+}
+.evidence-list li:last-child { border-bottom: none; }
+.evidence-list .tag {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--accent-amber);
+  font-weight: 600;
+}
+.evidence-list .path { color: var(--text); }
+.evidence-list .desc { color: var(--text-dim); }
+
+/* Recommendations grid */
+.rec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  margin: 24px 0;
+}
+.rec-card {
+  background: var(--surface);
+  padding: 24px;
+}
+.rec-card .priority {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.rec-card .priority.immediate { color: var(--accent-rose); }
+.rec-card .priority.short { color: var(--accent-amber); }
+.rec-card .priority.long { color: var(--accent-teal); }
+.rec-card h4 {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  margin: 0 0 8px;
+  color: var(--text);
+  line-height: 1.2;
+}
+.rec-card p { font-size: 13px; line-height: 1.55; color: var(--text-dim); margin: 0; }
+.rec-card .ref {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-very-dim);
+  margin-top: 12px;
+  display: block;
+}
+
+/* Footer */
+.footer {
+  margin-top: 96px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-very-dim);
+  letter-spacing: 0.05em;
+  line-height: 1.8;
+}
+
+/* Animations */
+@media (prefers-reduced-motion: no-preference) {
+  .kpi, .suspect-card, .hourly-chart, .callout, .table-wrap, .diagram-shell, .rec-card {
+    animation: fadeUp 0.6s ease-out both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+  }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<aside class="sidebar">
+  <div class="logo">Forensic Record</div>
+  <nav>
+    <a href="#summary"><span class="num">00</span>Summary</a>
+    <a href="#cost"><span class="num">01</span>Cost Confirmation</a>
+    <a href="#culprit"><span class="num">02</span>The Culprit</a>
+    <a href="#queries"><span class="num">03</span>The Queries</a>
+    <a href="#mechanism"><span class="num">04</span>Mechanism</a>
+    <a href="#timeline"><span class="num">05</span>Timeline</a>
+    <a href="#sample"><span class="num">06</span>Sample Query</a>
+    <a href="#ruled-out"><span class="num">07</span>Ruled Out</a>
+    <a href="#recommendations"><span class="num">08</span>Recommendations</a>
+    <a href="#evidence"><span class="num">09</span>Evidence Index</a>
+  </nav>
+</aside>
+
+<main class="main">
+
+  <header class="hero">
+    <div class="meta">
+      <span>Account 520411743393</span>
+      <span>verup STG</span>
+      <span>ap-northeast-1</span>
+      <span>Investigation 2026-05-27</span>
+    </div>
+    <h1>The <em>180-terabyte</em><br>Sunday Afternoon.</h1>
+    <p class="subtitle">How a single operator, an iterative debugging session, and a console button doubled themselves into an $897 CloudWatch bill in three hours.</p>
+
+    <div class="kpi-grid">
+      <div class="kpi" style="--i:0">
+        <div class="label">Spike Cost</div>
+        <div class="value danger">$897<span class="unit">.72</span></div>
+        <div class="sub">2026-05-25 (single day)</div>
+      </div>
+      <div class="kpi" style="--i:1">
+        <div class="label">Bytes Scanned</div>
+        <div class="value warning">115<span class="unit">.2 TB</span></div>
+        <div class="sub">117,989 GB · $0.005/GB</div>
+      </div>
+      <div class="kpi" style="--i:2">
+        <div class="label">Anomaly vs Baseline</div>
+        <div class="value danger">+1,715<span class="unit">%</span></div>
+        <div class="sub">Expected $49 · Actual $893</div>
+      </div>
+      <div class="kpi" style="--i:3">
+        <div class="label">Attribution Confidence</div>
+        <div class="value warning">HIGH</div>
+        <div class="sub">Single operator, 99.8% share</div>
+      </div>
+    </div>
+  </header>
+
+  <section id="summary">
+    <div class="section-label"><span class="num">00 ·</span> Executive Summary</div>
+    <h2>One person. One log group. 188 queries.</h2>
+    <p class="lead">A Solashi operator, federated as <code>custodian-OperatorRole/solashi_tuandv</code>, drove the entire 2026-05-25 cost spike through a 3-hour console debugging session — progressively widening query windows from 28 days to a full 365 days against the largest log group in the account.</p>
+
+    <p>The investigation triangulated evidence from four independent angles: Cost Explorer API (confirming the $897 / 115 TB figure), CloudWatch <code>DescribeQueries</code> history (catching 250 queries / $633 within the 7-day retention), CloudTrail <code>StartQuery</code> events (attributing 99.8 % of the time-span volume to a single principal), and the log-group inventory (confirming the scan target). All four converged on the same conclusion.</p>
+
+    <div class="callout danger">
+      <div class="tag">Root Cause</div>
+      <p><strong>Iterative debugging session on the CloudWatch Logs Insights console.</strong> Operator was investigating a <code>bpo result call back start</code> incident touching <code>applicant_id=2247798</code> and <code>applicant_id=2248043</code>, kept widening the time range and tweaking the <code>filter ... like /.../</code> pattern, and was unaware that each "Show patterns" button click silently re-scans the entire query — doubling the bill on every iteration.</p>
+    </div>
+
+    <div class="callout warning">
+      <div class="tag">Mechanism</div>
+      <p>Each "real" query scanned ~2.6 TB of EKS container logs across a 9-12 month window. The CloudWatch console then auto-fired <code>SOURCE queryIds(...) | pattern @message</code> on the same range — a second 2.6 TB scan invisible to the user. Multiply by ~30 wide-window queries plus 92 narrower repeats, and the math reaches the observed ~180 TB.</p>
+    </div>
+
+    <div class="callout safe">
+      <div class="tag">Ruled Out</div>
+      <p>Automation, scheduled queries, dashboards, Live Tail, IRSA-roled application pods, and the two secondary operator accounts (<code>relipa_datdq</code>, <code>solashi_truongnv</code>) were checked and excluded. No infrastructure-as-code in this repo defines a scheduled or saved query that would explain the volume.</p>
+    </div>
+  </section>
+
+  <section id="cost">
+    <div class="section-label"><span class="num">01 ·</span> Cost Confirmation</div>
+    <h2>Cost Explorer confirms the spike with hourly resolution.</h2>
+    <p>The Cost Explorer API returned hourly granularity (enabled on this account), pinpointing the burn window to <strong>04:00 UTC – 07:00 UTC</strong> on 2026-05-25 (13:00 – 16:00 JST). That single 3-hour window accounts for <strong>$769 / 101 TB</strong>, or <strong>86 % of the daily spike</strong>. A secondary smaller burst followed at 09:00 – 11:00 UTC (18:00 – 20:00 JST), adding $127. Together those two windows explain 99 % of the day.</p>
+
+    <h3>Hourly DataScanned-Bytes profile · 2026-05-25 UTC</h3>
+    <div class="hourly-chart" style="--i:0">
+      <div class="x-axis">
+        <div>UTC (JST)</div>
+        <div>Relative scan volume</div>
+        <div style="text-align: right">GB scanned</div>
+        <div style="text-align: right">Cost</div>
+      </div>
+      <div class="hourly-row"><div class="time">02 (11)</div><div class="bar-wrap"><div class="bar small" style="width: 0.5%"></div></div><div class="gb">4</div><div class="cost">$0.02</div></div>
+      <div class="hourly-row"><div class="time">03 (12)</div><div class="bar-wrap"><div class="bar small" style="width: 0.5%"></div></div><div class="gb">4</div><div class="cost">$0.02</div></div>
+      <div class="hourly-row peak"><div class="time">04 (13)</div><div class="bar-wrap"><div class="bar" style="width: 35%"></div></div><div class="gb">20,225</div><div class="cost">$101.12</div></div>
+      <div class="hourly-row peak"><div class="time">05 (14)</div><div class="bar-wrap"><div class="bar" style="width: 100%"></div></div><div class="gb">57,366</div><div class="cost">$286.83</div></div>
+      <div class="hourly-row peak"><div class="time">06 (15)</div><div class="bar-wrap"><div class="bar" style="width: 54%"></div></div><div class="gb">31,076</div><div class="cost">$155.38</div></div>
+      <div class="hourly-row"><div class="time">08 (17)</div><div class="bar-wrap"><div class="bar small" style="width: 0.5%"></div></div><div class="gb">4</div><div class="cost">$0.02</div></div>
+      <div class="hourly-row"><div class="time">09 (18)</div><div class="bar-wrap"><div class="bar" style="width: 18%"></div></div><div class="gb">10,357</div><div class="cost">$51.79</div></div>
+      <div class="hourly-row"><div class="time">10 (19)</div><div class="bar-wrap"><div class="bar" style="width: 13%"></div></div><div class="gb">7,653</div><div class="cost">$38.26</div></div>
+    </div>
+
+    <h3>Did ingestion spike too?</h3>
+    <p>No — and that matters. The <code>APN1-DataProcessing-Bytes</code> (ingestion) line was 91 GB on 2026-05-25 vs 90 GB the day before. Flat. This rules out a workload change and isolates the cost driver to the query side. Storage (<code>TimedStorage-ByteHrs</code>) was likewise unaffected. The spike is 100 % attributable to <code>logs:StartQuery</code> calls.</p>
+
+    <div class="callout safe">
+      <div class="tag">AWS Cost Anomaly Detection</div>
+      <p>Anomaly record <code>43a35289-1c54-44cf-a233-8cd956b029b0</code> was created automatically. Expected daily cost on this account for this usage type: <strong>$49.21</strong>. Actual: <strong>$893.22</strong>. Deviation: <strong>+1,715 %</strong>. The monitor exists on the account but no notification subscription appears to have been wired up — a fixable gap.</p>
+    </div>
+  </section>
+
+  <section id="culprit">
+    <div class="section-label"><span class="num">02 ·</span> Attribution</div>
+    <h2>The 99.8 percent.</h2>
+    <p>CloudTrail <code>lookup-events</code> for <code>EventName=StartQuery</code> over 2026-05-24 → 2026-05-26 returned 481 events. Parsed and grouped by principal, the time-span sum (the strongest cost driver in Insights) tells the story without ambiguity.</p>
+
+    <div class="suspect-card" style="--i:0">
+      <div>
+        <h3>solashi_tuandv</h3>
+        <div class="arn">arn:aws:sts::520411743393:assumed-role/<wbr>custodian-OperatorRole/solashi_tuandv</div>
+        <dl>
+          <dt>Identity</dt><dd>AssumedRole via IAM Identity Center</dd>
+          <dt>Client</dt><dd>Browser console — Chrome 148 / macOS</dd>
+          <dt>Source IPs</dt><dd>104.30.164.185 · 104.30.177.101 (Cloudflare Warp)<br>14.232.211.243 · 118.70.131.154 (FPT Telecom, VN)</dd>
+          <dt>Peak window</dt><dd>04 Z – 07 Z (13 JST – 16 JST)</dd>
+          <dt>Max query span</dt><dd>365 days (full retention)</dd>
+        </dl>
+      </div>
+      <div class="stat-block">
+        <div class="big-stat">168,931</div>
+        <div class="big-stat-label">Total query time-span (hours) · 2026-05-25</div>
+        <div class="mini-stats">
+          <div class="mini-stat">
+            <div class="v">188</div>
+            <div class="l">StartQuery events</div>
+          </div>
+          <div class="mini-stat">
+            <div class="v">15</div>
+            <div class="l">≥ 180-day spans</div>
+          </div>
+          <div class="mini-stat">
+            <div class="v">99.8%</div>
+            <div class="l">Of daily time-span</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Per-principal share · 2026-05-25</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Principal (RoleSessionName)</th>
+            <th class="num">StartQuery</th>
+            <th class="num">Σ time-span</th>
+            <th class="num">Share</th>
+            <th>Attribution</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono"><span class="pill pill-danger">SUSPECT</span> solashi_tuandv</td>
+            <td class="num danger">188</td>
+            <td class="num danger">168,931 h</td>
+            <td class="num danger">99.80 %</td>
+            <td>Console debugging — 15 queries at ≥ 180-d span, all on <code>/aws/containerinsights/point/application</code></td>
+          </tr>
+          <tr>
+            <td class="mono">relipa_datdq</td>
+            <td class="num">72</td>
+            <td class="num dim">212 h</td>
+            <td class="num dim">0.13 %</td>
+            <td class="dim">CSV-export troubleshooting on <code>bulkCsvExportExecutor</code>, all spans ≤ 1 h</td>
+          </tr>
+          <tr>
+            <td class="mono">solashi_truongnv</td>
+            <td class="num">6</td>
+            <td class="num dim">27 h</td>
+            <td class="num dim">0.02 %</td>
+            <td class="dim">HULFT log spot-checks, 1–12 h spans</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The disparity is roughly four orders of magnitude. There is no plausible model under which the secondary operators meaningfully contributed to a 180 TB scan day; their entire combined time-span budget (~239 hours) is 0.14 % of the primary suspect's. Confidence: <strong>HIGH</strong>.</p>
+  </section>
+
+  <section id="queries">
+    <div class="section-label"><span class="num">03 ·</span> The Queries</div>
+    <h2>Ten queries, twenty-six terabytes.</h2>
+    <p>Cross-referencing CloudTrail <code>StartQuery</code> records with <code>DescribeQueries</code> + <code>GetQueryResults.Statistics.bytesScanned</code> produces the per-query cost breakdown below. All ten top queries belong to the same operator, all hit the same log group, and all use 9–12 month time windows. The query strings differ only in the <code>filter ... like /<i>keyword</i>/</code> substring — the classic signature of a human iterating on a regex pattern inside the console.</p>
+
+    <div class="table-wrap" style="--i:0">
+      <table>
+        <thead>
+          <tr>
+            <th class="num">#</th>
+            <th class="mono">Time (UTC · JST)</th>
+            <th class="num">GB</th>
+            <th class="num">USD</th>
+            <th>Filter signature</th>
+            <th>Window span</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="row-rank">01</td><td class="mono">06:47:53 · 15:47</td><td class="num danger">2,634.5</td><td class="num danger">$13.17</td><td><code>point-worker</code> AND <code>status=processing</code></td><td class="dim">~ 10 months</td></tr>
+          <tr><td class="row-rank">02</td><td class="mono">06:48:37 · 15:48</td><td class="num danger">2,634.5</td><td class="num danger">$13.17</td><td><code>point-worker</code> AND <code>unknown bpo.status</code></td><td class="dim">~ 10 months</td></tr>
+          <tr><td class="row-rank">03</td><td class="mono">05:47:44 · 14:47</td><td class="num danger">2,632.4</td><td class="num danger">$13.16</td><td><code>point-worker</code> AND <code>applicant_id=2248043</code></td><td class="warning">365 days</td></tr>
+          <tr><td class="row-rank">04</td><td class="mono">05:13:27 · 14:13</td><td class="num danger">2,631.1</td><td class="num danger">$13.16</td><td><code>point-worker</code> AND <code>unknown bpo.status:</code></td><td class="dim">~ 10 months</td></tr>
+          <tr><td class="row-rank">05</td><td class="mono">04:44:52 · 13:44</td><td class="num danger">2,630.2</td><td class="num danger">$13.15</td><td><code>point-worker</code> AND <code>bpo.status: processing</code></td><td class="dim">~ 9 months</td></tr>
+          <tr><td class="row-rank">06</td><td class="mono">04:44:01 · 13:44</td><td class="num danger">2,630.1</td><td class="num danger">$13.15</td><td><code>point-worker</code> AND <code>finish process user:</code></td><td class="dim">~ 9 months</td></tr>
+          <tr><td class="row-rank">07</td><td class="mono">04:37:52 · 13:37</td><td class="num danger">2,629.9</td><td class="num danger">$13.15</td><td><code>point-api</code> AND <code>bpo result call back start</code></td><td class="dim">~ 9 months</td></tr>
+          <tr><td class="row-rank">08</td><td class="mono">04:37:05 · 13:37</td><td class="num danger">2,629.9</td><td class="num danger">$13.15</td><td><code>point-api</code> AND <code>bpo result call back start</code></td><td class="dim">~ 4 months</td></tr>
+          <tr><td class="row-rank">09</td><td class="mono">10:13:59 · 19:13</td><td class="num warning">2,550.7</td><td class="num warning">$12.75</td><td><code>point-worker</code> AND <code>ChainalysisAddressChecker</code></td><td class="dim">28 days (relative)</td></tr>
+          <tr><td class="row-rank">10</td><td class="mono">10:12:43 · 19:12</td><td class="num warning">2,550.7</td><td class="num warning">$12.75</td><td>repeat of #9</td><td class="dim">28 days</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Target: the largest log group in the account</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Log group</th>
+            <th class="num">Stored (compressed)</th>
+            <th class="num">Retention</th>
+            <th class="num">Ingest est.</th>
+            <th>Class</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono danger">/aws/containerinsights/point/application <span class="pill pill-danger">TARGET</span></td>
+            <td class="num danger">191.88 GB</td>
+            <td class="num">30 d</td>
+            <td class="num">6.4 GB/day</td>
+            <td>Standard</td>
+          </tr>
+          <tr><td class="mono">/aws/eks/point/cluster</td><td class="num">90.97 GB</td><td class="num">731 d</td><td class="num dim">—</td><td>Standard</td></tr>
+          <tr><td class="mono">/aws/vpc-flow-log/point</td><td class="num">13.39 GB</td><td class="num">30 d</td><td class="num dim">—</td><td>Standard</td></tr>
+          <tr><td class="mono">/aws/lambda/error-log-to-slack</td><td class="num">8.82 GB</td><td class="num dim">∞</td><td class="num dim">—</td><td>Standard</td></tr>
+          <tr><td class="mono">/aws/cloudtrail/management-events</td><td class="num">7.15 GB</td><td class="num">180 d</td><td class="num dim">—</td><td>Standard</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>EKS Container Insights stores compressed; Logs Insights bills uncompressed. With a typical 5–10× ratio, the target log group represents roughly <strong>1–2 TB of uncompressed daily scan volume per 30-day window</strong>. A single 9-month query (~270 days × 6.4 GB/day uncompressed × 5× ratio ≈ 8 TB of unique data) cannot by itself reach 2.6 TB scanned — meaning the <strong>console amplification multiplied the bill on every keystroke iteration</strong> (see <a href="#mechanism">Section 04</a>).</p>
+  </section>
+
+  <section id="mechanism">
+    <div class="section-label"><span class="num">04 ·</span> Cost Amplification Mechanism</div>
+    <h2>How $0.005/GB becomes $897 in three hours.</h2>
+    <p>The pricing surface is benign — <code>$0.005 per GB scanned</code>. What turns this into a 4-figure daily bill is the multiplicative interaction of <em>window width</em>, <em>log-group size</em>, <em>iteration count</em>, and the silent doubling from the console's "Show patterns" button. The diagram below shows the cost amplification chain for a single iteration cycle.</p>
+
+    <div class="diagram-shell" style="--i:0">
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button onclick="zoomMermaid(0.8)" title="Zoom out">−</button>
+          <button onclick="zoomMermaid(1.25)" title="Zoom in">+</button>
+          <button onclick="resetMermaid()" title="Reset">⊙</button>
+          <button onclick="openMermaidInNewTab()" title="Expand">⛶</button>
+        </div>
+        <div class="mermaid-viewport" id="mermaid-viewport">
+          <div class="mermaid-canvas" id="mermaid-canvas">
+            <pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#141d2e',
+  'primaryColor':'#1a2538',
+  'primaryTextColor':'#e6e8ed',
+  'primaryBorderColor':'#d4a73a',
+  'lineColor':'#8a93a6',
+  'secondaryColor':'#0c1320',
+  'tertiaryColor':'#0a111d',
+  'fontFamily':'IBM Plex Mono, monospace',
+  'fontSize':'15px'
+}}}%%
+flowchart TD
+  A["Operator types filter<br/>like /applicant_id=2248043/"]:::user
+  B["Console widens time range<br/>via 'last 365 days' preset"]:::user
+  C["StartQuery API call<br/>span = 365 days"]:::api
+  D["Scan /aws/containerinsights/point/application<br/>~ 2.6 TB uncompressed"]:::scan
+  E["Bill: 2,632 GB × $0.005<br/>= $13.16"]:::cost
+  F["Console auto-fires<br/>SOURCE queryIds(...) | pattern @message"]:::ghost
+  G["RE-scan same 365 days<br/>~ 2.6 TB again"]:::scan
+  H["Bill: another $13.16<br/>(invisible to user)"]:::cost
+  I["Operator tweaks pattern,<br/>repeats with new keyword"]:::user
+  J["× 15 wide-span iterations<br/>+ 92 narrower repeats<br/>= ~ 180 TB / $897"]:::final
+
+  A --> B --> C --> D --> E
+  C --> F --> G --> H
+  H --> I --> A
+  H --> J
+
+  classDef user fill:#1a2538,stroke:#8a93a6,color:#e6e8ed
+  classDef api fill:#1a2538,stroke:#d4a73a,color:#d4a73a
+  classDef scan fill:#1a2538,stroke:#e11d48,color:#e11d48
+  classDef cost fill:#1a2538,stroke:#e11d48,color:#fff,font-weight:bold
+  classDef ghost fill:#0c1320,stroke:#5a6378,color:#8a93a6,stroke-dasharray: 4 4
+  classDef final fill:#e11d48,stroke:#e11d48,color:#fff,font-weight:bold
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warning">
+      <div class="tag">The hidden doubler</div>
+      <p>Of 188 <code>StartQuery</code> events from the suspect, roughly <strong>half are auto-fired pattern re-runs</strong> from the "Show patterns" button on the console results pane. Each pattern re-run scans the same byte range as the parent query but appears in CloudTrail as an independent <code>StartQuery</code>. The operator sees one click; the bill sees two scans. This pattern alone explains the gap between intuitive cost estimates and the actual line item.</p>
+    </div>
+  </section>
+
+  <section id="timeline">
+    <div class="section-label"><span class="num">05 ·</span> Timeline</div>
+    <h2>A debugging session, reconstructed.</h2>
+    <p>The CloudTrail timeline shows a coherent investigation arc: probing <code>point-admin</code> errors at lunch, narrowing to the <code>bpo</code> callback failure mid-afternoon, then progressively widening the search window as no signal appeared in shorter ranges. The window expansion sequence — <strong>28 d → 113 d → 283 d → 297 d → 365 d</strong> — happens within a 73-minute span.</p>
+
+    <div class="table-wrap" style="--i:0">
+      <table>
+        <thead>
+          <tr>
+            <th class="mono">UTC · JST</th>
+            <th>Block</th>
+            <th class="num">Span</th>
+            <th>Investigation focus</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">02:54 · 11:54</td>
+            <td><strong>Block 1 — Probe</strong></td>
+            <td class="num">19 d ↓ 30 m</td>
+            <td>Opens console. Quick checks on <code>point-admin</code> pod filtering for <code>/admin/v1/pos/mmconfig</code>.</td>
+          </tr>
+          <tr>
+            <td class="mono">04:35 · 13:35</td>
+            <td><strong>Block 2 — Pivot</strong></td>
+            <td class="num">28 d</td>
+            <td>Switches to <code>point-mmh</code> investigating <code>bpo result call back start</code>. First widening attempt to find historical occurrence.</td>
+          </tr>
+          <tr>
+            <td class="mono warning">04:37 · 13:37</td>
+            <td><strong>The escalation begins</strong></td>
+            <td class="num warning">113 d</td>
+            <td class="warning">Same filter, but window expanded 4× — first $13 query of the day fires.</td>
+          </tr>
+          <tr>
+            <td class="mono danger">04:37:52 · 13:37</td>
+            <td><strong>Cross the threshold</strong></td>
+            <td class="num danger">283 d</td>
+            <td class="danger">First 283-day query — $13. Pattern re-run fires automatically — another $13. Cost burn rate jumps to ~$300/hour.</td>
+          </tr>
+          <tr>
+            <td class="mono danger">04:44 – 04:55</td>
+            <td><strong>Block 3 — Iteration burst</strong></td>
+            <td class="num danger">283 d × 6</td>
+            <td class="danger">Six 283-day queries on <code>point-worker</code> with rotating keyword filters (<code>bpo.status:</code>, <code>finish process user:</code>, <code>response payload:</code>). Each paired with a pattern re-run. ~$160 burned in 11 minutes.</td>
+          </tr>
+          <tr>
+            <td class="mono danger">05:13 · 14:13</td>
+            <td><strong>Widen further</strong></td>
+            <td class="num danger">297 d</td>
+            <td class="danger">Filter narrows to <code>unknown bpo.status:</code> — but window expands to 297 days.</td>
+          </tr>
+          <tr>
+            <td class="mono danger">05:47:44 · 14:47</td>
+            <td><strong>The full-retention scan</strong></td>
+            <td class="num danger">365 d</td>
+            <td class="danger">Peak query: full 365-day retention scan filtering for <code>applicant_id=2248043</code> on <code>point-worker</code>. Single query: $13.16. Plus auto pattern re-run: another $13.16.</td>
+          </tr>
+          <tr>
+            <td class="mono">06:47 – 06:48</td>
+            <td><strong>Block 5 — Final burst</strong></td>
+            <td class="num warning">297 d × 2</td>
+            <td>Two final wide queries (<code>status=processing</code>, <code>unknown bpo.status</code>). Operator stops at 06:50 UTC.</td>
+          </tr>
+          <tr>
+            <td class="mono">09:00 – 14:00</td>
+            <td><strong>Block 6 — Trailing</strong></td>
+            <td class="num">28 d ↓ 1 h</td>
+            <td>Returns ~2 hours later. Spans normalize to 28 days then narrower. Ten queries through 14:10 UTC including <code>ChainalysisAddressChecker</code> investigation (#9, #10 in the cost table).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="sample">
+    <div class="section-label"><span class="num">06 ·</span> Sample Query</div>
+    <h2>The worst single query, quoted verbatim.</h2>
+    <p>Query #1 in the cost table — 2,634.5 GB scanned, $13.17 billed. Filter shape is correct CWLI; the killer is the explicit 10-month time window on a 6.4 GB/day uncompressed log group. The <code>| limit 200</code> at the end is a red herring — it limits returned rows, not bytes scanned.</p>
+
+    <pre class="code-block" data-label="QUERY #1 · 2026-05-25T06:47:53Z · 2,634.5 GB · $13.17">SOURCE "/aws/containerinsights/point/application" <span class="kw">START</span>=<span class="str">2025-07-31T17:00:00.000Z</span> <span class="kw">END</span>=<span class="str">2026-05-25T16:59:59.000Z</span> |
+<span class="kw">fields</span> @timestamp, kubernetes.pod_name, log_processed.message
+| <span class="kw">filter</span> kubernetes.pod_name like /point-worker/
+| <span class="kw">filter</span> log_processed.message like /status=processing/
+| <span class="kw">sort</span> @timestamp desc
+| <span class="kw">limit</span> 200</pre>
+
+    <h3>Why each line matters for cost</h3>
+    <ul>
+      <li><strong>Line 1 (<code>SOURCE</code>):</strong> Selects one log group — fine. But <code>START</code>/<code>END</code> define a <strong>299-day window</strong>. Every byte in this window gets read into the query engine regardless of downstream filters.</li>
+      <li><strong>Line 2 (<code>fields</code>):</strong> Field projection — applied AFTER scan. No cost impact.</li>
+      <li><strong>Line 3-4 (<code>filter</code>):</strong> Pod-name and message-substring filters — also applied AFTER scan. The filter is a row-selector, not a byte-selector. <code>filterIndex</code> on indexed fields would change this, but <code>kubernetes.pod_name</code> and <code>log_processed.message</code> are not indexed.</li>
+      <li><strong>Line 5-6 (<code>sort</code>, <code>limit</code>):</strong> Output formatting only. Zero cost impact.</li>
+    </ul>
+
+    <p>The fix would have been any of: narrowing the <code>START</code> to days not months; adding a <code>filterIndex kubernetes.pod_name = "point-worker"</code> after creating an index policy; or — when iterating on the keyword — reusing the first query's result via <code>SOURCE queryIds('<original-id>')</code> which scans only the result set (kilobytes, not terabytes).</p>
+  </section>
+
+  <section id="ruled-out">
+    <div class="section-label"><span class="num">07 ·</span> Negative Evidence</div>
+    <h2>What this was <em>not</em>.</h2>
+    <p>For completeness, the investigation explicitly ruled out plausible alternative explanations. Each finding here is supported by a raw evidence file in the audit directory.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Hypothesis</th>
+            <th>Status</th>
+            <th>Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Scheduled / saved query running on cron</td>
+            <td><span class="pill pill-safe">Ruled out</span></td>
+            <td><code>describe-queries --status Scheduled</code> returned zero entries; <code>describe-query-definitions</code> returned 5 saved definitions, all scoped to specific log groups, none of them invocable on a schedule.</td>
+          </tr>
+          <tr>
+            <td>Dashboard widget auto-refreshing an Insights query</td>
+            <td><span class="pill pill-safe">Ruled out</span></td>
+            <td>5 dashboards listed (<code>DB-Instance</code>, <code>EKS-overview</code>, <code>EKS-workload</code>, <code>EKS-workload-module</code>, <code>performance-test</code>). Body parsed for every widget. Zero widgets of type <code>log</code> or with <code>properties.query</code>.</td>
+          </tr>
+          <tr>
+            <td>Application code (IRSA-roled pod) running queries</td>
+            <td><span class="pill pill-safe">Ruled out</span></td>
+            <td><code>point-app-irsa-role</code> appears in CloudTrail only on <code>GetQueryResults</code> (hourly polling of pre-existing queryIds) — zero <code>StartQuery</code> events. <code>GetQueryResults</code> doesn't scan data.</td>
+          </tr>
+          <tr>
+            <td>CloudWatch Live Tail accidentally left running</td>
+            <td><span class="pill pill-safe">Ruled out</span></td>
+            <td>Zero <code>StartLiveTail</code> events in the 3-day window. Live Tail is a separate billing line ($0.01/min) and would not appear under <code>DataScanned-Bytes</code> anyway.</td>
+          </tr>
+          <tr>
+            <td>Infrastructure-as-code defining the bad query</td>
+            <td><span class="pill pill-safe">Ruled out</span></td>
+            <td><code>rg</code> across <code>bs-exchange-infra</code>, <code>bs-observability-infra</code>, <code>bs-point-infra</code> returned zero <code>aws_cloudwatch_query_definition</code>, zero <code>StartQuery</code> shell scripts, zero scheduled Lambda invocations of Logs Insights.</td>
+          </tr>
+          <tr>
+            <td>Third-party SaaS scraping via Insights API</td>
+            <td><span class="pill pill-warning">Unlikely</span></td>
+            <td>CloudTrail <code>userAgent</code> for all 188 suspect events shows <code>Mozilla/5.0 ... Chrome/148</code> from a desktop browser, not an SDK or third-party agent. No assumed-role with a SaaS-style session-name was active during the spike window.</td>
+          </tr>
+          <tr>
+            <td>Recursive / runaway automation</td>
+            <td><span class="pill pill-warning">Inconsistent</span></td>
+            <td>The 188 queries cluster in two human-shaped sessions (13–16 JST and 18–19 JST) with intervals consistent with a human reading partial results between queries. Inter-query gaps range from 7 seconds to 4 minutes — too irregular for automation.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="recommendations">
+    <div class="section-label"><span class="num">08 ·</span> Recommendations</div>
+    <h2>Three time horizons, six concrete actions.</h2>
+
+    <div class="rec-grid">
+      <div class="rec-card" style="--i:0">
+        <div class="priority immediate">Immediate · This week</div>
+        <h4>Notify the operator</h4>
+        <p>Brief <code>solashi_tuandv</code> directly. The intent (investigating a real <code>bpo</code> incident) was legitimate; the cost outcome was unintentional. Share the <code>SOURCE queryIds(...)</code> re-use pattern and explain the "Show patterns" doubling effect.</p>
+        <span class="ref">No blame; this is a tooling-defect symptom.</span>
+      </div>
+      <div class="rec-card" style="--i:1">
+        <div class="priority immediate">Immediate · This week</div>
+        <h4>Wire the anomaly subscription</h4>
+        <p>Cost Anomaly Detection caught this spike at 1,715% deviation but no subscription delivers the alert. Add a Slack / email subscription on the existing monitor so the next spike fires within hours, not days.</p>
+        <span class="ref">AWS · ce update-anomaly-subscription</span>
+      </div>
+      <div class="rec-card" style="--i:2">
+        <div class="priority short">Short term · This sprint</div>
+        <h4>Insights cost CloudWatch alarm</h4>
+        <p>Create alarm on <code>DataScanned-Bytes</code> usage type via a daily budget at $50/day on STG (current baseline is ~$5/day). Auto-page on breach. Cost-of-control: ~$0.10/month.</p>
+        <span class="ref">CW Billing alarms + SNS topic point-stg-cost</span>
+      </div>
+      <div class="rec-card" style="--i:3">
+        <div class="priority short">Short term · This sprint</div>
+        <h4>Field index policy on the target log group</h4>
+        <p>Create field indexes on <code>kubernetes.pod_name</code> and <code>log_processed.level</code> for <code>/aws/containerinsights/point/application</code>. Indexed queries skip non-matching log streams, cutting scan volume up to 10× on filtered queries.</p>
+        <span class="ref">aws logs put-account-policy --policy-type FIELD_INDEX_POLICY</span>
+      </div>
+      <div class="rec-card" style="--i:4">
+        <div class="priority long">Long term · Next quarter</div>
+        <h4>Team training + saved query library</h4>
+        <p>Publish 5 reusable saved queries for common debugging tasks (per-pod last-1h, error count, slow request, applicant lookup) with <strong>bounded</strong> time ranges baked in. Document the <code>SOURCE queryIds()</code> re-use pattern in onboarding.</p>
+        <span class="ref">describe-query-definitions library</span>
+      </div>
+      <div class="rec-card" style="--i:5">
+        <div class="priority long">Long term · Next quarter</div>
+        <h4>S3 export for forensic depth</h4>
+        <p>Subscribe <code>/aws/containerinsights/point/application</code> to a Firehose → S3 sink. For investigations needing > 30 day depth, Athena queries the S3 archive at far lower cost ($5/TB scanned with partition pruning).</p>
+        <span class="ref">Subscription filter → Firehose → S3</span>
+      </div>
+    </div>
+
+    <div class="callout safe" style="margin-top: 32px">
+      <div class="tag">Cost recovery option</div>
+      <p>This spike (~$897) is a candidate for AWS support credit reclaim if discussed with the account TAM. AWS routinely waives single-event cost mistakes for the first occurrence, especially when Cost Anomaly Detection caught it and the customer is taking corrective action. Worth raising in the next account review.</p>
+    </div>
+  </section>
+
+  <section id="evidence">
+    <div class="section-label"><span class="num">09 ·</span> Evidence Chain</div>
+    <h2>Twenty-eight raw artifacts. Every number in this report is traceable.</h2>
+    <p>All evidence files live under <code>audit-outputs/</code> in this directory. Each file carries a header with the AWS profile, account ID, timestamp, and exact command used. The list below maps the four investigation axes to their source data.</p>
+
+    <h3>Axis I — Cost Explorer confirmation</h3>
+    <ul class="evidence-list">
+      <li><span class="tag">CE-1</span><span class="path">agent-D-step1-daily-may2026-2026-05-27T052425Z.json</span><span class="desc">Daily DataScanned-Bytes for May 1-27 · confirms $897 / 115 TB on 05-25</span></li>
+      <li><span class="tag">CE-2</span><span class="path">agent-D-step2-hourly-may24-26-2026-05-27T052436Z.json</span><span class="desc">Hourly granularity for the 3-day window · pinpoints 04-07 UTC burn zone</span></li>
+      <li><span class="tag">CE-3</span><span class="path">agent-D-step3-groupby-operation-2026-05-27T052448Z.json</span><span class="desc">100% of cost attributed to <code>StartQuery</code> operation</span></li>
+      <li><span class="tag">CE-4</span><span class="path">agent-D-step4-anomalies-2026-05-27T052456Z.json</span><span class="desc">AWS Cost Anomaly Detection record · +1,715% deviation</span></li>
+      <li><span class="tag">CE-5</span><span class="path">agent-D-step5-all-usage-types-2026-05-27T052503Z.json</span><span class="desc">Confirms only DataScanned-Bytes spiked · ingestion + storage flat</span></li>
+    </ul>
+
+    <h3>Axis II — DescribeQueries forensics (the queries)</h3>
+    <ul class="evidence-list">
+      <li><span class="tag">DQ-1</span><span class="path">agent-A-merged-1385-queries-2026-05-27T052255Z.json</span><span class="desc">Master dataset · 1,385 queries × bytesScanned · 30-day window</span></li>
+      <li><span class="tag">DQ-2</span><span class="path">agent-A-may25-window-2026-05-27T052255Z.json</span><span class="desc">Filtered subset · 250 queries on 2026-05-25</span></li>
+      <li><span class="tag">DQ-3</span><span class="path">agent-A-top50-by-bytes-scanned-2026-05-27T052255Z.tsv</span><span class="desc">Top-50 TSV sorted by bytesScanned · table source for Section 03</span></li>
+      <li><span class="tag">DQ-4</span><span class="path">agent-A-daily-summary-2026-05-27T052255Z.json</span><span class="desc">Daily roll-up showing recurring elevated days (14, 21, 22, 25 May)</span></li>
+      <li><span class="tag">DQ-5</span><span class="path">agent-A-get-query-results-stats-2026-05-27T052255Z.json</span><span class="desc">Per-queryId bytesScanned from GetQueryResults · the cost ledger</span></li>
+    </ul>
+
+    <h3>Axis III — CloudTrail attribution (the actor)</h3>
+    <ul class="evidence-list">
+      <li><span class="tag">CT-1</span><span class="path">agent-B-cloudtrail-StartQuery-2026-05-27T052327Z.json</span><span class="desc">481 StartQuery events · raw CloudTrail lookup-events</span></li>
+      <li><span class="tag">CT-2</span><span class="path">agent-B-cloudtrail-GetQueryResults-2026-05-27T052356Z.json</span><span class="desc">536 GetQueryResults events · polling pattern analysis</span></li>
+      <li><span class="tag">CT-3</span><span class="path">agent-B-cloudtrail-StopQuery-2026-05-27T052411Z.json</span><span class="desc">3 StopQuery events · all by primary suspect</span></li>
+      <li><span class="tag">CT-4</span><span class="path">agent-B-cloudtrail-StartLiveTail-2026-05-27T052412Z.json</span><span class="desc">Empty result · rules out Live Tail attribution</span></li>
+      <li><span class="tag">CT-5</span><span class="path">agent-B-startquery-parsed-2026-05-27T053000Z.jsonl</span><span class="desc">481 NDJSON · parsed per-event with caller, IP, userAgent, query span</span></li>
+    </ul>
+
+    <h3>Axis IV — Targets audit (what got scanned)</h3>
+    <ul class="evidence-list">
+      <li><span class="tag">TG-1</span><span class="path">agent-C-loggroups-top30-2026-05-27T052641Z.json</span><span class="desc">Top-30 log groups by storedBytes · 42 total in account</span></li>
+      <li><span class="tag">TG-2</span><span class="path">agent-C-query-definitions-2026-05-27T052806Z.yaml</span><span class="desc">5 saved query definitions · scope analysis</span></li>
+      <li><span class="tag">TG-3</span><span class="path">agent-C-dashboards-list-2026-05-27T052832Z.yaml</span><span class="desc">5 dashboards · zero Insights widgets confirmed</span></li>
+      <li><span class="tag">TG-4</span><span class="path">agent-C-resource-policies-2026-05-27T052916Z.yaml</span><span class="desc">No resource policies · no cross-account query access</span></li>
+      <li><span class="tag">TG-5</span><span class="path">agent-C-describe-queries-Scheduled-2026-05-27T052917Z.yaml</span><span class="desc">Zero scheduled queries · rules out cron-driven attribution</span></li>
+    </ul>
+
+    <h3>Per-axis written analyses</h3>
+    <ul class="evidence-list">
+      <li><span class="tag">A</span><span class="path">agent-A-describe-queries-findings.md</span><span class="desc">DescribeQueries forensics narrative · the queries angle</span></li>
+      <li><span class="tag">B</span><span class="path">agent-B-cloudtrail-timeline.md</span><span class="desc">CloudTrail attribution narrative · the actor angle</span></li>
+      <li><span class="tag">C</span><span class="path">agent-C-targets-audit.md</span><span class="desc">Log group + dashboard + query definition inventory</span></li>
+      <li><span class="tag">D</span><span class="path">agent-D-cost-explorer-breakdown.md</span><span class="desc">Cost Explorer narrative · the spike confirmation</span></li>
+    </ul>
+  </section>
+
+  <footer class="footer">
+    Generated 2026-05-27 · verup STG forensic investigation<br>
+    Evidence collected via READ-ONLY AWS CLI · profile <code>bs-point-stg</code> · account <code>520411743393</code><br>
+    Source-of-truth: AWS Cost Explorer API · CloudWatch Logs DescribeQueries · CloudTrail lookup-events · AWS CloudWatch describe-log-groups<br>
+    All raw artifacts under <code>audit-outputs/</code> are timestamped, command-tagged, and reproducible.
+  </footer>
+
+</main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  securityLevel: 'loose',
+  themeVariables: {
+    background: '#141d2e',
+    primaryColor: '#1a2538',
+    primaryTextColor: '#e6e8ed',
+    primaryBorderColor: '#d4a73a',
+    lineColor: '#8a93a6',
+    secondaryColor: '#0c1320',
+    tertiaryColor: '#0a111d',
+    fontFamily: 'IBM Plex Mono, monospace',
+    fontSize: '15px'
+  }
+});
+
+// Mermaid zoom controls
+let currentZoom = 1.0;
+const INITIAL_ZOOM = 1.0;
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+let translate = { x: 0, y: 0 };
+
+function applyTransform() {
+  const canvas = document.getElementById('mermaid-canvas');
+  if (canvas) canvas.style.transform = `translate(${translate.x}px, ${translate.y}px) scale(${currentZoom})`;
+}
+function zoomMermaid(factor) {
+  currentZoom = Math.max(0.3, Math.min(4, currentZoom * factor));
+  applyTransform();
+}
+function resetMermaid() {
+  currentZoom = INITIAL_ZOOM;
+  translate = { x: 0, y: 0 };
+  applyTransform();
+}
+function openMermaidInNewTab() {
+  const svg = document.querySelector('#mermaid-canvas svg');
+  if (!svg) return;
+  const html = `<!DOCTYPE html><html><head><title>Cost amplification chain</title><style>body{margin:0;background:#0c1320;display:flex;align-items:center;justify-content:center;min-height:100vh;}svg{max-width:95vw;max-height:95vh;}</style></head><body>${svg.outerHTML}</body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  window.open(URL.createObjectURL(blob), '_blank');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const viewport = document.getElementById('mermaid-viewport');
+  if (!viewport) return;
+
+  viewport.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      zoomMermaid(e.deltaY < 0 ? 1.1 : 0.9);
+    }
+  }, { passive: false });
+
+  viewport.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    dragStart.x = e.clientX - translate.x;
+    dragStart.y = e.clientY - translate.y;
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    translate.x = e.clientX - dragStart.x;
+    translate.y = e.clientY - dragStart.y;
+    applyTransform();
+  });
+  document.addEventListener('mouseup', () => { isDragging = false; });
+
+  // Animation stagger
+  document.querySelectorAll('.kpi, .rec-card').forEach((el, i) => {
+    el.style.setProperty('--i', i);
+  });
+});
+</script>
+
+</body>
+</html>

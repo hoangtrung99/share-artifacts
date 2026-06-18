@@ -99,3 +99,34 @@ qua SSH thường hỏng):
 
 Quy trình giữa 2 máy: `git pull` → thêm artifact vào `public/` → `./deploy.sh` → `git commit && git push`.
 Luôn `git pull` trước khi deploy để `public/` (source of truth) không bị lệch.
+
+## Delivery nhanh (cho agent / từ mọi nơi)
+
+Sau khi tạo một artifact HTML ở bất kỳ đâu, publish bằng **một lệnh**:
+
+```bash
+# Từ trong repo này:
+./deliver.sh ./report.html cost-review
+# → https://artifacts.hoangtrung.dev/cost-review/report.html
+
+# Từ thư mục/repo khác (gọi bằng đường dẫn tuyệt đối tới script):
+~/Local/Work/solashi/share-artifacts/deliver.sh ./report.html cost-review --protect 's3cret'
+```
+
+`deliver.sh <file.html> [project] [--name x.html] [--protect [pw]] [--open]` sẽ: copy file vào
+`public/<project>/`, (tuỳ chọn) đặt mật khẩu cho project, build lại file-browser, deploy, in URL.
+Project mặc định là `shared`.
+
+### Cho agent (Claude) sau khi tạo artifact
+- Trong repo này: gõ `/deliver <file.html> [project] [--protect]`.
+- Từ session/agent ở repo khác (cùng máy): bảo agent chạy
+  `~/Local/Work/solashi/share-artifacts/deliver.sh <file.html> <project>` rồi báo lại URL.
+- Để **mọi** session Claude tự biết cách publish, thêm 1 dòng vào `~/.claude/CLAUDE.md`, ví dụ:
+  > "Để publish một artifact HTML lên web, chạy `~/Local/Work/solashi/share-artifacts/deliver.sh <file> <project>` rồi đưa URL cho người dùng."
+
+### Sửa / xoá page
+- **Sửa:** deliver lại cùng tên file (ghi đè) — tự deploy.
+- **Xoá 1 page:** `rm public/<project>/<file>.html && ./deploy.sh`
+- **Xoá cả project:** `rm -rf public/<project>` → nếu có mật khẩu thì `./protect.sh --unprotect <project>` → `./deploy.sh`
+
+(Deploy upload toàn bộ `public/` dạng atomic, nên xoá local + deploy là page biến mất khỏi web.)

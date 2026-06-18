@@ -45,7 +45,7 @@ const baseHeaders = { 'content-type': 'text/plain; charset=utf-8', 'cache-contro
 
 function needPassword(folder) {
   const realm = folder.replace(/["\\]/g, '');
-  return new Response('🔒 Cần mật khẩu để xem thư mục này.', {
+  return new Response('🔒 Password required to view this folder.', {
     status: 401,
     headers: { ...baseHeaders, 'WWW-Authenticate': `Basic realm="${realm}", charset="UTF-8"` },
   });
@@ -53,7 +53,7 @@ function needPassword(folder) {
 
 function misconfigured() {
   // Đánh dấu bảo vệ nhưng chưa có secret -> khoá hẳn, không hiện popup vô nghĩa.
-  return new Response('🔒 Thư mục này được bảo vệ nhưng chưa cấu hình mật khẩu. Vui lòng liên hệ chủ trang.', {
+  return new Response('🔒 This folder is protected but no password has been configured. Please contact the site owner.', {
     status: 403,
     headers: baseHeaders,
   });
