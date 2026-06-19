@@ -5,3 +5,7 @@ node_modules/
 *.log
 dist/
 .astro/
+
+# public/ is build output (prepare-static regenerates it each build). Keep only the source favicon.
+public/*
+!public/favicon.svg
