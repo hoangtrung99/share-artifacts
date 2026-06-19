@@ -148,5 +148,13 @@ export async function loadArtifacts(mdModules) {
     });
   }
 
-  return records;
+  // De-duplicate by routePath: if a base name exists as BOTH .md and .html (same viewer URL),
+  // keep the first (markdown — richer rendered view). The dropped raw file is still served
+  // verbatim at /<path>.html, so it stays reachable; this just avoids a route collision.
+  const seen = new Set();
+  return records.filter((r) => {
+    if (seen.has(r.routePath)) return false;
+    seen.add(r.routePath);
+    return true;
+  });
 }

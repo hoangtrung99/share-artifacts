@@ -1,40 +1,49 @@
 ---
-// Floating action overlay shown on top of an artifact viewer (full-bleed HTML or rendered MD).
-// Each button carries BOTH title (hover tooltip) and aria-label (screen readers).
+// Fixed top toolbar for an artifact viewer. A full-width bar (not a floating overlay) so it
+// never covers the artifact and never collides with the iframe's scrollbar. Content sits below it.
+// Every button has title (hover tooltip) + aria-label.
 interface Props {
   rawUrl: string;
   downloadName: string;
   project: string;
   type: 'md' | 'html';
   isProtected: boolean;
+  label?: string;
 }
-const { rawUrl, downloadName, project, type, isProtected } = Astro.props;
+const { rawUrl, downloadName, project, type, isProtected, label = '' } = Astro.props;
 const proj = encodeURIComponent(project);
 ---
-<div class="fab" role="toolbar" aria-label="Artifact actions">
-  <a class="fab-btn fab-primary" href={rawUrl} download={downloadName} title={`Download ${downloadName}`} aria-label={`Download ${downloadName}`}>
-    <span aria-hidden="true">⬇</span><span class="fab-label">Download</span>
-  </a>
-  <button class="fab-btn" type="button" data-copy-link title="Copy link to this artifact" aria-label="Copy link to this artifact">
-    <span aria-hidden="true">🔗</span>
-  </button>
-  <a class="fab-btn" href={rawUrl} target="_blank" rel="noopener" title="Open raw file in a new tab" aria-label="Open raw file in a new tab">
-    <span aria-hidden="true">⤢</span>
-  </a>
-  {type === 'md' && (
-    <button class="fab-btn" type="button" data-print title="Print or save as PDF" aria-label="Print or save as PDF">
-      <span aria-hidden="true">🖨</span>
-    </button>
-  )}
-  <a class="fab-btn" href={`/${proj}`} title="Back to project" aria-label="Back to project">
-    <span aria-hidden="true">📁</span>
-  </a>
-  <a class="fab-btn" href="/" title="Home — all projects" aria-label="Home — all projects">
-    <span aria-hidden="true">🏠</span>
-  </a>
-  {isProtected && (
-    <a class="fab-btn" href={`/logout?project=${proj}`} title="Sign out of this project" aria-label="Sign out of this project">
-      <span aria-hidden="true">⎋</span>
+<header class="viewer-bar">
+  <div class="vb-left">
+    <a class="vb-btn" href={`/${proj}`} title="Back to project" aria-label="Back to project"><span aria-hidden="true">←</span></a>
+    <span class="vb-crumb">
+      <span class="vb-proj">{project}</span>
+      {label && <span class="vb-sep" aria-hidden="true">/</span>}
+      {label && <span class="vb-title">{label}</span>}
+    </span>
+  </div>
+  <div class="vb-right">
+    <a class="vb-btn vb-primary" href={rawUrl} download={downloadName} title={`Download ${downloadName}`} aria-label={`Download ${downloadName}`}>
+      <span aria-hidden="true">⬇</span><span class="vb-label">Download</span>
     </a>
-  )}
-</div>
+    <button class="vb-btn" type="button" data-copy-link title="Copy link to this artifact" aria-label="Copy link to this artifact">
+      <span aria-hidden="true">🔗</span>
+    </button>
+    <a class="vb-btn" href={rawUrl} target="_blank" rel="noopener" title="Open raw file in a new tab" aria-label="Open raw file in a new tab">
+      <span aria-hidden="true">⤢</span>
+    </a>
+    {type === 'md' && (
+      <button class="vb-btn" type="button" data-print title="Print or save as PDF" aria-label="Print or save as PDF">
+        <span aria-hidden="true">🖨</span>
+      </button>
+    )}
+    <a class="vb-btn" href="/" title="Home — all projects" aria-label="Home — all projects">
+      <span aria-hidden="true">🏠</span>
+    </a>
+    {isProtected && (
+      <a class="vb-btn" href={`/logout?project=${proj}`} title="Sign out of this project" aria-label="Sign out of this project">
+        <span aria-hidden="true">⎋</span>
+      </a>
+    )}
+  </div>
+</header>

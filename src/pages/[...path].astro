@@ -22,13 +22,16 @@ export async function getStaticPaths() {
   const byProject = new Map();
   for (const a of artifacts) {
     if (!byProject.has(a.project)) byProject.set(a.project, []);
-    const group = a.routePath.split('/').slice(1, -1).join('/'); // subpath between project and file
+    const rest = a.routePath.split('/').slice(1); // segments after the project
+    const group = rest.length > 1 ? rest[0] : ''; // top-level sub-folder ('' = project root)
+    const subpath = rest.slice(1, -1).join('/'); // path between sub-folder and file (disambiguates same-named files)
     byProject.get(a.project).push({
       title: a.title,
       routePath: a.routePath,
       type: a.type,
       date: a.date ?? null,
       group,
+      subpath,
     });
   }
   const projectPaths = [...byProject.entries()].map(([project, items]) => ({
@@ -94,7 +97,7 @@ if (kind === 'project') {
         )}
       </nav>
       <h1 class="proj-h1">{props.project}</h1>
-      <div class="proj-filter-wrap">
+      <div class="proj-controls">
         <input
           type="search"
           class="proj-filter"
@@ -104,25 +107,50 @@ if (kind === 'project') {
           autocomplete="off"
           spellcheck="false"
         />
-        <span class="filter-count" data-filter-count>{props.items.length} file{props.items.length === 1 ? '' : 's'}</span>
+        <div class="type-chips" role="group" aria-label="Filter by type" data-type-filter>
+          <button type="button" class="chip is-active" data-type="all">All</button>
+          <button type="button" class="chip" data-type="md">MD</button>
+          <button type="button" class="chip" data-type="html">HTML</button>
+        </div>
+        <div class="expand-controls">
+          <button type="button" class="chip" data-expand-all>Expand all</button>
+          <button type="button" class="chip" data-collapse-all>Collapse all</button>
+        </div>
       </div>
+      {groups.some((g) => g.group) && (
+        <div class="folder-checks" data-folder-checks aria-label="Filter by sub-folder">
+          {groups.filter((g) => g.group).map((g) => (
+            <label class="fcheck">
+              <input type="checkbox" checked value={g.group} />
+              <span class="fc-name">{g.group}</span>
+              <span class="fc-count">{g.items.length}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <p class="count" data-filter-count>{props.items.length} file{props.items.length === 1 ? '' : 's'}</p>
     </header>
 
     {groups.map((g) => (
-      <section class="proj-group">
-        {g.group && <h2 class="proj-group-title">{g.group}</h2>}
+      <details class="proj-group" data-group={g.group} open>
+        <summary class="proj-group-title">
+          <span class="grp-chevron" aria-hidden="true">▸</span>
+          <span class="grp-name">{g.group || '(root)'}</span>
+          <span class="grp-count">{g.items.length}</span>
+        </summary>
         <ul class="file-list">
           {g.items.map((it) => (
-            <li data-search={`${it.title} ${it.group} ${it.routePath.split('/').pop()}`.toLowerCase()}>
+            <li data-search={`${it.title} ${it.routePath}`.toLowerCase()} data-type={it.type}>
               <a class="file-link" href={`/${it.routePath}`}>
                 <span class={`badge badge-${it.type}`}>{it.type.toUpperCase()}</span>
                 <span class="file-title">{it.title}</span>
+                {it.subpath && <span class="file-sub">{it.subpath}/</span>}
                 {it.date && <span class="file-date">{it.date}</span>}
               </a>
             </li>
           ))}
         </ul>
-      </section>
+      </details>
     ))}
     <p class="no-results" data-no-results hidden>No files match your filter.</p>
   </Base>
@@ -133,7 +161,7 @@ if (kind === 'project') {
     <div class="viewer-bleed">
       <iframe class="bleed-frame" src={props.rawUrl} title={props.title}></iframe>
     </div>
-    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="html" isProtected={isProtected} />
+    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="html" isProtected={isProtected} label={props.title} />
     {/* Public-only: mirror iframed body text into an indexed, screen-reader-only region so
         full-text search works. Protected pages emit nothing -> never in the public index. */}
     {pagefindBody && props.searchText && (
@@ -176,7 +204,7 @@ if (kind === 'project') {
       </div>
     </article>
     </div>
-    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="md" isProtected={isProtected} />
+    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="md" isProtected={isProtected} label={props.title} />
     <meta slot="head" property="og:title" content={props.title} />
     {props.description && <meta slot="head" property="og:description" content={props.description} />}
     <meta slot="head" property="og:type" content="article" />
@@ -201,40 +229,70 @@ if (kind === 'project') {
   const printBtn = document.querySelector('[data-print]');
   if (printBtn) printBtn.addEventListener('click', () => window.print());
 
-  // Fuzzy filter for the per-project file list (subsequence match + light ranking).
+  // Per-project controls: fuzzy text + type chips + sub-folder checkboxes + collapse/expand.
   const pf = document.querySelector('[data-proj-filter]');
-  if (pf) {
+  const groupEls = Array.from(document.querySelectorAll('.proj-group'));
+  if (groupEls.length) {
     const items = Array.from(document.querySelectorAll('.file-list li'));
-    const groups = Array.from(document.querySelectorAll('.proj-group'));
     const countEl = document.querySelector('[data-filter-count]');
     const noRes = document.querySelector('[data-no-results]');
+    const typeBtns = Array.from(document.querySelectorAll('[data-type-filter] [data-type]'));
+    const checks = Array.from(document.querySelectorAll('[data-folder-checks] input[type="checkbox"]'));
     const total = items.length;
+    let activeType = 'all';
+
     const fuzzy = (q, s) => {
       let h = 0, score = 0, streak = 0;
       for (const ch of q) {
         const i = s.indexOf(ch, h);
-        if (i === -1) return -1;            // not a subsequence → no match
-        streak = i === h ? streak + 1 : 0;  // reward contiguous runs
+        if (i === -1) return -1;
+        streak = i === h ? streak + 1 : 0;
         score += 1 + streak * 2 - (i - h) * 0.05;
         h = i + 1;
       }
       return score;
     };
+
     const apply = () => {
-      const q = pf.value.trim().toLowerCase();
+      const q = (pf?.value || '').trim().toLowerCase();
+      const enabled = new Set(checks.filter((c) => c.checked).map((c) => c.value));
+      const useChecks = checks.length > 0;
+      const filtering = !!q || activeType !== 'all' || (useChecks && enabled.size !== checks.length);
       let shown = 0;
       for (const li of items) {
-        if (!q) { li.hidden = false; li.style.order = ''; shown++; continue; }
-        const sc = fuzzy(q, li.dataset.search || '');
-        if (sc < 0) { li.hidden = true; }
-        else { li.hidden = false; li.style.order = String(-Math.round(sc * 100)); shown++; }
+        const grp = li.closest('.proj-group')?.dataset.group ?? '';
+        const folderOk = !useChecks || grp === '' || enabled.has(grp);
+        const typeOk = activeType === 'all' || li.dataset.type === activeType;
+        let textOk = true, score = 0;
+        if (q) { score = fuzzy(q, li.dataset.search || ''); textOk = score >= 0; }
+        const vis = folderOk && typeOk && textOk;
+        li.hidden = !vis;
+        li.style.order = vis && q ? String(-Math.round(score * 100)) : '';
+        if (vis) shown++;
       }
-      for (const g of groups) {
-        g.hidden = q ? !g.querySelector('.file-list li:not([hidden])') : false;
+      for (const g of groupEls) {
+        const grp = g.dataset.group;
+        const folderHidden = useChecks && grp !== '' && !enabled.has(grp);
+        const anyVisible = !!g.querySelector('.file-list li:not([hidden])');
+        g.hidden = folderHidden || !anyVisible;
+        if (filtering && anyVisible) g.open = true; // auto-expand groups with matches
       }
-      if (countEl) countEl.textContent = q ? `${shown} / ${total}` : `${total} file${total === 1 ? '' : 's'}`;
+      if (countEl) countEl.textContent = filtering ? `${shown} / ${total}` : `${total} file${total === 1 ? '' : 's'}`;
       if (noRes) noRes.hidden = shown !== 0;
     };
-    pf.addEventListener('input', apply);
+
+    pf?.addEventListener('input', apply);
+    checks.forEach((c) => c.addEventListener('change', apply));
+    typeBtns.forEach((b) =>
+      b.addEventListener('click', () => {
+        activeType = b.dataset.type;
+        typeBtns.forEach((x) => x.classList.toggle('is-active', x === b));
+        apply();
+      })
+    );
+    document.querySelector('[data-expand-all]')?.addEventListener('click', () =>
+      groupEls.forEach((g) => { if (!g.hidden) g.open = true; }));
+    document.querySelector('[data-collapse-all]')?.addEventListener('click', () =>
+      groupEls.forEach((g) => { g.open = false; }));
   }
 </script>
