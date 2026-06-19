@@ -481,9 +481,7 @@ h1, h2, h3, h4 { line-height: 1.25; }
   font-size: 0.85rem;
   text-transform: capitalize;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.4rem;
-  margin: 0 0 0.7rem;
+  margin: 0 0 0.5rem;
 }
 .file-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; padding-left: var(--indent-step); }
 .file-list li { margin: 0; }
@@ -530,14 +528,19 @@ h1, h2, h3, h4 { line-height: 1.25; }
 /* Collapsible group (native <details>) — nesting indent is a CONSTANT per level: the DOM nesting
    accumulates it into a staircase. (Scaling by depth would compound to 1.2·(1+2+…+n) and shove
    deep files off-screen on phones.) Top-level groups stay flush; any nested group steps in once. */
-details.proj-group { margin-top: 1.6rem; margin-left: 0; }
+details.proj-group { margin-top: 0.6rem; margin-left: 0; }
 .proj-group .proj-group { margin-left: var(--indent-step); }
+/* Top-level folders read as sections: more separation above + a heavier, un-muted title. Nested
+   folders stay light and lean on indent + chevron — no full-width rules (stacked near-aligned
+   rules read as broken/misaligned lines, especially now that the indent step is small). */
 details.proj-group[data-depth="0"] { margin-top: 1.6rem; }
+details.proj-group[data-depth="0"] > .proj-group-title { color: var(--text); font-size: 0.95rem; }
 .proj-group-title { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
+.proj-group-title:hover { color: var(--text); }
 .proj-group-title::-webkit-details-marker { display: none; }
 .grp-chevron { color: var(--text-muted); transition: transform 0.15s ease; font-size: 0.8rem; }
 details[open] > .proj-group-title .grp-chevron { transform: rotate(90deg); }
-.grp-name { text-transform: capitalize; }
+.grp-name { text-transform: capitalize; font-weight: 600; }
 .grp-count { font-size: 0.72rem; color: var(--text-muted); background: var(--bg-subtle); border-radius: 999px; padding: 0 0.45rem; }
 
 

@@ -151,7 +151,7 @@ const rootDate = tree ? tree.files.reduce((m, f) => ((f.sortDate || '') > m ? f.
 
     {tree.children.length > 0 && <FileTree nodes={tree.children} />}
     {tree.files.length > 0 && (
-      <details class="proj-group" data-folder="" data-name="" data-date={rootDate} style="--depth: 0" open>
+      <details class="proj-group" data-folder="" data-name="" data-date={rootDate} data-depth="0" style="--depth: 0" open>
         <summary class="proj-group-title">
           <span class="grp-chevron" aria-hidden="true">▸</span>
           <span class="grp-name">(root)</span>
