@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maintenance-Split · Hướng dẫn đọc code (Phase 2 — Toggle độc lập theo brand)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css" rel="stylesheet">
+<style>
+:root{--font-body:'IBM Plex Sans',system-ui,sans-serif;--font-mono:'IBM Plex Mono','SF Mono',Consolas,monospace;--font-serif:'Instrument Serif',Georgia,serif;--bg:#f4f6f8;--grid:rgba(30,58,95,0.04);--surface:#ffffff;--surface-recessed:#eef1f5;--border:rgba(30,58,95,0.12);--border-bright:rgba(30,58,95,0.22);--text:#1e3a5f;--text-dim:#5a7395;--text-faint:#8aa0bc;--accent:#1e3a5f;--accent-bright:#2e5586;--accent-dim:rgba(30,58,95,0.08);--gold:#b88a2e;--gold-bright:#d4a73a;--gold-dim:rgba(212,167,58,0.14);--good:#4d7c52;--good-dim:rgba(77,124,82,0.12);--warn:#b35c1e;--warn-dim:rgba(179,92,30,0.12);--bad:#a83232;--bad-dim:rgba(168,50,50,0.12);--code-bg:#fafbfc;--code-border:rgba(30,58,95,0.10);--radius:6px;--radius-lg:10px}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1923;--grid:rgba(180,200,230,0.04);--surface:#18242f;--surface-recessed:#131d27;--border:rgba(180,200,230,0.10);--border-bright:rgba(180,200,230,0.20);--text:#e2ecf5;--text-dim:#9ab1c8;--text-faint:#6b8195;--accent:#6fa8d8;--accent-bright:#9fc5e5;--accent-dim:rgba(111,168,216,0.14);--gold:#d4a73a;--gold-bright:#e8c062;--gold-dim:rgba(212,167,58,0.18);--good:#7fb288;--good-dim:rgba(127,178,136,0.14);--warn:#d4914e;--warn-dim:rgba(212,145,78,0.14);--bad:#d97373;--bad-dim:rgba(217,115,115,0.14);--code-bg:#131d27;--code-border:rgba(180,200,230,0.10)}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:var(--font-body);font-size:15px;line-height:1.65;color:var(--text);background-color:var(--bg);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px;background-position:-1px -1px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr);max-width:1480px;margin:0 auto;gap:32px;padding:0 24px}
+@media (max-width:1000px){.layout{grid-template-columns:1fr;padding:0 16px}}
+.sidebar{position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding:24px 0;border-right:1px solid var(--border);font-size:13px}
+@media (max-width:1000px){.sidebar{position:static;max-height:none;border-right:none;border-bottom:1px solid var(--border);padding:16px 0}}
+.sidebar-label{font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.18em;color:var(--text-dim);margin:0 0 12px;padding-right:24px}
+.sidebar ol{list-style:none;margin:0;padding:0 16px 0 0;counter-reset:tocsec}
+.sidebar ol li{counter-increment:tocsec}
+.sidebar ol a{color:var(--text);text-decoration:none;display:block;padding:5px 8px 5px 12px;border-left:2px solid transparent;margin-left:-2px;transition:color 0.15s,border-color 0.15s}
+.sidebar ol a::before{content:'§' counter(tocsec) ' · ';color:var(--gold);font-family:var(--font-mono);font-size:11px}
+.sidebar ol a:hover,.sidebar ol a.active{color:var(--gold);border-left-color:var(--gold)}
+.sidebar details{margin:4px 0;padding-left:14px}
+.sidebar details summary{font-size:12.5px;color:var(--text-dim);cursor:pointer;padding:2px 0}
+.sidebar details ul{list-style:none;padding-left:12px;margin:4px 0}
+.sidebar details a{color:var(--text-dim);text-decoration:none;font-size:12px;display:block;padding:3px 0}
+.sidebar details a:hover{color:var(--gold)}
+.main{padding:36px 0 96px;min-width:0}
+@media print{.layout{grid-template-columns:1fr}.sidebar{display:none}.main{padding:24px 0}}
+.hero{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:48px 40px;margin-bottom:40px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--accent) 0%,var(--accent-bright) 50%,var(--gold) 100%)}
+.hero-meta{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);margin-bottom:20px}
+.hero-meta span{display:flex;align-items:center;gap:6px}
+.hero-meta span::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--gold)}
+.hero h1{font-family:var(--font-serif);font-style:italic;font-size:clamp(34px,4.5vw,52px);line-height:1.05;margin:0 0 16px;color:var(--text);font-weight:400;letter-spacing:-0.02em}
+.hero p.tagline{font-size:17px;line-height:1.55;color:var(--text-dim);margin:0 0 24px;max-width:800px}
+.hero-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:28px}
+.hero-stat{background:var(--surface);padding:16px 18px}
+.hero-stat-label{font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.15em;color:var(--text-faint);margin-bottom:6px}
+.hero-stat-value{font-family:var(--font-mono);font-size:20px;font-weight:600;color:var(--accent);line-height:1}
+.hero-stat-value small{font-size:13px;color:var(--text-dim);font-weight:400;margin-left:4px}
+@media (prefers-color-scheme:dark){.hero-stat-value{color:var(--accent-bright)}}
+section{margin-bottom:56px;scroll-margin-top:24px}
+.section-label{font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.18em;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.section-label::before{content:'';width:28px;height:1px;background:var(--gold)}
+h2{font-family:var(--font-serif);font-style:italic;font-size:30px;font-weight:400;letter-spacing:-0.01em;margin:0 0 22px;color:var(--text);line-height:1.2}
+h3{font-family:var(--font-body);font-size:17px;font-weight:600;margin:32px 0 12px;color:var(--text);padding-bottom:6px;border-bottom:1px solid var(--border)}
+h4{font-family:var(--font-body);font-size:14.5px;font-weight:600;margin:22px 0 10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em}
+p{margin:0 0 14px}
+a{color:var(--accent-bright);text-decoration:none;border-bottom:1px dotted var(--accent-bright)}
+a:hover{color:var(--gold);border-bottom-color:var(--gold)}
+ul,ol{margin:0 0 14px;padding-left:24px}
+li{margin-bottom:4px}
+strong{color:var(--text);font-weight:600}
+em{font-style:italic}
+:not(pre) > code{font-family:var(--font-mono);font-size:0.86em;background:var(--surface-recessed);padding:1px 6px;border-radius:4px;border:1px solid var(--border);color:var(--accent-bright);word-break:break-word}
+@media (prefers-color-scheme:dark){:not(pre) > code{color:var(--gold-bright)}}
+pre[class*="language-"]{background:var(--code-bg) !important;border:1px solid var(--code-border);border-radius:var(--radius);padding:18px 22px !important;font-size:12.8px !important;line-height:1.55 !important;margin:14px 0 18px !important;overflow-x:auto;font-family:var(--font-mono) !important;text-shadow:none !important}
+pre[class*="language-"] code{font-family:var(--font-mono) !important;font-size:inherit !important;text-shadow:none !important;background:none !important;border:none !important;padding:0 !important;color:var(--text)}
+@media (prefers-color-scheme:dark){pre[class*="language-"] code{color:#e2ecf5}.token.comment,.token.prolog,.token.doctype,.token.cdata{color:#8aa0bc}.token.punctuation{color:#9ab1c8}.token.property,.token.tag,.token.boolean,.token.number,.token.constant,.token.symbol,.token.deleted{color:#d4a73a}.token.selector,.token.attr-name,.token.string,.token.char,.token.builtin,.token.inserted{color:#7fb288}.token.operator,.token.entity,.token.url,.language-css .token.string,.style .token.string{color:#9ab1c8}.token.atrule,.token.attr-value,.token.keyword{color:#6fa8d8}.token.function,.token.class-name{color:#d4a73a}.token.regex,.token.important,.token.variable{color:#d97373}}
+.callout{border-left:3px solid var(--gold);background:var(--gold-dim);padding:14px 18px;border-radius:0 var(--radius) var(--radius) 0;margin:18px 0;font-size:13.8px}
+.callout-label{font-family:var(--font-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.15em;color:var(--gold);margin-bottom:4px}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-dim)}
+.callout.warn .callout-label{color:var(--warn)}
+.callout.good{border-left-color:var(--good);background:var(--good-dim)}
+.callout.good .callout-label{color:var(--good)}
+.callout.bad{border-left-color:var(--bad);background:var(--bad-dim)}
+.callout.bad .callout-label{color:var(--bad)}
+.callout p:last-child{margin-bottom:0}
+.mermaid-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 22px 16px;margin:22px 0}
+.mermaid-block-caption{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);margin-bottom:14px;padding-bottom:12px;border-bottom:1px dashed var(--border);display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:12px}
+.mermaid-block-caption .caption-tag{background:var(--accent-dim);color:var(--accent);padding:2px 8px;border-radius:3px;font-size:10px}
+@media (prefers-color-scheme:dark){.mermaid-block-caption .caption-tag{color:var(--accent-bright)}}
+.mermaid{text-align:center;overflow-x:auto}
+.mermaid svg{max-width:100%;height:auto}
+.table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin:18px 0}
+table{width:100%;border-collapse:collapse;font-size:13.2px}
+thead th{background:var(--surface-recessed);font-family:var(--font-mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;font-size:13px}
+tbody tr:nth-child(even){background:rgba(0,0,0,0.015)}
+@media (prefers-color-scheme:dark){tbody tr:nth-child(even){background:rgba(255,255,255,0.02)}}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.row-total td{background:var(--gold-dim);font-weight:600;border-top:2px solid var(--gold)}
+td code,th code{font-size:0.86em;background:var(--surface-recessed);padding:1px 5px;border-radius:3px;border:1px solid var(--border);color:var(--accent-bright)}
+@media (prefers-color-scheme:dark){td code,th code{color:var(--gold-bright)}}
+.cell-num{font-family:var(--font-mono);text-align:right;font-variant-numeric:tabular-nums}
+footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-dim);font-family:var(--font-mono);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}html{scroll-behavior:auto}}
+.sidebar ol li.no-count{counter-increment:none}
+.sidebar ol li.no-count a::before{content:'§2.5 · ';color:var(--gold);font-family:var(--font-mono);font-size:11px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<aside class="sidebar" aria-label="Mục lục">
+  <div class="sidebar-label">Hướng dẫn đọc code</div>
+  <ol>
+    <li><a href="#1-design-goal-and-isolation-guarantee">Mục tiêu thiết kế · Cô lập</a></li>
+    <li><a href="#2-system-architecture">Kiến trúc hệ thống</a></li>
+    <li class="no-count"><a href="#25-path-c-why-rules-live-in-their-own-files">Migration Path C</a></li>
+    <li><a href="#3-path-ownership-matrix">Ma trận sở hữu path</a></li>
+    <li><a href="#4-request-flow-scenarios-isolation-proofs">Kịch bản luồng request</a></li>
+    <li><a href="#5-operational-risks">Rủi ro vận hành</a>
+      <details><summary>tiểu mục</summary>
+        <ul>
+          <li><a href="#51-path-coverage-risks-today">5.1 Phủ path hiện tại</a></li>
+          <li><a href="#52-path-expansion-risks">5.2 Rủi ro khi mở rộng path</a></li>
+          <li><a href="#53-operational-hazards-during-toggle">5.3 Nguy cơ khi toggle</a></li>
+          <li><a href="#54-lambda-runtime-risks">5.4 Rủi ro runtime Lambda</a></li>
+          <li><a href="#55-out-of-scope-follow-ups">5.5 Hạng mục theo dõi tương lai</a></li>
+        </ul>
+      </details>
+    </li>
+    <li><a href="#6-glossary">Thuật ngữ</a></li>
+    <li><a href="#7-file-index">Mục lục file</a></li>
+  </ol>
+</aside>
+
+<main class="main">
+
+<header class="hero">
+  <div class="hero-meta">
+    <span>Dự án Verup</span>
+    <span>Sprint 23</span>
+    <span>Phase 2 — Toggle độc lập theo brand</span>
+    <span>Branch <code style="border:none;background:none;color:var(--text-dim);padding:0;">feat/maintenance-split</code></span>
+    <span>Cập nhật 2026-05-14</span>
+  </div>
+  <h1>Maintenance-Split — Hướng dẫn đọc code</h1>
+  <p class="tagline">Hướng dẫn từng dòng cho toggle bảo trì độc lập theo brand trên WebACL <code>point-cloudfront-customer</code>: hai rule group WAF riêng theo brand, một Lambda smart-merge nhận ba dạng event, các trang maintenance tĩnh tách theo brand, và các cache behavior của CloudFront định tuyến tới chúng. Đảm bảo cô lập — bảo trì một brand KHÔNG được chặn endpoint runtime của brand còn lại — là yêu cầu cốt lõi định hình mọi lựa chọn thiết kế trong tài liệu này.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-label">Rule group</div><div class="hero-stat-value">2<small>· exchange + point</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Tổng số rule</div><div class="hero-stat-value">12<small>· 5 + 7</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">WCU khai báo</div><div class="hero-stat-value">60 + 80<small>· 14 + 23 dùng</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Dạng event</div><div class="hero-stat-value">3<small>· A / B / C</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Unit test</div><div class="hero-stat-value">22<small>· state.py</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Đối tượng S3</div><div class="hero-stat-value">7<small>· 2 brand</small></div></div>
+  </div>
+</header>
+
+<section id="1-design-goal-and-isolation-guarantee">
+  <div class="section-label">§1 · Mục tiêu thiết kế</div>
+  <h2>Mục tiêu thiết kế và đảm bảo cô lập</h2>
+  <p>Rule group maintenance gộp chung trước đây đã được thay bằng hai rule group tách theo brand, để operator có thể đưa một brand vào maintenance trong khi brand còn lại vẫn phục vụ traffic bình thường. Bản hiện thực phải đảm bảo ma trận hành vi sau:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Trạng thái Lambda</th><th><code>/exchange/*</code></th><th><code>/api/*</code></th><th><code>/app/exchange/v1/*</code></th><th><code>/point/*</code></th><th><code>/farm-game/*</code></th><th><code>/app/v1/*</code></th><th><code>/app/v1/game/home/*</code></th><th><code>/admin/*</code></th><th><code>/exchange/maintenance/</code></th><th><code>/point/maintenance/</code></th></tr></thead>
+    <tbody>
+      <tr><td>OFF (cả hai đã tháo)</td><td>200</td><td>200</td><td>200</td><td>200</td><td>200</td><td>200</td><td>200</td><td>200</td><td>200 (S3)</td><td>200 (S3)</td></tr>
+      <tr><td>Exchange ON, Point OFF</td><td>503 → redirect HTML <code>/exchange/maintenance/</code></td><td>503 JSON <code>{"code":10005}</code></td><td>503 JSON</td><td><strong>200</strong></td><td><strong>200</strong></td><td><strong>200</strong></td><td><strong>200</strong></td><td>503 JSON</td><td>200 (rule allow)</td><td>200 (không rule nào match)</td></tr>
+      <tr><td>Point ON, Exchange OFF</td><td><strong>200</strong></td><td><strong>200</strong></td><td><strong>200</strong></td><td>503 → redirect HTML <code>/point/maintenance/</code></td><td>503 → HTML</td><td>503 JSON</td><td>503 → HTML</td><td>503 JSON</td><td>200 (không rule nào match)</td><td>200 (rule allow)</td></tr>
+      <tr><td>Cả hai ON</td><td>503 HTML exchange</td><td>503 JSON</td><td>503 JSON</td><td>503 HTML point</td><td>503 HTML point</td><td>503 JSON</td><td>503 HTML point</td><td>503 JSON</td><td>200</td><td>200</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout good"><div class="callout-label">Ô tải trọng (load-bearing)</div><p>Các ô <strong>in đậm</strong> là đảm bảo cô lập cốt lõi. Đây chính là điều khiến toggle theo brand khác biệt một cách có ý nghĩa so với toggle "cả hai brand cùng lúc" trước đây.</p></div>
+  <p>Hai mục tiêu phụ không nằm trong phạm vi:</p>
+  <ol>
+    <li><strong><code>/admin/*</code> là dùng chung</strong> — 133 admin endpoint thuộc cả hai brand; tách chúng nằm ngoài phạm vi. Maintenance của bất kỳ brand nào cũng chặn <code>/admin/*</code> với IP không trong allowlist, và bypass cho operator qua IP set <code>maintenance_ips</code>.</li>
+    <li><strong>Backend (<code>bs-integration-server</code>, Aurora, Redis) dùng chung</strong> — toggle này là biện pháp kiểm soát ở tầng WAF/frontend. Sự cố backend vẫn ảnh hưởng cả hai brand.</li>
+  </ol>
+</section>
+
+<section id="2-system-architecture">
+  <div class="section-label">§2 · Kiến trúc</div>
+  <h2>Kiến trúc hệ thống</h2>
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Bản đồ kiến trúc — luồng request tổng thể</span><span class="caption-tag">Mermaid · flowchart</span></div>
+    <pre class="mermaid">
+flowchart LR
+    Cron[EventBridge cron] -->|Shape A: maintenance start/end| Lambda
+    Console[AWS Console aws lambda invoke] -->|Shape A/B/C| Lambda
+    Lambda[Lambda: maintenance<br/>app.py + state.py + utils.py]
+    Lambda -->|đọc state qua get_web_acl| WebACL
+    Lambda -->|thêm/gỡ rule reference<br/>retry khi optimistic-lock| WebACL
+
+    WebACL[WebACL point-cloudfront-customer<br/>anchor rule country_restrict tại P0]
+    WebACL -.->|gắn khi exchange ON| RGExch[Rule group<br/>maintenance-exchange-rulegroup<br/>capacity 60, 5 rules]
+    WebACL -.->|gắn khi point ON| RGPoint[Rule group<br/>maintenance-point-rulegroup<br/>capacity 80, 7 rules]
+
+    CF[CloudFront distribution<br/>point-cloudfront-customer] -->|mọi viewer request| WebACL
+    User[Trình duyệt người dùng] -->|HTTPS| CF
+    CF -->|cache behavior /exchange/maintenance/*| S3M[S3 maintenance bucket<br/>exchange/maintenance/index.html<br/>point/maintenance/index.html]
+    CF -->|cache behavior /point/maintenance/*| S3M
+    CF -->|default + /exchange/* + /farm-game/* + /api/* + /app/* + /websocket| Origins[Origin khác<br/>frontend buckets + ALB]
+
+    Lambda -->|publish event JSON| SNS[SNS topic alert-lambda-infra]
+
+    classDef new fill:#d4ead6,stroke:#2e7d32,color:#1e3a5f
+    classDef changed fill:#f5e1c2,stroke:#856404,color:#1e3a5f
+    class RGExch,RGPoint,Lambda new
+    class WebACL,CF changed
+    </pre>
+  </div>
+  <p><strong>Chú thích</strong>: xanh lá = mới thêm/viết lại trong PR này, vàng = sửa đổi trong PR này.</p>
+  <p>WebACL không bao giờ tham chiếu rule group nào ở tầng Terraform — file <code>acl.tf</code> không bị đụng đến. Lambda thêm và gỡ các reference tại runtime, đặt ngay sau một rule sentinel tên là <code>country_restrict</code> (rule anchor). Tất cả rule khác trong ACL giữ nguyên thứ tự tương đối; chỉ có chỉ số <code>Priority</code> được đánh số lại.</p>
+</section>
+
+<!-- ═══ §2.5 PATH C MIGRATION ═══ -->
+<section id="25-path-c-why-rules-live-in-their-own-files">
+  <div class="section-label">§2.5 · Migration Path C</div>
+  <h2>Path C: tại sao rule được tách ra file riêng</h2>
+
+  <h3 id="vi-251-problem">Vấn đề: priority drift</h3>
+  <p>Trước khi áp dụng Path C, <code>aws_wafv2_web_acl</code> trong <code>acl.tf</code> quản lý tất cả 12 rule tĩnh bằng các khối <code>rule { }</code> inline. Lambda cũng ghi vào cùng mảng <code>Rules</code> của WebACL để gắn/gỡ hai rule group maintenance. Sau mỗi lần Lambda toggle, lần chạy <code>terraform plan</code> tiếp theo phát hiện thứ tự và chỉ số <code>Priority</code> của các rule khác nhau so với state file — sinh ra một diff "phantom" đề xuất sửa 7–10 rule. Nếu apply diff đó thì undo toggle maintenance, nếu bỏ qua thì Terraform drift tích lũy. Đây là <strong>priority drift bug</strong>.</p>
+
+  <h3 id="vi-252-fix">Giải pháp: provider bump + separate rule resources</h3>
+  <p>Path C giải quyết bằng ba thay đổi phối hợp:</p>
+  <ol>
+    <li><strong>Nâng AWS provider lên <code>~&gt; 6.40</code></strong> — resource <code>aws_wafv2_web_acl_rule</code> (resource độc lập cho từng rule) được phát hành ở v6.37 (tháng 2/2026). Phiên bản trước đó không có resource này.</li>
+    <li><strong>Di chuyển 12 rule tĩnh sang 12 resource <code>aws_wafv2_web_acl_rule</code> riêng</strong> — mỗi rule trở thành một resource Terraform độc lập trong <code>module-waf/</code>. Lambda tiếp tục ghi vào mảng <code>Rules</code> của WebACL để gắn/gỡ maintenance rule group; Terraform không còn quản lý mảng đó nữa.</li>
+    <li><strong>Thêm <code>lifecycle { ignore_changes = [rule] }</code> vào resource <code>aws_wafv2_web_acl</code> trong <code>acl.tf</code></strong> — block này bắt buộc theo tài liệu chính thức của HashiCorp khi dùng <code>aws_wafv2_web_acl_rule</code> (xem phần bằng chứng bên dưới). Nó ngăn Terraform "giành quyền" quản lý mảng <code>Rules</code> trở lại trên mỗi lần plan.</li>
+  </ol>
+
+<pre><code class="language-hcl">resource "aws_wafv2_web_acl" "this" {
+  name  = var.web_acl_name
+  scope = "CLOUDFRONT"
+  # ... default_action, visibility_config ...
+
+  lifecycle {
+    ignore_changes = [rule]   # required when aws_wafv2_web_acl_rule resources are used
+  }
+}
+
+# Mỗi rule giờ là resource riêng, ví dụ:
+resource "aws_wafv2_web_acl_rule" "country_restrict" {
+  name       = "country_restrict"
+  priority   = 0
+  web_acl_id = aws_wafv2_web_acl.this.id
+  # ...
+}</code></pre>
+
+  <h3 id="vi-253-benefits">Lợi ích cụ thể</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Lợi ích</th><th>Cơ chế</th></tr></thead>
+    <tbody>
+      <tr><td>(a)</td><td><strong>Priority drift được loại bỏ</strong></td><td>Terraform không quản lý mảng <code>Rules</code> trên WebACL nữa (<code>ignore_changes</code>); mỗi rule resource chỉ quản lý chính nó.</td></tr>
+      <tr><td>(b)</td><td><strong><code>WAFAssociatedItemException</code> khi xóa IP set được sửa</strong></td><td>Mỗi <code>aws_wafv2_web_acl_rule</code> tạo dependency graph tường minh tới IP set / rule group mà nó tham chiếu; Terraform sắp xếp destroy đúng thứ tự.</td></tr>
+      <tr><td>(c)</td><td><strong>Sửa một rule là thực sự sửa một rule</strong></td><td>Thêm hoặc sửa một <code>aws_wafv2_web_acl_rule</code> resource không kéo theo cascade recreate các rule khác, khác với inline <code>rule { }</code> blocks.</td></tr>
+      <tr><td>(d)</td><td><strong>Đúng hướng đi của HashiCorp</strong></td><td>Inline rules bị soft-deprecated qua issue #46947 (tháng 3/2026); tài liệu chính thức của <code>aws_wafv2_web_acl_rule</code> đã phản ánh điều này.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="vi-254-mechanism">Cơ chế apply-time: resource model khác inline rule như thế nào</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Thời điểm</th><th>Approach A (inline <code>rule { }</code>)</th><th>Path C (separate <code>aws_wafv2_web_acl_rule</code>)</th></tr></thead>
+      <tbody>
+        <tr><td><code>terraform plan</code></td><td>Parent <code>aws_wafv2_web_acl</code> so sánh CẢ mảng <code>Rules</code> config vs state; bất kỳ rule nào lệch thứ tự đều hiển thị trong diff (kéo theo phantom drift của các rule khác)</td><td>Mỗi rule resource so sánh state vs config CHỈ cho rule của chính nó (match theo <code>name</code>); parent có <code>ignore_changes = [rule]</code> nên không contribute diff</td></tr>
+        <tr><td><code>terraform apply</code></td><td>Một call <code>UpdateWebACL</code> duy nhất với TOÀN BỘ mảng <code>Rules</code> mới. Sửa 1 attribute của 1 rule cũng truyền lại 12 rule và có thể cascade recreate (<a href="https://github.com/hashicorp/terraform-provider-aws/issues/25669">issue #25669</a>)</td><td>Mỗi rule resource phát một <code>UpdateWebACL</code> qua helper <code>updateWebACLWithRetry</code> của provider; nội bộ helper re-fetch + apply intent (<code>append</code>/<code>replace</code>/<code>remove</code>) per resource (<a href="https://github.com/hashicorp/terraform-provider-aws/pull/46682">PR #46682 implementation notes</a>)</td></tr>
+        <tr><td>Optimistic lock</td><td>Một <code>LockToken</code> cho cả batch — race với Lambda khả năng cao hơn vì payload lớn</td><td><code>LockToken</code> re-fetch giữa mỗi retry per-resource — interop tự nhiên với Lambda retry (cả hai bên dùng cùng compare-and-swap pattern)</td></tr>
+        <tr><td>State tracking</td><td>Parent state chứa nguyên mảng <code>Rules</code> lồng nhau; <code>terraform state show</code> in ra toàn bộ</td><td>Mỗi rule có address riêng <code>module.for_cloudfront.aws_wafv2_web_acl_rule.&lt;name&gt;</code>; <code>terraform state list</code> đếm rõ ràng từng rule</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="vi-255-maintenance-on-safe">Maintenance ON + <code>terraform plan/apply</code> không động vào rule Lambda đã thêm</h3>
+  <p>Scenario thực tế (đã được mô phỏng trong <code>tests/test_app.py</code> <code>TestBuildNewRulesPriorityStable</code>):</p>
+  <ol>
+    <li>Lambda được invoke với <code>{"maintenance-exchange":"start","maintenance-point":"start"}</code>. Lambda gọi <code>UpdateWebACL</code>, mảng <code>Rules</code> trên AWS giờ có 14 entry: 12 rule Terraform-managed (priorities 0, 3–7, 9–15) + 2 maintenance rule Lambda-managed (priorities 1, 2).</li>
+    <li>Operator chạy <code>terraform plan</code> (ví dụ để thay đổi <code>allow_country_codes</code>).</li>
+    <li><strong>Parent <code>aws_wafv2_web_acl.this</code></strong>: refresh đọc đủ 14 rule từ AWS, nhưng <code>lifecycle { ignore_changes = [rule] }</code> suppress mọi diff trên field <code>rule</code> → parent contribute <strong>0 thay đổi</strong> vào plan.</li>
+    <li><strong>12 <code>aws_wafv2_web_acl_rule</code> resources</strong>: mỗi resource refresh CHỈ rule có <code>name</code> trùng. Resource cho <code>country_restrict</code> refresh rule <code>country_restrict</code>; resource cho <code>block_exepct_allow_ipv4</code> refresh rule cùng tên; v.v. Không resource nào "thấy" rule tên <code>maintenance-exchange</code> hoặc <code>maintenance-point</code> vì không có resource nào khai báo những tên đó → 2 rule maintenance hoàn toàn <strong>invisible</strong> với plan.</li>
+    <li><strong><code>terraform apply</code></strong>: chỉ áp dụng diff hiển thị ở plan. 2 rule maintenance không xuất hiện trong plan → không bị động tới.</li>
+  </ol>
+  <p>Kết quả: thao tác Terraform khi maintenance ON là an toàn — Lambda-injected rule giữ nguyên ở slot 1, 2 với content y nguyên Lambda đã viết. Tương tự khi maintenance OFF mà Lambda đang trong quá trình toggle — race chỉ chạm tới <code>LockToken</code> rotation, cả hai bên retry và converge.</p>
+  <p>Đảm bảo của AWS API (xem <a href="https://docs.aws.amazon.com/waf/latest/APIReference/API_UpdateWebACL.html">UpdateWebACL — AWS WAFv2 API Reference</a>): mỗi <code>UpdateWebACL</code> là atomic compare-and-swap dựa trên <code>LockToken</code>. Không có khái niệm "owner" của rule tại tầng API — Path C chỉ phân quyền ở tầng Terraform-state.</p>
+
+  <h3 id="vi-256-plan-detect-edits">Plan vẫn detect thay đổi từng rule độc lập (không miss change state)</h3>
+  <p>Khi operator sửa một rule qua PR (ví dụ thêm một country code vào <code>var.allow_country_codes</code>), Terraform tính diff per-resource:</p>
+  <ul>
+    <li>Resource <code>aws_wafv2_web_acl_rule.country_restrict</code> refresh state từ AWS, so với config mới, phát hiện diff trên <code>statement.not_statement.statement.geo_match_statement.country_codes</code>.</li>
+    <li>11 resource còn lại refresh, không diff, contribute 0 thay đổi.</li>
+    <li>Parent WebACL với <code>ignore_changes = [rule]</code> cũng contribute 0.</li>
+  </ul>
+  <p>Plan summary: <code>0 to add, 1 to change, 0 to destroy</code>. Apply phát một <code>UpdateWebACL</code> call duy nhất qua provider's retry helper, rewrite duy nhất rule <code>country_restrict</code>, không động đến 11 rule khác hoặc 2 rule maintenance.</p>
+  <p>So sánh với Approach A pre-fix: cùng thay đổi này có thể trigger cascade recreate hết 10+ rule (vì parent treat <code>Rules</code> như set không ổn định thứ tự — <a href="https://github.com/hashicorp/terraform-provider-aws/issues/25669">issue #25669</a>). Path C đảm bảo plan-output map 1:1 với attribute đã sửa.</p>
+  <p>Các edit shape khác (thêm rule mới, xóa rule, đổi <code>priority</code>, đổi <code>count</code> meta-argument, rename rule, bump provider) đều giữ tính chất per-resource — Terraform tracking từng rule độc lập, không miss change.</p>
+
+  <h3 id="vi-257-evidence">Bằng chứng bắt buộc dùng <code>lifecycle { ignore_changes = [rule] }</code></h3>
+  <p>Tài liệu HashiCorp Registry của <strong>hai</strong> resource liên quan đều dùng từ <em>"must"</em> (bắt buộc):</p>
+
+  <blockquote>
+    <p><strong><code>aws_wafv2_web_acl_rule</code></strong> (<a href="https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/wafv2_web_acl_rule">registry.terraform.io/…/wafv2_web_acl_rule</a>):<br>
+    <em>"You <strong>must</strong> add <code>lifecycle { ignore_changes = [rule] }</code> to your Web ACL resource to prevent conflicts."</em></p>
+  </blockquote>
+
+  <blockquote>
+    <p><strong><code>aws_wafv2_web_acl</code></strong> (<a href="https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/wafv2_web_acl">registry.terraform.io/…/wafv2_web_acl</a>):<br>
+    <em>"If choosing this approach, users <strong>must add</strong> <code>lifecycle { ignore_changes = [rule] }</code> to the main Web ACL resource to prevent configuration drift from external rule management."</em></p>
+  </blockquote>
+
+  <p>Lý do kiến trúc: ở tầng AWS API, các WAFv2 rule là <em>trường</em> (field) của resource WebACL cha, không phải resource độc lập. Khi Terraform gọi <code>UpdateWebACL</code>, nó phải truyền toàn bộ mảng <code>Rules</code> hiện tại. Nếu thiếu <code>ignore_changes</code>, Terraform có "ý kiến" về trường đó trên mỗi lần plan và sẽ xóa tất cả rule mà Lambda đã thêm vào. PR <a href="https://github.com/hashicorp/terraform-provider-aws/pull/46682">#46682</a> ghi lại lý do kiến trúc này trong implementation notes.</p>
+
+</section>
+
+<section id="3-path-ownership-matrix">
+  <div class="section-label">§3 · Sở hữu path</div>
+  <h2>Ma trận sở hữu path</h2>
+  <p>Sở hữu path là tuyệt đối — mọi prefix URI thuộc về đúng một brand (ngoại lệ là <code>/admin/*</code> và <code>/maintenance/*</code> được tài liệu hóa là dùng chung/legacy). Ma trận này quyết định cách bố trí rule WAF trong <code>rulegroup-maintenance-*.tf</code>.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Prefix path</th><th>Brand</th><th>Rule group sở hữu (priority)</th><th>Hành động khi brand đó bảo trì</th><th>Ghi chú</th></tr></thead>
+    <tbody>
+      <tr><td><code>/exchange/maintenance/*</code></td><td>EXCHANGE</td><td>exchange P1 (allow)</td><td>allow — short-circuit exchange P2 để tránh vòng lặp redirect</td><td>Trang tĩnh phục vụ bởi S3 maintenance origin</td></tr>
+      <tr><td><code>/exchange/*</code> (không phải maintenance)</td><td>EXCHANGE</td><td>exchange P2 (block)</td><td>503 → redirect HTML tới <code>/exchange/maintenance/</code></td><td>Tài nguyên frontend BACKSEAT</td></tr>
+      <tr><td><code>/api/*</code></td><td>EXCHANGE</td><td>exchange P3 (block)</td><td>503 → JSON <code>{"code":10005}</code></td><td>REST API crypto (11 endpoint, xác thực HMAC)</td></tr>
+      <tr><td><code>/app/exchange/v1/*</code></td><td>EXCHANGE</td><td>exchange P4 (block)</td><td>503 → JSON</td><td>BACKSEAT BFF (Exchange JWT)</td></tr>
+      <tr><td><code>/admin/*</code></td><td>SHARED</td><td>exchange P5 + point P6 (block, lặp lại)</td><td>503 → JSON</td><td>133 admin endpoint; bypass IP cho operator</td></tr>
+      <tr><td><code>/point/maintenance/*</code></td><td>POINT</td><td>point P1 (allow)</td><td>allow — short-circuit point P3-P7</td><td>Trang tĩnh phục vụ bởi S3</td></tr>
+      <tr><td><code>/maintenance/*</code> (legacy fallback)</td><td>POINT</td><td>point P2 (allow)</td><td>allow — giữ hành vi bookmark trước khi tách</td><td>Định tuyến qua cache behavior CloudFront legacy</td></tr>
+      <tr><td><code>/app/v1/game/home/*</code></td><td>POINT</td><td>point P3 (block)</td><td>503 → redirect HTML tới <code>/point/maintenance/</code></td><td>Trang landing game Ponta — trường hợp đặc biệt HTML</td></tr>
+      <tr><td><code>/farm-game/*</code></td><td>POINT</td><td>point P4 (block)</td><td>503 → redirect HTML tới <code>/point/maintenance/</code></td><td>Frontend game Ponta</td></tr>
+      <tr><td><code>/app/v1/*</code> (Invest/Operate, ngoại trừ <code>/app/v1/game/home/</code>)</td><td>POINT</td><td>point P5 (block)</td><td>503 → JSON</td><td>BFF Invest UI + Operate</td></tr>
+      <tr><td><code>/</code>, <code>/doc/*</code>, <code>/point/*</code> (ngoại trừ maintenance)</td><td>POINT</td><td>point P7 (block, catch-all có giới hạn)</td><td>503 → redirect HTML tới <code>/point/maintenance/</code></td><td>"Point sở hữu catch-all" — nhưng LOẠI TRỪ các path của exchange</td></tr>
+      <tr><td><code>/websocket</code></td><td>SHARED (deployment point-app, không JWT)</td><td>chỉ catch-all point P7 (không có rule riêng)</td><td><strong>không đối xứng</strong> — xem §3.2</td><td>Dùng bởi cả BACKSEAT + Ponta SPA</td></tr>
+      <tr><td>Mọi path cache miss khác trên CloudFront</td><td>không</td><td>không thuộc rule group nào</td><td>không bị ảnh hưởng bởi maintenance</td><td>Mặc định theo hành vi origin</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="31-the-load-bearing-p7-design-choice">3.1 Quyết định thiết kế tải trọng cho P7</h3>
+  <p>P7 của point là một catch-all (<code>AND(NOT(maintenance_ips), NOT(STARTS_WITH /exchange/), NOT(STARTS_WITH /api/), NOT(STARTS_WITH /app/exchange/v1/))</code>). Bốn predicate loại trừ đảm bảo rằng <strong>khi chỉ rule group point được gắn, các request tới path thuộc exchange sẽ rơi qua rule group mà không match</strong>, sau đó tới origin bình thường qua CloudFront. Không có các loại trừ đó, P7 sẽ chặn cả <code>/exchange/*</code>, <code>/api/*</code>, và <code>/app/exchange/v1/*</code>, phá vỡ các đảm bảo cô lập in đậm trong ma trận §1.</p>
+  <p>Rule group exchange không có catch-all tương đương — mọi rule block của exchange đều chỉ định prefix rõ ràng. Khi chỉ rule group exchange được gắn, mọi thứ nằm ngoài các prefix đã đặt tên (<code>/exchange/</code>, <code>/api/</code>, <code>/app/exchange/v1/</code>, <code>/admin/</code>) đều không bị rule nào match và do đó đi qua. Vì vậy đảm bảo cô lập cho maintenance exchange-only được thỏa mãn nhờ <em>không có</em> catch-all, trong khi đảm bảo cô lập cho maintenance point-only đòi hỏi <em>các loại trừ tường minh</em> trong P7.</p>
+
+  <h3 id="32-the-websocket-asymmetric-behavior-accepted">3.2 Hành vi không đối xứng của <code>/websocket</code> (đã chấp nhận)</h3>
+  <p><code>/websocket</code> được phục vụ bởi deployment <code>point-app</code> (theo <code>docs/guides/api-system-architecture.en.md</code> §2: "Ingress path <code>/app</code>, <code>/websocket</code>"). Nó được dùng bởi cả SPA BACKSEAT (UI Exchange) và Ponta (UI Point) cho dữ liệu thị trường thời gian thực và trạng thái game. Thiết kế không gán <code>/websocket</code> cho brand nào — về thực tế nó là path hạ tầng dùng chung.</p>
+  <p>Bản hiện thực hiện tại tạo ra hành vi không đối xứng:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Trạng thái maintenance</th><th><code>/websocket</code> (IP không allowlist)</th><th>Lý do</th></tr></thead>
+    <tbody>
+      <tr><td>OFF</td><td>ĐI QUA → ALB</td><td>Không rule nào gắn</td></tr>
+      <tr><td>Chỉ Exchange ON</td><td>ĐI QUA → ALB</td><td>Không rule exchange nào match <code>/websocket</code></td></tr>
+      <tr><td>Chỉ Point ON</td><td>BỊ CHẶN bởi point P7 → 503 HTML redirect tới <code>/point/maintenance/</code></td><td>Catch-all P7 KHÔNG có loại trừ cho <code>/websocket</code> (bốn predicate <code>NOT(STARTS_WITH …)</code> chỉ loại trừ path UI/API/BFF của exchange)</td></tr>
+      <tr><td>Cả hai ON</td><td>BỊ CHẶN</td><td>Tương tự trên</td></tr>
+    </tbody>
+  </table></div>
+  <p>Tính không đối xứng này được chấp nhận tường minh như một lựa chọn thiết kế: "point sở hữu catch-all". Hai phương án thay thế được cân nhắc và hoãn:</p>
+  <ol>
+    <li>Thêm predicate thứ năm <code>NOT(STARTS_WITH /websocket)</code> vào P7 — sẽ đối xứng hóa hành vi (không brand nào riêng lẻ chặn <code>/websocket</code>) nhưng coi websocket là "ngoài mọi phạm vi maintenance".</li>
+    <li>Lặp lại một rule block <code>/websocket</code> ở cả hai group (giống <code>/admin/*</code>) — sẽ đối xứng theo chiều ngược lại (bất kỳ brand nào cũng chặn <code>/websocket</code>).</li>
+  </ol>
+  <p>Nếu traffic <code>/websocket</code> trở thành nguồn nhầm lẫn lặp lại trong vận hành, hãy xem lại và chọn phương án 1 hoặc 2. Cho đến lúc đó, operator cần biết rằng maintenance point-only sẽ cắt đứt các kết nối websocket.</p>
+</section>
+
+<section id="4-request-flow-scenarios-isolation-proofs">
+  <div class="section-label">§4 · Luồng request</div>
+  <h2>Kịch bản luồng request (chứng minh cô lập)</h2>
+  <p>Bốn kịch bản dưới đây tương ứng với bốn hàng của ma trận hành vi ở §1. Mỗi kịch bản được minh họa bằng một sequence diagram Mermaid.</p>
+
+  <h3 id="41-maintenance-off-baseline">4.1 Maintenance OFF (baseline)</h3>
+  <p>Không rule group nào gắn vào WebACL. Lambda chưa chạy (hoặc đã chạy với event end), nên WebACL chỉ còn rule anchor <code>country_restrict</code> và các rule tĩnh có sẵn. Cache behavior của CloudFront vẫn định tuyến <code>/exchange/maintenance/*</code> và <code>/point/maintenance/*</code> tới S3, nhưng không có block maintenance nào kích hoạt.</p>
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Kịch bản 4.1 — baseline OFF</span><span class="caption-tag">Mermaid · sequence</span></div>
+    <pre class="mermaid">
+sequenceDiagram
+    participant U as Trình duyệt
+    participant CF as CloudFront
+    participant WAF as WebACL
+    participant Origin as Origin (ALB/S3)
+
+    U->>CF: GET /exchange/foo (hoặc /api/v1/ticker, /app/v1/user, /point/foo)
+    CF->>WAF: đánh giá
+    Note over WAF: Không rule maintenance nào gắn.<br/>Chỉ country_restrict + rule tĩnh được đánh giá.
+    WAF-->>CF: allow
+    CF->>Origin: forward tới origin tương ứng
+    Origin-->>CF: response
+    CF-->>U: 200 (traffic bình thường)
+    </pre>
+  </div>
+
+  <h3 id="42-exchange-only-on--point-service-stays-operational">4.2 Chỉ Exchange ON — Dịch vụ Point vẫn hoạt động</h3>
+  <p>Invoke <code>{"maintenance-exchange": "start"}</code> khiến Lambda chèn reference <code>maintenance-exchange-rulegroup</code> vào WebACL, ngay sau rule anchor. Rule group của point KHÔNG được gắn.</p>
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Kịch bản 4.2 — Chỉ Exchange ON (5 case A–E)</span><span class="caption-tag">Mermaid · sequence</span></div>
+    <pre class="mermaid">
+sequenceDiagram
+    participant U as Trình duyệt (IP không allowlist)
+    participant CF as CloudFront
+    participant ACL as WebACL (chỉ exchange RG)
+    participant RG as exchange-rulegroup
+    participant S3 as S3 maintenance bucket
+    participant ALB as ALB (point + exchange BFF)
+
+    Note over U,ALB: --- Case A: Path Exchange → BỊ CHẶN ---
+    U->>CF: GET /exchange/index.html
+    CF->>ACL: đánh giá
+    ACL->>RG: vào rule group
+    Note over RG: P1 /exchange/maintenance/ — không match<br/>P2 /exchange/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + body maintenance_html_exchange
+    ACL-->>CF: bị chặn
+    CF-->>U: 503 + script: location.href = "/exchange/maintenance/"
+
+    Note over U,ALB: --- Case B: Path API Exchange → BỊ CHẶN ---
+    U->>CF: GET /api/v1/ticker
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1, P2 — không match<br/>P3 /api/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + maintenance_json
+    CF-->>U: 503 + body {"code":10005}
+
+    Note over U,ALB: --- Case C: Path Point → ĐI QUA ---
+    U->>CF: GET /point/index.html
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1 /exchange/maintenance/ — không<br/>P2 /exchange/ — không<br/>P3 /api/ — không<br/>P4 /app/exchange/v1/ — không<br/>P5 /admin/ — không<br/>HẾT RULE (không có catch-all trong group exchange)
+    RG-->>ACL: không match (default action của group là pass-through)
+    ACL-->>CF: allow (không rule ACL nào khác chặn)
+    CF->>ALB: forward tới origin mặc định
+    ALB-->>CF: 200 (tài nguyên UI Ponta)
+    CF-->>U: 200
+
+    Note over U,ALB: --- Case D: Path BFF Point → ĐI QUA ---
+    U->>CF: GET /app/v1/user (BFF Invest UI, không JWT)
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1-P5 — không match. Group không có catch-all.
+    RG-->>ACL: không match
+    ACL-->>CF: allow
+    CF->>ALB: forward tới origin /app/*
+    ALB-->>CF: 401 (BFF Invest từ chối khi không JWT — hành vi bình thường)
+    CF-->>U: 401 (KHÔNG phải 503 — dịch vụ vẫn chạy)
+
+    Note over U,ALB: --- Case E: Path Farm-game / Ponta → ĐI QUA ---
+    U->>CF: GET /farm-game/foo
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: Không rule exchange nào match /farm-game/.
+    RG-->>ACL: không match
+    ACL-->>CF: allow
+    CF->>S3: forward tới origin /farm-game/* (s3_choice_origin)
+    S3-->>CF: 200
+    CF-->>U: 200 (frontend game Ponta phục vụ)
+    </pre>
+  </div>
+  <div class="callout good"><div class="callout-label">Tại sao đúng</div><p>Tất cả rule của rule group exchange đều được giới hạn theo prefix thuộc về exchange (<code>/exchange/</code>, <code>/api/</code>, <code>/app/exchange/v1/</code>, <code>/admin/</code>). Bất cứ thứ gì ngoài các prefix đó không tạo match nào trong rule group, nên rule group không trả về quyết định và WebACL rơi xuống action mặc định (allow).</p></div>
+
+  <h3 id="43-point-only-on--exchange-service-stays-operational">4.3 Chỉ Point ON — Dịch vụ Exchange vẫn hoạt động</h3>
+  <p>Invoke <code>{"maintenance-point": "start"}</code> khiến Lambda chèn reference <code>maintenance-point-rulegroup</code>, với rule group exchange vẫn được tháo.</p>
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Kịch bản 4.3 — Chỉ Point ON (6 case A–F)</span><span class="caption-tag">Mermaid · sequence</span></div>
+    <pre class="mermaid">
+sequenceDiagram
+    participant U as Trình duyệt (IP không allowlist)
+    participant CF as CloudFront
+    participant ACL as WebACL (chỉ point RG)
+    participant RG as point-rulegroup
+    participant S3 as S3 (maintenance + exchange bucket)
+    participant ALB as ALB (point + exchange BFF)
+
+    Note over U,ALB: --- Case A: Path Point → BỊ CHẶN (qua catch-all P7) ---
+    U->>CF: GET /point/index.html (hoặc / hoặc /doc/foo)
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1 /point/maintenance/ — không<br/>P2 /maintenance/ — không<br/>P3 /app/v1/game/home/ — không<br/>P4 /farm-game/ — không<br/>P5 /app/v1/ — không<br/>P6 /admin/ — không<br/>P7 catch-all (NOT IPset AND NOT /exchange/ AND NOT /api/ AND NOT /app/exchange/v1/) — MATCH
+    RG-->>ACL: block 503 + maintenance_html_point
+    CF-->>U: 503 + script: location.href = "/point/maintenance/"
+
+    Note over U,ALB: --- Case B: Path Farm-game → BỊ CHẶN ---
+    U->>CF: GET /farm-game/foo
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1, P2 — không<br/>P3 /app/v1/game/home/ — không<br/>P4 /farm-game/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + maintenance_html_point
+    CF-->>U: 503 + redirect HTML
+
+    Note over U,ALB: --- Case C: BFF Invest UI → BỊ CHẶN ---
+    U->>CF: GET /app/v1/user
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1-P4 — không<br/>P5 /app/v1/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + maintenance_json
+    CF-->>U: 503 + {"code":10005}
+
+    Note over U,ALB: --- Case D: UI Exchange → ĐI QUA (load-bearing) ---
+    U->>CF: GET /exchange/index.html
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1 /point/maintenance/ — không<br/>P2 /maintenance/ — không<br/>P3 /app/v1/game/home/ — không<br/>P4 /farm-game/ — không<br/>P5 /app/v1/ — không<br/>P6 /admin/ — không<br/>P7 đánh giá AND statement:<br/>  NOT(IPset) = true<br/>  NOT(STARTS_WITH /exchange/) = false (chuỗi bắt đầu với /exchange/)<br/>→ AND short-circuit FALSE → không match
+    RG-->>ACL: không rule nào match
+    ACL-->>CF: allow
+    CF->>S3: forward tới s3_exchange_origin
+    S3-->>CF: 200 (tài nguyên UI BACKSEAT)
+    CF-->>U: 200
+
+    Note over U,ALB: --- Case E: API Exchange → ĐI QUA ---
+    U->>CF: GET /api/v1/ticker
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1-P6 — không<br/>P7 AND statement: NOT(IPset)=true, NOT(/exchange/)=true, NOT(/api/)=false → AND=false<br/>→ không match
+    RG-->>ACL: không match
+    ACL-->>CF: allow
+    CF->>ALB: forward tới origin /api/*
+    ALB-->>CF: 200 (API crypto trả dữ liệu thị trường)
+    CF-->>U: 200
+
+    Note over U,ALB: --- Case F: BFF Exchange → ĐI QUA ---
+    U->>CF: GET /app/exchange/v1/user (BACKSEAT BFF)
+    CF->>ACL: đánh giá
+    ACL->>RG: rule group
+    Note over RG: P1-P6 — không<br/>P7 AND: NOT(IPset)=true, NOT(/exchange/)=true, NOT(/api/)=true, NOT(/app/exchange/v1/)=false → AND=false<br/>→ không match
+    RG-->>ACL: không match
+    ACL-->>CF: allow
+    CF->>ALB: forward tới origin /app/*
+    ALB-->>CF: 200 (hoặc 401 nếu không JWT)
+    CF-->>U: 200/401 (KHÔNG phải 503 — dịch vụ vẫn chạy)
+    </pre>
+  </div>
+  <div class="callout good"><div class="callout-label">Tại sao đúng (sau khi sửa P7)</div><p>AND statement của P7 chứa bốn predicate <code>NOT(...)</code>. Với bất kỳ request nào bắt đầu bằng <code>/exchange/</code>, <code>/api/</code>, hoặc <code>/app/exchange/v1/</code>, chính xác một trong các predicate <code>NOT()</code> đó cho ra false, làm AND short-circuit về false, và rule không kích hoạt. Request rơi khỏi rule group mà không match, WebACL mặc định allow, và CloudFront forward tới origin bình thường.</p></div>
+  <div class="callout warn"><div class="callout-label">Hành vi trước khi sửa (đã chỉnh)</div><p>Bản hiện thực trước đó của P7 chỉ có predicate <code>NOT(IPset)</code> mà không có loại trừ path. Điều đó vi phạm đảm bảo cô lập — maintenance point-only sẽ chặn <code>/exchange/*</code> và <code>/api/*</code> đối với IP không trong allowlist. Bốn predicate <code>NOT(STARTS_WITH …)</code> thêm vào P7 chính là bản vá. Xem <code>CODE_WALKTHROUGH.md</code> §6 để biết code chi tiết.</p></div>
+
+  <h3 id="44-combined-on-legacy--both-brands">4.4 Cả hai ON (legacy / cả hai brand)</h3>
+  <p><code>{"maintenance": "start"}</code> (Shape A) hoặc <code>{"maintenance-exchange": "start", "maintenance-point": "start"}</code> (Shape C) khiến CẢ HAI rule group được gắn.</p>
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Kịch bản 4.4 — Cả hai ON</span><span class="caption-tag">Mermaid · sequence</span></div>
+    <pre class="mermaid">
+sequenceDiagram
+    participant U as Trình duyệt (IP không allowlist)
+    participant CF as CloudFront
+    participant ACL as WebACL (cả hai RG)
+    participant ExchRG as exchange-rulegroup
+    participant PointRG as point-rulegroup
+
+    Note over U: --- Path Exchange bị chặn bởi exchange RG ---
+    U->>CF: GET /exchange/foo
+    CF->>ACL: đánh giá
+    ACL->>ExchRG: RG đầu tiên gắn
+    Note over ExchRG: P2 MATCH
+    ExchRG-->>ACL: block 503 + maintenance_html_exchange
+    CF-->>U: 503 + redirect tới /exchange/maintenance/
+
+    Note over U: --- Path Point + catch-all bị chặn bởi point RG ---
+    U->>CF: GET /farm-game/foo (hoặc /, /doc/*, /point/foo)
+    CF->>ACL: đánh giá
+    ACL->>ExchRG: RG đầu tiên (không có match exchange cho /farm-game/)
+    ExchRG-->>ACL: không match
+    ACL->>PointRG: RG thứ hai
+    Note over PointRG: match một prefix hoặc catch-all P7
+    PointRG-->>ACL: block 503 + maintenance_html_point
+    CF-->>U: 503 + redirect tới /point/maintenance/
+
+    Note over U: --- Trang maintenance vẫn load được ---
+    U->>CF: GET /exchange/maintenance/index.html
+    CF->>ACL: đánh giá
+    ACL->>ExchRG: rule group
+    Note over ExchRG: P1 allow MATCH
+    ExchRG-->>ACL: allow → short-circuit RG
+    Note over ACL: Point RG cũng được đánh giá<br/>P1-P7 không match /exchange/maintenance/<br/>(P7 loại trừ /exchange/)
+    ACL-->>CF: allow
+    CF->>S3: forward tới s3_maintenance_origin
+    S3-->>CF: 200 trang BACKSEAT
+    CF-->>U: 200
+    </pre>
+  </div>
+  <p>Ở trạng thái combined, cả hai rule group exchange và point đều gắn. AWS WAF đánh giá theo thứ tự Lambda chèn (ngay sau <code>country_restrict</code>, exchange trước point do thứ tự loop trong Lambda). Bản thân các trang maintenance vẫn phục vụ vì các rule allow tường minh (exchange P1, point P1, point P2) match trước trong rule group tương ứng.</p>
+</section>
+
+<section id="5-operational-risks">
+  <div class="section-label">§5 · Rủi ro vận hành</div>
+  <h2>Rủi ro vận hành</h2>
+  <p>Phần này tập hợp các rủi ro ảnh hưởng đến tính năng maintenance khi đã chạy ở production. Phạm vi cố ý hẹp — bằng chứng triển khai, kết quả test, và các gate quy trình deploy được theo dõi ở tài liệu khác. Mục này liệt kê: phủ path hôm nay, các path mà phát triển tương lai có thể phá vỡ, nguy cơ vận hành khi toggle, rủi ro runtime của Lambda, và các hạng mục theo dõi tương lai ngoài phạm vi hiện tại.</p>
+
+  <h3 id="51-path-coverage-risks-today">5.1 Phủ path hiện tại</h3>
+  <p>Rủi ro gắn với các URI prefix mà rule group đang xử lý hôm nay. Mỗi mục mô tả hành vi mà operator nên kỳ vọng khi single-brand maintenance, kèm theo mức độ "bất ngờ" với một SRE chưa quen hệ thống.</p>
+
+  <h4>5.1.1 <code>/websocket</code> — cô lập không đối xứng (LOW)</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Trạng thái maintenance</th><th>Hành vi</th></tr></thead>
+      <tbody>
+        <tr><td>Exchange-only ON</td><td><code>/websocket</code> tiếp tục phục vụ (không rule exchange nào match)</td></tr>
+        <tr><td>Point-only ON</td><td><code>/websocket</code> trả 503 + HTML redirect về <code>/point/maintenance/</code> (bị catch-all point bắt)</td></tr>
+        <tr><td>Combined ON</td><td>Bị chặn</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>/websocket</code> được phục vụ bởi deployment <code>point-app</code> dùng chung, dùng bởi cả SPA Backseat và Ponta cho dữ liệu thời gian thực. Catch-all của rule group point làm chủ "mọi thứ không thuộc exchange", nghĩa là cửa sổ maintenance point-only sẽ đứt kết nối websocket cho SPA của cả hai brand. Kỳ vọng là SPA sẽ tự kết nối lại khi brand trở lại. SRE chạy maintenance <code>point-only</code> vì một "vấn đề phía operator" cần biết rằng các consumer websocket của Backseat (feed giá real-time) sẽ bị disconnect trong cửa sổ đó.</p>
+  <div class="callout"><div class="callout-label">Hướng dẫn vận hành</div><p>Nếu một sự cố tương lai yêu cầu giữ <code>/websocket</code> sống trong lúc maintenance point-only, hãy thêm predicate thứ năm <code>NOT(STARTS_WITH /websocket)</code> vào catch-all point (capacity point dư ~57 WCU — đủ chỗ cho 2 WCU thêm). Nếu không, hãy ghi lại sự bất đối xứng này trong operator runbook.</p></div>
+
+  <h4>5.1.2 <code>/doc/*</code> (Swagger) — bị chặn khi maintenance point (LOW)</h4>
+  <p><code>/doc/*</code> được CloudFront định tuyến tới bucket S3 riêng (<code>s3_doc_origin</code>) chứa tài liệu Swagger / OpenAPI. Không thuộc brand nào. Maintenance point-only hiện chặn nó qua catch-all (cùng cơ chế như <code>/websocket</code>). Maintenance exchange-only giữ nó truy cập được.</p>
+  <div class="callout"><div class="callout-label">Hướng dẫn vận hành</div><p>Truy cập tài liệu trong cửa sổ maintenance thường không phải tối quan trọng, nên hành vi không đối xứng này được chấp nhận. Nếu <code>/doc/*</code> trở nên thiết yếu cho tích hợp vendor / đối tác trong một cửa sổ, hãy thêm <code>NOT(STARTS_WITH /doc/)</code> vào catch-all point.</p></div>
+
+  <h4>5.1.3 <code>/admin/*</code> — chặn chung theo thiết kế (INFO)</h4>
+  <p><code>/admin/*</code> được CỐ Ý chặn bởi CẢ HAI rule group. Khi BẤT KỲ brand nào ở chế độ maintenance, admin panel trả 503 + JSON với IP không trong allowlist. IP office và dev trong set <code>maintenance_ips</code> bypass block và có thể truy cập admin panel trong cửa sổ maintenance — đây là cách operation xác nhận trạng thái backend mà không cần bật lại traffic khách.</p>
+  <div class="callout"><div class="callout-label">Hướng dẫn vận hành</div><p>Xoay IP office / VPN mà không cập nhật <code>maintenance_ips</code> sẽ khoá truy cập admin trong lúc maintenance. Hãy coi <code>maintenance_ips</code> là một phần của operator runbook cho mọi change request xoay IP.</p></div>
+
+  <h4>5.1.4 Phụ thuộc anchor rule — <code>country_restrict</code> (LOW)</h4>
+  <p>Lambda chèn tham chiếu rule maintenance NGAY SAU một rule trong WebACL tên <code>country_restrict</code>. Nếu một PR tương lai xoá hoặc đổi tên rule đó, Lambda sẽ fail nhanh ở lần invocation tiếp theo với <code>Exception: anchor rule 'country_restrict' not found in WebACL</code>. Không có rule nào được chèn âm thầm vào vị trí sai; không có corruption âm thầm.</p>
+  <div class="callout"><div class="callout-label">Hướng dẫn vận hành</div><p>Thay đổi đối với <code>country_restrict</code> là phụ thuộc cross-team cứng. WAF / Security team phải được loop vào trước bất kỳ refactor WebACL nào chạm tới priority 0.</p></div>
+
+  <h4>5.1.5 Health probe — ngoài phạm vi (INFO)</h4>
+  <p>Liveness / readiness probe của Kubernetes gọi <code>/actuator/health/liveness</code> và <code>/actuator/health/readiness</code> trên cổng 8082 (cổng management nội bộ pod), KHÔNG qua CloudFront. Chúng không bị ảnh hưởng bởi maintenance ở bất kỳ thời điểm nào. Request công cộng tới <code>/healthcheck</code> qua CloudFront sẽ rơi vào bucket frontend mặc định (không có endpoint health ở path đó), nên trả 404 bất kể maintenance.</p>
+  <div class="callout"><div class="callout-label">Hướng dẫn vận hành</div><p>Không có ảnh hưởng từ maintenance. Cảnh báo liveness / readiness trong cửa sổ maintenance chỉ ra vấn đề hạ tầng thực sự, không phải tác dụng phụ của toggle.</p></div>
+
+  <h3 id="52-path-expansion-risks">5.2 Rủi ro khi mở rộng path</h3>
+  <p>Rủi ro xuất hiện khi một PR tương lai thêm endpoint prefix mới mà không cập nhật rule maintenance. Đây là nguyên nhân phổ biến nhất của sự cố "chúng tôi quên đưa X vào maintenance".</p>
+
+  <h4>5.2.1 Path top-level mới né hoàn toàn maintenance (MED)</h4>
+  <p>Một PR tương lai thêm path top-level KHÔNG nằm dưới <code>/app/</code>, <code>/api/</code>, <code>/admin/</code>, <code>/exchange/</code>, <code>/point/</code>, <code>/farm-game/</code>, <code>/maintenance/</code>, <code>/doc/</code>, hoặc <code>/websocket</code> sẽ chạm vào default behavior của CloudFront (bucket frontend khách) và né cả hai rule group khi maintenance exchange-only. Catch-all point vẫn chặn nó khi maintenance point-only, nhưng trường hợp exchange-only là một khoảng trống âm thầm.</p>
+  <p><strong>Ví dụ có thể xuất hiện</strong>: <code>/v2/api/*</code>, <code>/webhooks/*</code>, <code>/partner/*</code>, <code>/marketing/*</code>.</p>
+  <div class="callout warn"><div class="callout-label">Mitigation</div><ul>
+    <li>Thêm CI check quét cache behavior CloudFront mới và cảnh báo nếu path không được phủ bởi rule exchange hoặc point.</li>
+    <li>Thêm smoke test vào maintenance runbook: chọn một path đại diện từ mọi behavior CloudFront và curl nó dưới maintenance exchange-only và point-only. Bất kỳ 200 không mong đợi nào từ exchange-only là khoảng trống phủ.</li>
+    <li>Ghi lại khế ước path-ownership trong register này: mọi path top-level mới phải được gán cho exchange hoặc point (hoặc phân loại tường minh là "shared" và thêm vào cả hai group).</li>
+  </ul></div>
+
+  <h4>5.2.2 <code>/api/v2/*</code> mới (hoặc sub-prefix <code>/api/</code> khác) (LOW)</h4>
+  <p>Exchange P3 chặn <code>STARTS_WITH /api/</code> — mọi <code>/api/v2/*</code>, <code>/api/v3/*</code>, v.v. trong tương lai đều được phủ tự động. Ngược lại, một endpoint <code>/api/</code> cross-brand không mong muốn (ví dụ <code>/api/v1/point/...</code> phía Point) sẽ bị chặn sai bởi maintenance exchange-only. Namespace <code>/api/</code> được khế ước là exchange-only và phải giữ như vậy.</p>
+  <p><strong>Mitigation</strong>: thực thi khế ước <code>/api/</code> = exchange trong code review. Nếu Point cần API public mới, hãy định tuyến dưới <code>/app/v1/*</code> (BFF).</p>
+
+  <h4>5.2.3 Sub-prefix Point mới <code>/app/v1/&lt;...&gt;</code> (LOW)</h4>
+  <p><code>STARTS_WITH /app/v1/</code> (point P5) bắt mọi thứ dưới <code>/app/v1/*</code> trừ trường hợp đặc biệt <code>/app/v1/game/home/*</code> (point P3, HTML redirect cho landing game Ponta). Sub-prefix mới dưới <code>/app/v1/</code> được phủ tự động.</p>
+  <p><strong>Lưu ý</strong>: PR tương lai thêm một endpoint kiểu "landing page" khác dưới <code>/app/v1/&lt;x&gt;/home/</code> sẽ bị P5 trả JSON-503 — operator phải thêm rule HTML-redirect kiểu P3 nếu user trình duyệt landing trực tiếp lên path mới.</p>
+
+  <h4>5.2.4 Sub-prefix Exchange mới <code>/app/exchange/v1/&lt;...&gt;</code> (LOW)</h4>
+  <p>Exchange P4 chặn <code>STARTS_WITH /app/exchange/v1/</code> — phủ tự động. Pattern cross-domain <code>/app/exchange/v1/point/&lt;...&gt;</code> (Exchange JWT đọc dữ liệu Point) ở lại trong rule group exchange theo quyền sở hữu định tuyến.</p>
+
+  <h4>5.2.5 Brand mới hoặc sub-brand (MED, nếu xảy ra)</h4>
+  <p>Thêm brand thứ ba (hoặc tách dòng sản phẩm của brand hiện có) yêu cầu:</p>
+  <ul>
+    <li>Một rule group WAF mới <code>maintenance-&lt;brand&gt;-rulegroup</code> với rule chặn path riêng.</li>
+    <li>Cập nhật dict <code>RULE_GROUP_NAMES</code>, <code>RULE_TEMPLATE_FILES</code>, <code>RULE_NAMES</code> trong <code>app.py</code> của Lambda.</li>
+    <li>JSON rule template mới trong <code>src/rules/maintenance-&lt;brand&gt;.json</code>.</li>
+    <li>Unit test mới trong <code>test_state.py</code> mở rộng tuple <code>BRANDS</code>.</li>
+    <li>Cập nhật predicate <code>NOT(STARTS_WITH …)</code> của catch-all point P7 nếu brand mới sở hữu path trước đây rơi vào catch-all.</li>
+  </ul>
+  <p>Cơ chế anchor scale được mà không cần đổi WebACL, nhưng ngân sách WCU của point group cần được kiểm tra lại.</p>
+
+  <h4>5.2.6 Refactor cross-domain (LOW)</h4>
+  <p><code>/app/exchange/v1/point/pos/*</code> hiện định tuyến qua Exchange JWT (sở hữu Exchange) nhưng đọc dữ liệu Point. Nếu refactor tương lai chuyển chúng sang <code>/app/v1/exchange-pos/*</code> dưới Invest JWT, chúng sẽ chuyển sang sở hữu Point. Cả hai rule group phải được cập nhật cùng lúc với thay đổi định tuyến.</p>
+
+  <h4>5.2.7 Thay đổi namespace path của Spring Security WebSecurityConfig (MED)</h4>
+  <p>Rule group mã hoá giả định về namespace path của Spring:</p>
+  <ul>
+    <li><code>/app/exchange/v1/**</code> = Exchange JWT</li>
+    <li><code>/app/v1/**</code> (loại trừ <code>/operate/</code>) = Invest JWT</li>
+    <li><code>/app/v1/operate/**</code> = Operate JWT</li>
+  </ul>
+  <p>Nếu <code>WebSecurityConfig</code> refactor sang prefix khác (ví dụ <code>/v2/auth/...</code>), rule WAF phải đi theo trong cùng PR. Sự không khớp giữa phạm vi auth Spring và phạm vi block WAF là khoảng trống phủ mức nghiêm trọng cao.</p>
+  <p><strong>Mitigation</strong>: cross-link register này từ <code>WebSecurityConfig.java</code> (comment code tham chiếu phụ thuộc WAF).</p>
+
+  <h3 id="53-operational-hazards-during-toggle">5.3 Nguy cơ vận hành khi toggle</h3>
+  <p>Rủi ro xuất hiện khi toggle được gọi, bất kể path nào tham gia.</p>
+
+  <h4>5.3.1 Tranh chấp optimistic-lock (LOW)</h4>
+  <p>Các invocation Lambda đồng thời (ví dụ EventBridge cron firing cùng lúc operator gọi thủ công qua AWS Console) có thể race trên <code>LockToken</code> của WebACL. AWS trả <code>WAFOptimisticLockException</code> cho bên ghi thua. Lambda retry tối đa 3 lần với backoff 1 s và 2 s (không sleep sau lần cuối) — tổng cộng ~3 s. Sau 3 lần fail, một SNS alert được gửi và operator phải gọi lại thủ công.</p>
+  <p><strong>Phát hiện</strong>: CloudWatch metric trên counter retry Lambda; SNS alert trên failure cuối cùng.</p>
+
+  <h4>5.3.2 Operator nhầm brand (MED)</h4>
+  <p>Ba dạng event nhìn đủ giống nhau để operator có thể toggle nhầm brand (ví dụ gõ <code>maintenance-exchange</code> khi đang định <code>maintenance-point</code>). Tin nhắn SNS echo brand + trạng thái mới ngay lập tức trên mọi invocation, nên nhầm lẫn hiện ra trong Slack trong vài giây. Gọi lại với payload đúng là idempotent và đảo ngược nhầm lẫn.</p>
+  <div class="callout warn"><div class="callout-label">Mitigation</div><ul>
+    <li>Định dạng tin nhắn SNS bao gồm brand + state tường minh (không từ ngữ mơ hồ).</li>
+    <li>Operator runbook có bước "xác nhận trong Slack trước khi gọi".</li>
+    <li>Test event AWS Console được lưu sẵn (một cho mỗi shape) để operator không phải gõ JSON bằng tay.</li>
+  </ul></div>
+
+  <h4>5.3.3 Thông báo SNS bị rớt âm thầm (LOW)</h4>
+  <p>Nếu tra cứu SNS topic fail ở cold-start Lambda (ví dụ topic bị đổi tên mà không redeploy Lambda), toggle vẫn thành công nhưng alert audit bị rớt âm thầm. Operator chỉ phát hiện qua việc thiếu tin nhắn Slack được mong đợi.</p>
+  <p><strong>Mitigation</strong>: thêm metric filter CloudWatch + alarm trên dòng log cold-start <code>"SNS topic ... lookup failed at cold start"</code>. Hiện tại đây là audit thủ công tail log.</p>
+
+  <h4>5.3.4 Cạn capacity WCU (LOW)</h4>
+  <p>Mỗi rule group có capacity khai báo (60 cho exchange, 80 cho point). Thêm rule đẩy tổng vượt capacity khai báo sẽ buộc destroy+create rule group, bị CHẶN nếu group đang attach vào WebACL (<code>WAFAssociatedItemException</code>). Lệnh <code>terraform apply</code> sẽ fail to tiếng — không âm thầm.</p>
+  <div class="callout"><div class="callout-label">Mitigation</div><ul>
+    <li>Bước đầu tiên của operator runbook xác minh maintenance OFF trước mọi <code>terraform apply</code> trên <code>waf-customer</code>.</li>
+    <li>Exchange group có dư ~46 WCU (dùng 14, capacity 60). Point group có dư ~57 WCU (dùng 23, capacity 80). Đủ chỗ cho việc thêm rule tăng dần.</li>
+  </ul></div>
+
+  <h4>5.3.5 Cron + race thủ công trong cửa sổ maintenance theo lịch (LOW)</h4>
+  <p>Nếu operator gọi thủ công <code>{"maintenance":"end"}</code> trong cửa sổ cron đã lên lịch, tick cron tiếp theo sẽ bật lại maintenance. Đây là hệ thống làm việc đúng thiết kế — cron có thẩm quyền trong cửa sổ của mình. Mitigation là nhận thức của operator, không phải code.</p>
+  <div class="callout"><div class="callout-label">Hướng dẫn vận hành</div><p>Nếu cần override thủ công trong cửa sổ cron, hãy đồng thời disable rule cron trong EventBridge cho khoảng thời gian đó.</p></div>
+
+  <h3 id="54-lambda-runtime-risks">5.4 Rủi ro runtime Lambda</h3>
+
+  <h4>5.4.1 Drift quyền IAM (LOW)</h4>
+  <p>Role thực thi của Lambda cần <code>wafv2:GetWebACL</code>, <code>wafv2:UpdateWebACL</code>, <code>wafv2:ListRuleGroups</code>, <code>wafv2:ListWebACLs</code>, và <code>sns:Publish</code>. Một refactor least-privilege strip một quyền sẽ phá toggle. Lambda fail với <code>AccessDenied</code> và SNS publish stack trace.</p>
+  <p><strong>Phát hiện</strong>: SNS alert trên <code>AccessDenied</code>.</p>
+
+  <h4>5.4.2 AWS SDK đổi schema rule-group / WebACL (LOW)</h4>
+  <p><code>update_web_acl</code> reject field không biết. AWS thỉnh thoảng thêm field read-only vào response JSON WebACL mà <code>update_web_acl</code> không chấp nhận khi update (đã xảy ra hai lần trong lịch sử — <code>RetrofittedByFirewallManager</code> và <code>LabelNamespace</code>). Helper <code>update_webacl</code> của Lambda strip các field read-only đã biết bằng <code>pop(k, None)</code>. Một thay đổi phía AWS tương lai thêm field như vậy sẽ gây reject ở <code>update_web_acl</code>.</p>
+  <div class="callout"><div class="callout-label">Mitigation</div><ul>
+    <li>Danh sách strip trong <code>src/utils.py::update_webacl</code> là bề mặt khế ước. Theo dõi release notes AWS WAFv2.</li>
+    <li>Lambda fail nổi lên qua SNS — operator sẽ thấy reject trong vài giây sau khi cron firing.</li>
+  </ul></div>
+
+  <h4>5.4.3 Phân trang các API list WAF / SNS (LOW)</h4>
+  <p>Lambda dùng paginator cho <code>list_topics</code>, <code>list_web_acls</code>, và <code>list_rule_groups</code>. Account dưới 100 mỗi loại không bị ảnh hưởng. Tăng trưởng tương lai (nhiều SNS topic, WebACL, rule group hơn) được xử lý trong suốt.</p>
+
+  <h4>5.4.4 Drift JSON rule-template (LOW)</h4>
+  <p><code>src/rules/maintenance-exchange.json</code> và <code>src/rules/maintenance-point.json</code> được load lúc runtime và placeholder <code>__RULE_GROUP_ARN__</code> được thay thế. Một typo trong template (ví dụ viết hoa sai field <code>Name</code>) không bị bắt ở deploy time — rule hỏng chỉ lộ ở lần invocation Lambda tiếp theo khi AWS reject mảng Rules không hợp lệ.</p>
+  <div class="callout"><div class="callout-label">Mitigation</div><ul>
+    <li>Coi file rule-template là code dưới review cho mọi PR chạm tới chúng.</li>
+    <li>Cân nhắc bước validation JSON-schema ở build time (hiện chưa hiện thực).</li>
+  </ul></div>
+
+  <h3 id="55-out-of-scope-follow-ups">5.5 Hạng mục theo dõi tương lai</h3>
+  <p>Đây là các quan sát không cản trở vận hành dịch vụ nhưng nên được theo dõi để cải thiện trong tương lai.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Chủ đề</th><th>Quan sát</th><th>Follow-up đề xuất</th></tr></thead>
+      <tbody>
+        <tr><td>Test coverage</td><td><code>_validate_event</code>, <code>_build_new_rules</code>, <code>_load_rule_template</code>, và <code>lambda_handler</code> của Lambda không có unit test trực tiếp. Chỉ <code>state.py</code> được phủ bởi 22 test Python thuần.</td><td>Thêm <code>test_app.py</code> với mock-based test cho bốn hàm logic thuần.</td></tr>
+        <tr><td>Observability</td><td>Cold-start init failure của SNS không có alarm CloudWatch — operator chỉ phát hiện qua tail log.</td><td>Thêm metric filter CloudWatch + alarm trên pattern log cold-start.</td></tr>
+        <tr><td>Gợi ý phụ thuộc anchor</td><td>Rule <code>country_restrict</code> trong config WebACL không có comment cảnh báo engineer tương lai rằng Lambda anchor theo tên rule này.</td><td>Thêm comment vào config Terraform WebACL ghi chú phụ thuộc cross-component.</td></tr>
+        <tr><td>Múi giờ cron schedule</td><td>Cron expression EventBridge dùng UTC; comment operator runbook nói JST. Audit múi giờ xác nhận đúng nhưng comment code sẽ ngăn nhầm lẫn tương lai.</td><td>Thêm comment <code># UTC; JST = UTC+9</code> vào mỗi cron expression.</td></tr>
+        <tr><td>Mở rộng brand</td><td>Thêm brand thứ ba yêu cầu thay đổi ở 5 chỗ (rule group, JSON template, dict Python, test, catch-all point).</td><td>Nếu brand thứ ba được đề xuất, hãy refactor <code>BRANDS</code> thành pattern registry trước.</td></tr>
+        <tr><td>Cron schedule per-brand</td><td>Hôm nay chỉ Shape A cron được dùng (cả hai brand cùng lúc). Per-brand cron khả thi nhưng chưa định nghĩa.</td><td>Nếu operator cần cửa sổ maintenance exchange / point riêng, thêm rule EventBridge per-brand với payload Shape B.</td></tr>
+        <tr><td>Tách <code>/admin/*</code> mịn hơn</td><td>38 endpoint <code>/admin/v1/exchange/*</code> vs ~100 <code>/admin/v1/*</code> khác. Hôm nay chia sẻ một rule block duy nhất duplicate trong cả hai rule group.</td><td>Nếu chặn <code>/admin/*</code> chứng minh đau đớn vận hành (ví dụ cần cửa sổ admin cô lập theo brand), tách block admin theo brand.</td></tr>
+        <tr><td>DR cross-region</td><td>Lambda chạy trong một region duy nhất (<code>us-east-1</code> cho scope CloudFront). Outage region sẽ ngăn toggle.</td><td>Ngoài phạm vi hôm nay; sẽ cần triển khai Lambda và EventBridge ở region phụ với cơ chế failover.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><em>Register này được rà soát khi xảy ra sự cố phủ path hoặc khi một URL prefix top-level mới được thêm vào CloudFront.</em></p>
+</section>
+
+<!-- ═══ §6 GLOSSARY ═══ -->
+<section id="6-glossary">
+  <div class="section-label">§6 · Thuật ngữ</div>
+  <h2>Thuật ngữ</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Thuật ngữ</th><th>Ý nghĩa</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Brand</strong></td><td>Một trong hai: <code>exchange</code> hoặc <code>point</code>. Hai brand dùng chung hạ tầng nhưng expose frontend và BFF khác nhau.</td></tr>
+        <tr><td><strong>Rule group</strong></td><td>Construct AWS WAF tái sử dụng, chứa một tập rule. Có <code>capacity</code> (ngân sách WCU) cố định. Tham chiếu rule group trong WebACL được Lambda chèn/xoá.</td></tr>
+        <tr><td><strong>WebACL</strong></td><td>Resource WAF gắn vào CloudFront. Tham chiếu rule group (tĩnh qua TF hoặc động qua Lambda). Ở đây: <code>point-cloudfront-customer</code>.</td></tr>
+        <tr><td><strong>Anchor rule</strong></td><td>Rule tĩnh <code>country_restrict</code> trong <code>acl.tf</code>. Lambda dùng nó như điểm chèn ổn định: rule maintenance được chèn NGAY SAU anchor rồi đánh lại toàn bộ priority.</td></tr>
+        <tr><td><strong>Smart-merge</strong></td><td>Thuật toán của Lambda: đọc state hiện tại từ WebACL → suy ra state đích từ event → tính diff → chỉ áp dụng phần diff. Idempotent khi gọi lại.</td></tr>
+        <tr><td><strong>WCU</strong></td><td>Web ACL Capacity Unit — đơn vị chi phí AWS dùng cho công việc của rule engine. Mỗi rule group có ngân sách <code>capacity</code> <strong>bất biến</strong> (đổi sẽ buộc destroy+create).</td></tr>
+        <tr><td><strong>Event shape</strong></td><td>Ba định dạng payload Lambda chấp nhận: A (<code>{"maintenance":"start|end"}</code>), B (một khoá per-brand), C (cả hai khoá per-brand).</td></tr>
+        <tr><td><strong>Path ownership</strong></td><td>Bảng map URI prefix → brand có thẩm quyền. Nguồn: <code>docs/guides/api-system-architecture.en.md</code>.</td></tr>
+        <tr><td><strong>Isolation guarantee</strong></td><td>Khi rule group của một brand được attach, các endpoint của brand kia (<code>/api/*</code>, <code>/app/v1/*</code>, v.v.) phải tiếp tục phục vụ bình thường. Được mã hoá bằng việc không có catch-all trong exchange + path exclusion tường minh trong P7 của point.</td></tr>
+        <tr><td><strong>maintenance_ips</strong></td><td>IP set AWS WAFv2 được tham chiếu trong mọi rule block để IP office và dev bypass maintenance block.</td></tr>
+        <tr><td><strong>maintenance_html_exchange / maintenance_html_point</strong></td><td>Custom response body chứa JS redirect trình duyệt tới <code>/exchange/maintenance/</code> hoặc <code>/point/maintenance/</code>.</td></tr>
+        <tr><td><strong>maintenance_json</strong></td><td>Custom response body trả <code>{"code": 10005}</code> cho các path API.</td></tr>
+        <tr><td><strong>WAFOptimisticLockException</strong></td><td>Lỗi concurrency do AWS WAFv2 trả khi <code>LockToken</code> đã cũ. Lambda retry tối đa 3 lần với backoff 1s, 2s (lần 3 không sleep — re-raise).</td></tr>
+        <tr><td><strong>Cache behavior</strong></td><td>Construct CloudFront map URL path pattern tới origin + cấu hình cache/bảo mật. Đánh giá theo <strong>first-match-by-order</strong>, không phải longest-prefix.</td></tr>
+        <tr><td><strong>Origin</strong></td><td>Backend CloudFront fetch khi cache miss (S3 bucket, ALB, custom HTTP).</td></tr>
+        <tr><td><strong>Lambda@Edge</strong></td><td>Lambda gắn vào sự kiện CloudFront (ở đây là origin-request) có thể rewrite request/response trên đường truyền. Dùng để chuyển <code>/exchange/maintenance/</code> → <code>/exchange/maintenance/index.html</code>.</td></tr>
+        <tr><td><strong>Shape A backward-compat</strong></td><td>EventBridge cron hằng ngày/tuần tiếp tục gửi payload Shape A — áp dụng cho cả hai brand. PR này không đổi cron.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══ §7 FILE INDEX ═══ -->
+<section id="7-file-index">
+  <div class="section-label">§7 · Mục lục file</div>
+  <h2>Mục lục file</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Vấn đề</th><th>File</th><th>Khu vực / dòng then chốt</th></tr></thead>
+      <tbody>
+        <tr><td>Rule group Exchange</td><td><code>bs-exchange-infra/terraform/components/waf-customer/module-waf/rulegroup-maintenance-exchange.tf</code></td><td>1-256 (toàn file; 5 rule, capacity 60)</td></tr>
+        <tr><td>Rule group Point</td><td><code>bs-exchange-infra/terraform/components/waf-customer/module-waf/rulegroup-maintenance-point.tf</code></td><td>1-379 (toàn file; 7 rule, capacity 80; fix path-exclusion P7 ở 280-372)</td></tr>
+        <tr><td>Định nghĩa WebACL (anchor <code>country_restrict</code>)</td><td><code>bs-exchange-infra/terraform/components/waf-customer/module-waf/acl.tf</code></td><td>không đổi trong PR này; anchor ở priority 0</td></tr>
+        <tr><td>Entrypoint Lambda</td><td><code>bs-exchange-infra/terraform/components/waf-maintenance-lambda/src/app.py</code></td><td>1-188</td></tr>
+        <tr><td>State machine (hàm thuần)</td><td>cùng component <code>src/state.py</code></td><td>1-86</td></tr>
+        <tr><td>Helper AWS SDK (cùng fix defect Phase 2)</td><td>cùng component <code>src/utils.py</code></td><td>63-81</td></tr>
+        <tr><td>Rule template (per-brand)</td><td>cùng component <code>src/rules/maintenance-{exchange,point}.json</code></td><td>17 dòng mỗi file</td></tr>
+        <tr><td>Event sample (Shape B + C)</td><td>cùng component <code>src/events/maintenance-{exchange,point}-{start,end}.json</code> + <code>maintenance-combined.json</code></td><td>3-4 dòng mỗi file</td></tr>
+        <tr><td>Build pipeline</td><td>cùng component <code>src/scripts/build.sh</code> + <code>src/Makefile</code></td><td>build.sh L5, Makefile L14 (target test)</td></tr>
+        <tr><td>Unit test</td><td>cùng component <code>src/tests/test_state.py</code></td><td>1-162 (22 test, Python thuần)</td></tr>
+        <tr><td>Cache behavior CloudFront</td><td><code>bs-exchange-infra/terraform/components/frontend-customer/cloudfront.tf</code></td><td>141-208 (behavior mới); 72-80 (s3_maintenance_origin)</td></tr>
+        <tr><td>Lambda@Edge URL rewriter</td><td><code>bs-exchange-infra/terraform/components/frontend-customer/src/index.js</code></td><td>1-9</td></tr>
+        <tr><td>Triển khai asset tĩnh S3</td><td><code>bs-exchange-infra/terraform/components/s3-maintenance/s3-objects.tf</code></td><td>33-62</td></tr>
+        <tr><td>Thư mục asset tĩnh (7 file)</td><td><code>bs-exchange-infra/terraform/components/s3-maintenance/static/{exchange,point}/maintenance/...</code></td><td>—</td></tr>
+        <tr><td>Thiết kế Phase 2</td><td><code>docs/sprints/sprint-23/maintenance-split/DESIGN_INDEPENDENT_TOGGLE.md</code></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div>verup · sprint-23 · maintenance-split · Phase 2 (Toggle độc lập per-brand)</div>
+  <div>Nguồn: <code>CODE_WALKTHROUGH.md</code></div>
+</footer>
+
+</main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script>
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    securityLevel: 'loose',
+    fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+    themeVariables: isDark ? {
+      background: '#18242f', primaryColor: '#1d2b38', primaryTextColor: '#e2ecf5',
+      primaryBorderColor: '#6fa8d8', lineColor: '#9ab1c8', secondaryColor: '#2e4258',
+      tertiaryColor: '#1d2b38', mainBkg: '#1d2b38', secondBkg: '#2e4258', tertiaryBkg: '#18242f',
+      nodeBorder: '#6fa8d8', clusterBkg: 'rgba(111, 168, 216, 0.08)', clusterBorder: '#6fa8d8',
+      defaultLinkColor: '#9ab1c8', titleColor: '#e2ecf5', edgeLabelBackground: '#18242f',
+      actorBkg: '#1d2b38', actorBorder: '#6fa8d8', actorTextColor: '#e2ecf5', actorLineColor: '#9ab1c8',
+      signalColor: '#e2ecf5', signalTextColor: '#e2ecf5',
+      labelBoxBkgColor: '#2e4258', labelBoxBorderColor: '#6fa8d8', labelTextColor: '#e2ecf5',
+      loopTextColor: '#e2ecf5', noteBkgColor: 'rgba(212, 167, 58, 0.18)',
+      noteTextColor: '#e2ecf5', noteBorderColor: '#d4a73a',
+      activationBkgColor: '#2e4258', activationBorderColor: '#6fa8d8', sequenceNumberColor: '#1e3a5f',
+    } : {
+      background: '#ffffff', primaryColor: '#ffffff', primaryTextColor: '#1e3a5f',
+      primaryBorderColor: '#1e3a5f', lineColor: '#5a7395', secondaryColor: '#eef1f5',
+      tertiaryColor: '#ffffff', mainBkg: '#ffffff', secondBkg: '#eef1f5', tertiaryBkg: '#f4f6f8',
+      nodeBorder: '#1e3a5f', clusterBkg: 'rgba(30, 58, 95, 0.04)', clusterBorder: '#1e3a5f',
+      defaultLinkColor: '#5a7395', titleColor: '#1e3a5f', edgeLabelBackground: '#ffffff',
+      actorBkg: '#ffffff', actorBorder: '#1e3a5f', actorTextColor: '#1e3a5f', actorLineColor: '#5a7395',
+      signalColor: '#1e3a5f', signalTextColor: '#1e3a5f',
+      labelBoxBkgColor: '#eef1f5', labelBoxBorderColor: '#1e3a5f', labelTextColor: '#1e3a5f',
+      loopTextColor: '#1e3a5f', noteBkgColor: 'rgba(212, 167, 58, 0.14)',
+      noteTextColor: '#1e3a5f', noteBorderColor: '#b88a2e',
+      activationBkgColor: '#eef1f5', activationBorderColor: '#1e3a5f', sequenceNumberColor: '#ffffff',
+    },
+    flowchart: { curve: 'basis', padding: 18, nodeSpacing: 50, rankSpacing: 60 },
+    sequence: {
+      diagramMarginX: 30, diagramMarginY: 18,
+      actorMargin: 60, messageMargin: 38,
+      boxMargin: 12, noteMargin: 10,
+      mirrorActors: false, showSequenceNumbers: false
+    }
+  });
+
+  if (window.Prism) {
+    Prism.plugins.autoloader.languages_path = 'https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/';
+  }
+
+  const sections = document.querySelectorAll('section[id]');
+  const sidebarLinks = document.querySelectorAll('.sidebar ol > li > a');
+  const linkMap = new Map();
+  sidebarLinks.forEach(a => {
+    const href = a.getAttribute('href');
+    if (href && href.startsWith('#')) linkMap.set(href.slice(1), a);
+  });
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      const link = linkMap.get(entry.target.id);
+      if (!link) return;
+      if (entry.isIntersecting) {
+        sidebarLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

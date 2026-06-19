@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ViewOnlyAccess vs SecurityAudit — Base policy for a metric/config viewer role</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1521;
+  --bg-grid:rgba(120,160,210,0.045);
+  --surface:#141f2e;
+  --surface-2:#1a283a;
+  --surface-rec:#101a28;
+  --border:rgba(150,180,220,0.14);
+  --border-strong:rgba(150,180,220,0.28);
+  --text:#e6edf6;
+  --text-dim:#93a6bd;
+  --text-faint:#65788f;
+  --accent:#d4a73a;     /* gold */
+  --accent-dim:rgba(212,167,58,0.13);
+  --teal:#3fb6c4;
+  --teal-dim:rgba(63,182,196,0.13);
+  --pass:#46b277;
+  --pass-dim:rgba(70,178,119,0.14);
+  --fail:#df5b5b;
+  --fail-dim:rgba(223,91,91,0.14);
+  --warn:#e0922f;
+  --warn-dim:rgba(224,146,47,0.15);
+  --shadow:0 18px 40px -22px rgba(0,0,0,0.7);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#eef1f5;
+    --bg-grid:rgba(40,70,110,0.05);
+    --surface:#ffffff;
+    --surface-2:#f3f6fa;
+    --surface-rec:#f6f8fb;
+    --border:rgba(40,70,110,0.14);
+    --border-strong:rgba(40,70,110,0.26);
+    --text:#16202d;
+    --text-dim:#516072;
+    --text-faint:#7d8b9c;
+    --accent:#a9791a;
+    --accent-dim:rgba(169,121,26,0.12);
+    --teal:#0e7c8a;
+    --teal-dim:rgba(14,124,138,0.10);
+    --pass:#1f8a55;
+    --pass-dim:rgba(31,138,85,0.12);
+    --fail:#c23b3b;
+    --fail-dim:rgba(194,59,59,0.10);
+    --warn:#b46a12;
+    --warn-dim:rgba(180,106,18,0.12);
+    --shadow:0 16px 36px -24px rgba(20,40,70,0.45);
+  }
+}
+*{box-sizing:border-box;min-width:0}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  background:var(--bg);
+  background-image:
+    linear-gradient(var(--bg-grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px);
+  background-size:34px 34px;
+  color:var(--text);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1120px;margin:0 auto;padding:0 22px 90px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+/* ---------- header ---------- */
+header.masthead{
+  padding:54px 0 30px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:38px;
+}
+.kicker{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:12px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--accent);
+  display:flex;align-items:center;gap:10px;margin-bottom:18px;
+}
+.kicker::before{content:"";width:26px;height:1px;background:var(--accent)}
+h1{
+  font-size:clamp(28px,4.4vw,46px);
+  line-height:1.08;margin:0 0 16px;font-weight:700;letter-spacing:-0.01em;
+}
+h1 .v{color:var(--teal)} h1 .s{color:var(--accent)}
+.lead{
+  font-size:clamp(16px,1.9vw,19px);color:var(--text-dim);
+  max-width:74ch;margin:0;
+}
+.meta-row{
+  display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:24px;
+}
+.chip{
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+  padding:5px 11px;border:1px solid var(--border-strong);border-radius:999px;
+  color:var(--text-dim);background:var(--surface);
+}
+.chip b{color:var(--text);font-weight:600}
+
+/* ---------- verdict banner ---------- */
+.verdict{
+  margin:30px 0 6px;
+  display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;
+  background:linear-gradient(120deg,var(--accent-dim),transparent 70%);
+  border:1px solid var(--border-strong);
+  border-left:4px solid var(--accent);
+  border-radius:14px;padding:24px 26px;box-shadow:var(--shadow);
+}
+.verdict .score{
+  font-family:"IBM Plex Mono",monospace;font-weight:600;
+  text-align:center;line-height:1.1;
+}
+.verdict .score .big{display:block;font-size:34px;color:var(--accent)}
+.verdict .score .sub{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.verdict h2{margin:0 0 6px;font-size:19px}
+.verdict p{margin:0;color:var(--text-dim);font-size:15px}
+
+/* ---------- sections ---------- */
+section{margin-top:52px;scroll-margin-top:20px}
+.section-label{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--text-dim);
+  display:flex;align-items:center;gap:9px;margin-bottom:6px;
+}
+.section-label .dot{width:8px;height:8px;border-radius:2px;background:var(--teal);transform:rotate(45deg)}
+.section-label .num{color:var(--accent);font-weight:600}
+h2.sec{font-size:clamp(21px,2.7vw,28px);margin:0 0 8px;font-weight:600;letter-spacing:-0.01em}
+.sec-intro{color:var(--text-dim);max-width:80ch;margin:0 0 24px}
+
+/* ---------- requirement cards ---------- */
+.req-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.req{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:20px;position:relative;overflow:hidden;
+}
+.req::before{
+  content:attr(data-id);position:absolute;top:12px;right:16px;
+  font-family:"IBM Plex Mono",monospace;font-size:40px;font-weight:700;
+  color:var(--border-strong);opacity:.6;
+}
+.req .tag{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--teal);margin-bottom:10px;
+}
+.req p{margin:0;font-size:15px;color:var(--text)}
+.req .q{color:var(--text-dim);font-size:13px;margin-top:10px;font-style:italic}
+
+/* ---------- tables ---------- */
+.tbl-wrap{
+  border:1px solid var(--border);border-radius:12px;overflow:auto;
+  background:var(--surface);box-shadow:var(--shadow);
+}
+table{width:100%;border-collapse:collapse;font-size:14px}
+thead th{
+  position:sticky;top:0;background:var(--surface-2);
+  text-align:left;font-weight:600;color:var(--text);
+  padding:13px 16px;border-bottom:1px solid var(--border-strong);
+  font-size:12.5px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;
+}
+tbody td{padding:13px 16px;border-bottom:1px solid var(--border);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:rgba(150,180,220,0.035)}
+tbody tr:hover{background:var(--teal-dim)}
+td .dim{color:var(--text-dim);font-size:12.5px;display:block;margin-top:3px}
+td code{font-size:12px;background:var(--surface-2);padding:1.5px 6px;border-radius:5px;border:1px solid var(--border);white-space:nowrap}
+.col-dim{color:var(--text-dim)}
+th.center,td.center{text-align:center}
+
+/* status badges */
+.b{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;
+  padding:3px 9px;border-radius:6px;white-space:nowrap;
+}
+.b::before{content:"";width:7px;height:7px;border-radius:50%}
+.b.pass{background:var(--pass-dim);color:var(--pass)} .b.pass::before{background:var(--pass)}
+.b.fail{background:var(--fail-dim);color:var(--fail)} .b.fail::before{background:var(--fail)}
+.b.warn{background:var(--warn-dim);color:var(--warn)} .b.warn::before{background:var(--warn)}
+.b.na{background:var(--surface-2);color:var(--text-faint)} .b.na::before{background:var(--text-faint)}
+
+/* ---------- callouts ---------- */
+.callout{
+  border:1px solid var(--border-strong);border-radius:12px;padding:18px 20px;
+  margin:22px 0;background:var(--surface);display:grid;grid-template-columns:auto 1fr;gap:16px;
+}
+.callout .mk{
+  font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:13px;
+  writing-mode:vertical-rl;text-orientation:mixed;letter-spacing:.18em;text-transform:uppercase;
+  padding:2px 0;
+}
+.callout.key{border-left:4px solid var(--accent);background:linear-gradient(110deg,var(--accent-dim),transparent 60%)}
+.callout.key .mk{color:var(--accent)}
+.callout.warn{border-left:4px solid var(--warn);background:linear-gradient(110deg,var(--warn-dim),transparent 60%)}
+.callout.warn .mk{color:var(--warn)}
+.callout h4{margin:0 0 6px;font-size:15.5px}
+.callout p{margin:0;color:var(--text-dim);font-size:14.5px}
+.callout p+p{margin-top:8px}
+
+/* ---------- evidence two-col ---------- */
+.evi{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.evi .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.evi .panel h4{
+  margin:0;padding:13px 18px;font-size:14px;border-bottom:1px solid var(--border);
+  font-family:"IBM Plex Mono",monospace;display:flex;justify-content:space-between;align-items:center;
+}
+.evi .panel.v h4{color:var(--teal);background:var(--teal-dim)}
+.evi .panel.s h4{color:var(--accent);background:var(--accent-dim)}
+.evi .panel h4 .ver{font-size:11px;color:var(--text-faint);font-weight:400}
+.evi ul{list-style:none;margin:0;padding:14px 18px}
+.evi li{position:relative;padding:7px 0 7px 26px;font-size:13.5px;border-bottom:1px dashed var(--border)}
+.evi li:last-child{border-bottom:none}
+.evi li::before{position:absolute;left:0;top:7px;font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:13px}
+.evi li.y::before{content:"+";color:var(--pass)}
+.evi li.n::before{content:"\2212";color:var(--fail)}
+.evi li.w::before{content:"!";color:var(--warn)}
+.evi li code{font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border)}
+.evi li .note{display:block;color:var(--text-dim);font-size:12px;margin-top:2px}
+
+/* ---------- recommendation layers ---------- */
+.layers{display:flex;flex-direction:column;gap:0;margin:6px 0 24px}
+.layer{
+  display:grid;grid-template-columns:46px 1fr;gap:18px;align-items:stretch;
+  border:1px solid var(--border);border-radius:12px;background:var(--surface);
+  padding:18px 20px;position:relative;
+}
+.layer + .layer{margin-top:-1px}
+.layer .ln{
+  font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:20px;
+  display:flex;align-items:center;justify-content:center;border-radius:8px;
+}
+.layer.base{border-left:4px solid var(--teal)} .layer.base .ln{background:var(--teal-dim);color:var(--teal)}
+.layer.deny{border-left:4px solid var(--fail)} .layer.deny .ln{background:var(--fail-dim);color:var(--fail)}
+.layer.add{border-left:4px solid var(--accent)} .layer.add .ln{background:var(--accent-dim);color:var(--accent)}
+.layer h4{margin:0 0 4px;font-size:15.5px}
+.layer p{margin:0;color:var(--text-dim);font-size:14px}
+.layer code{font-size:12px;background:var(--surface-2);padding:1.5px 6px;border-radius:5px;border:1px solid var(--border)}
+.conn{height:14px;width:2px;background:var(--border-strong);margin:0 auto}
+
+/* ---------- code ---------- */
+.code{
+  background:var(--surface-rec);border:1px solid var(--border);border-radius:12px;
+  margin:18px 0;overflow:hidden;
+}
+.code .hd{
+  padding:9px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--text-dim);
+  display:flex;justify-content:space-between;
+}
+.code pre{
+  margin:0;padding:16px 18px;overflow-x:auto;
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.65;
+  white-space:pre;color:var(--text);
+}
+.code .c{color:var(--text-faint)}
+.code .k{color:var(--teal)}
+.code .str{color:var(--accent)}
+.code .deny{color:var(--fail)}
+
+/* ---------- assumptions list ---------- */
+.notes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.note-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+.note-card .h{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:7px}
+.note-card p{margin:0;font-size:13.5px;color:var(--text-dim)}
+
+/* ---------- sources / footer ---------- */
+.sources{margin-top:30px;border-top:1px solid var(--border);padding-top:18px}
+.sources li{font-size:13px;color:var(--text-dim);margin-bottom:7px}
+.sources a{color:var(--teal);text-decoration:none;border-bottom:1px solid transparent}
+.sources a:hover{border-bottom-color:var(--teal)}
+footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--border);color:var(--text-faint);font-size:12.5px}
+
+/* ---------- animations ---------- */
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.anim{animation:fadeUp .5s ease both}
+@media (prefers-reduced-motion:reduce){.anim{animation:none}}
+
+/* ---------- responsive ---------- */
+@media (max-width:820px){
+  .req-grid{grid-template-columns:1fr}
+  .evi{grid-template-columns:1fr}
+  .notes{grid-template-columns:1fr}
+  .verdict{grid-template-columns:1fr;text-align:left}
+  .callout{grid-template-columns:1fr}
+  .callout .mk{writing-mode:horizontal-tb;text-orientation:initial}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div style="margin-top:18px;padding:12px 16px;border:1px solid var(--border-strong);border-left:4px solid var(--accent);border-radius:10px;background:var(--accent-dim);font-size:13.5px;color:var(--text-dim)">
+  <strong style="color:var(--text)">Superseded.</strong> This page compares ViewOnlyAccess against SecurityAudit in the abstract. The viewer role actually defined in Terraform is a curated custom policy <em>plus</em> SecurityAudit, so the applicable assessment lives in <code>viewonly-vs-current-viewer-policy.html</code>.
+</div>
+
+<header class="masthead">
+  <div class="kicker">AWS IAM · Managed Policy Evaluation</div>
+  <h1>Does <span class="v">ViewOnlyAccess</span> fit a metric/config viewer role —<br>and how does it compare to <span class="s">SecurityAudit</span>?</h1>
+  <p class="lead">A read-only "viewer" role is being designed against three constraints. <code>SecurityAudit</code> was chosen as the base. This report evaluates <code>ViewOnlyAccess</code> against the same three constraints and runs a permission-level head-to-head, using the verbatim policy documents published by AWS.</p>
+  <div class="meta-row">
+    <span class="chip"><b>ViewOnlyAccess</b> · arn:aws:iam::aws:policy/job-function/ViewOnlyAccess · v45</span>
+    <span class="chip"><b>SecurityAudit</b> · arn:aws:iam::aws:policy/SecurityAudit · v88</span>
+    <span class="chip">Evidence: AWS Managed Policy Reference (verbatim JSON)</span>
+  </div>
+</header>
+
+<div class="verdict anim">
+  <div class="score">
+    <span class="big">2.5/3</span>
+    <span class="sub">ViewOnly fit</span>
+  </div>
+  <div>
+    <h2>ViewOnlyAccess is the cleaner base for this role — not SecurityAudit.</h2>
+    <p>It is the only one of the two that can actually read CloudWatch metric data (the role's primary purpose), it blocks RDS DB-log downloads, and it exposes far less sensitive configuration. One gap remains for both policies: <code>cloudtrail:LookupEvents</code> must be explicitly denied to fully satisfy "logs are off-limits."</p>
+  </div>
+</div>
+
+<!-- ============ REQUIREMENTS ============ -->
+<section id="requirements">
+  <div class="section-label"><span class="dot"></span><span class="num">01</span> &nbsp;The design constraints</div>
+  <h2 class="sec">Three requirements the role must meet</h2>
+  <p class="sec-intro">These are the evaluation criteria, quoted as stated. Every verdict below maps back to one of them.</p>
+  <div class="req-grid">
+    <div class="req anim" data-id="R1" style="animation-delay:.05s">
+      <div class="tag">Requirement 1 · Logs</div>
+      <p>"Log is sensitive, so the viewer is not allowed to see it."</p>
+      <div class="q">→ The role must not read log content.</div>
+    </div>
+    <div class="req anim" data-id="R2" style="animation-delay:.12s">
+      <div class="tag">Requirement 2 · Purpose</div>
+      <p>"This role is only for metric / configuration check."</p>
+      <div class="q">→ The role must read CloudWatch metrics and resource configuration.</div>
+    </div>
+    <div class="req anim" data-id="R3" style="animation-delay:.19s">
+      <div class="tag">Requirement 3 · Scope</div>
+      <p>"No sensitive info can be involved, so use a relatively smaller-scoped policy as the base, then add other permissions as needed."</p>
+      <div class="q">→ Minimise exposure of sensitive data and configuration.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VERDICT MATRIX ============ -->
+<section id="matrix">
+  <div class="section-label"><span class="dot"></span><span class="num">02</span> &nbsp;Verdict matrix</div>
+  <h2 class="sec">How each policy scores against the three requirements</h2>
+  <p class="sec-intro">"Pass" = the policy aligns with the requirement out of the box. "Partial" = aligns but needs a small adjustment. "Gap" = conflicts with, or fails to satisfy, the requirement.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30%">Requirement</th>
+          <th class="center" style="width:18%">ViewOnlyAccess</th>
+          <th class="center" style="width:18%">SecurityAudit</th>
+          <th style="width:34%">Why</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>R1 — Logs hidden</b><span class="dim">No reading of log content</span></td>
+          <td class="center"><span class="b warn">PARTIAL</span></td>
+          <td class="center"><span class="b warn">PARTIAL</span></td>
+          <td>Both block CloudWatch Logs content. Both still allow <code>cloudtrail:LookupEvents</code> (audit history) → needs an explicit Deny. <b>SecurityAudit is worse</b>: it also grants <code>rds:DownloadDBLogFilePortion</code> (DB log files).</td>
+        </tr>
+        <tr>
+          <td><b>R2 — Metric / config check</b><span class="dim">Must read metrics + configuration</span></td>
+          <td class="center"><span class="b pass">PASS</span></td>
+          <td class="center"><span class="b fail">GAP</span></td>
+          <td><b>SecurityAudit cannot read metric data</b> — it has no <code>cloudwatch:GetMetricData</code> / <code>GetMetricStatistics</code> / <code>ListMetrics</code>. ViewOnly has <code>cloudwatch:Get*</code> + <code>List*</code>. (SecurityAudit is, however, deeper on configuration.)</td>
+        </tr>
+        <tr>
+          <td><b>R3 — No sensitive info</b><span class="dim">Smaller-scoped, low exposure</span></td>
+          <td class="center"><span class="b pass">PASS</span></td>
+          <td class="center"><span class="b fail">GAP</span></td>
+          <td>Neither reads data-plane content. But <b>SecurityAudit exposes far more sensitive config</b>: full IAM read, security findings, secret metadata, CloudFormation templates. ViewOnly exposes none of these.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout key">
+    <div class="mk">Key&nbsp;finding</div>
+    <div>
+      <h4>The premise behind choosing SecurityAudit is partly inverted by the evidence.</h4>
+      <p>SecurityAudit was picked as the "smaller-scoped, no-sensitive-info" base. In fact, for <em>this</em> role it (a) <strong>cannot perform the core job</strong> — it has no permission to read CloudWatch metric datapoints — and (b) <strong>carries a heavier sensitive surface</strong> than ViewOnlyAccess (it is designed to expose security configuration, including the full IAM model, security findings, and DB log files). For a metric-and-config viewer that must hide logs, <code>ViewOnlyAccess</code> is the tighter starting point.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HEAD TO HEAD ============ -->
+<section id="head-to-head">
+  <div class="section-label"><span class="dot"></span><span class="num">03</span> &nbsp;Permission-level head-to-head</div>
+  <h2 class="sec">Dimension-by-dimension comparison</h2>
+  <p class="sec-intro">Green = aligns with the role's requirements (needed capability present, or sensitive capability blocked). Red = works against a requirement. Amber = caution / needs handling.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30%">Capability</th>
+          <th style="width:9%">Req</th>
+          <th class="center" style="width:30%">ViewOnlyAccess</th>
+          <th class="center" style="width:31%">SecurityAudit</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>CloudWatch metric data</b><span class="dim">GetMetricData / GetMetricStatistics / ListMetrics</span></td>
+          <td class="col-dim">R2</td>
+          <td class="center"><span class="b pass">YES</span><span class="dim"><code>cloudwatch:Get*</code> + <code>List*</code></span></td>
+          <td class="center"><span class="b fail">NO</span><span class="dim">only <code>Describe*</code> + <code>GetDashboard</code></span></td>
+        </tr>
+        <tr>
+          <td><b>Resource configuration</b><span class="dim">Describe / List across services</span></td>
+          <td class="col-dim">R2</td>
+          <td class="center"><span class="b pass">BROAD</span><span class="dim">wide, shallow in places</span></td>
+          <td class="center"><span class="b pass">DEEP</span><span class="dim">security-focused, more thorough</span></td>
+        </tr>
+        <tr>
+          <td><b>CloudWatch Logs content</b><span class="dim">GetLogEvents / FilterLogEvents</span></td>
+          <td class="col-dim">R1</td>
+          <td class="center"><span class="b pass">BLOCKED</span></td>
+          <td class="center"><span class="b pass">BLOCKED</span></td>
+        </tr>
+        <tr>
+          <td><b>RDS DB log download</b><span class="dim">DownloadDBLogFilePortion</span></td>
+          <td class="col-dim">R1</td>
+          <td class="center"><span class="b pass">BLOCKED</span></td>
+          <td class="center"><span class="b fail">ALLOWED</span><span class="dim">can read DB log files</span></td>
+        </tr>
+        <tr>
+          <td><b>CloudTrail audit events</b><span class="dim">LookupEvents (who-did-what)</span></td>
+          <td class="col-dim">R1</td>
+          <td class="center"><span class="b warn">ALLOWED</span><span class="dim">deny explicitly</span></td>
+          <td class="center"><span class="b warn">ALLOWED</span><span class="dim">deny explicitly</span></td>
+        </tr>
+        <tr>
+          <td><b>Data-plane content</b><span class="dim">s3:GetObject / dynamodb:GetItem</span></td>
+          <td class="col-dim">R3</td>
+          <td class="center"><span class="b pass">BLOCKED</span></td>
+          <td class="center"><span class="b pass">BLOCKED</span></td>
+        </tr>
+        <tr>
+          <td><b>IAM policy documents</b><span class="dim">iam:Get* (roles, inline policies, auth details)</span></td>
+          <td class="col-dim">R3</td>
+          <td class="center"><span class="b pass">NOT EXPOSED</span><span class="dim">only <code>List*</code>, <code>GetAccountSummary</code>, <code>GetLoginProfile</code></span></td>
+          <td class="center"><span class="b fail">EXPOSED</span><span class="dim">full <code>iam:Get*</code></span></td>
+        </tr>
+        <tr>
+          <td><b>Security findings</b><span class="dim">GuardDuty / SecurityHub / Inspector</span></td>
+          <td class="col-dim">R3</td>
+          <td class="center"><span class="b pass">NOT EXPOSED</span></td>
+          <td class="center"><span class="b fail">EXPOSED</span><span class="dim"><code>Get*</code>/<code>List*</code> findings</span></td>
+        </tr>
+        <tr>
+          <td><b>Secret metadata</b><span class="dim">secretsmanager:DescribeSecret / ListSecrets</span></td>
+          <td class="col-dim">R3</td>
+          <td class="center"><span class="b pass">NOT EXPOSED</span></td>
+          <td class="center"><span class="b fail">EXPOSED</span><span class="dim">names + resource policy</span></td>
+        </tr>
+        <tr>
+          <td><b>CloudFormation templates</b><span class="dim">cloudformation:GetTemplate</span></td>
+          <td class="col-dim">R3</td>
+          <td class="center"><span class="b pass">NOT EXPOSED</span><span class="dim">only <code>DescribeStacks</code>+<code>List*</code></span></td>
+          <td class="center"><span class="b fail">EXPOSED</span><span class="dim">templates may embed config</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sec-intro" style="margin-top:14px;font-size:13.5px">Neither policy grants secret <em>values</em>: <code>secretsmanager:GetSecretValue</code> is absent from both (and from <code>ReadOnlyAccess</code> too). The distinction above is metadata/config exposure, not data exfiltration.</p>
+</section>
+
+<!-- ============ EVIDENCE ============ -->
+<section id="evidence">
+  <div class="section-label"><span class="dot"></span><span class="num">04</span> &nbsp;Evidence</div>
+  <h2 class="sec">The actions that decide it</h2>
+  <p class="sec-intro">Pulled verbatim from each policy's JSON document. <span style="color:var(--pass)">+</span> present · <span style="color:var(--fail)">&minus;</span> absent · <span style="color:var(--warn)">!</span> present but undesirable.</p>
+  <div class="evi">
+    <div class="panel v anim">
+      <h4><span>ViewOnlyAccess</span><span class="ver">job-function · v45</span></h4>
+      <ul>
+        <li class="y"><code>cloudwatch:Get*</code> + <code>cloudwatch:List*</code><span class="note">Reads metric datapoints, dashboards, alarms — satisfies R2.</span></li>
+        <li class="n">No <code>logs:GetLogEvents</code> / <code>FilterLogEvents</code><span class="note">CloudWatch Logs content blocked — satisfies R1.</span></li>
+        <li class="n">No <code>rds:DownloadDBLogFilePortion</code> (only <code>rds:Describe*</code>)<span class="note">Cannot pull DB log files — satisfies R1.</span></li>
+        <li class="w"><code>cloudtrail:LookupEvents</code><span class="note">Can read API audit history — deny explicitly for R1.</span></li>
+        <li class="n">No <code>iam:Get*</code> / no GuardDuty/SecurityHub findings / no <code>secretsmanager:*</code> / no <code>cloudformation:GetTemplate</code><span class="note">Low sensitive surface — satisfies R3.</span></li>
+      </ul>
+    </div>
+    <div class="panel s anim" style="animation-delay:.08s">
+      <h4><span>SecurityAudit</span><span class="ver">aws-managed · v88</span></h4>
+      <ul>
+        <li class="n">No <code>cloudwatch:GetMetricData</code> / <code>GetMetricStatistics</code> / <code>ListMetrics</code><span class="note">Only <code>Describe*</code>+<code>GetDashboard</code> — cannot read metric data, fails R2 core purpose.</span></li>
+        <li class="n">No <code>logs:GetLogEvents</code> / <code>FilterLogEvents</code><span class="note">CloudWatch Logs content blocked — satisfies R1.</span></li>
+        <li class="w"><code>rds:DownloadDBLogFilePortion</code><span class="note">Can download DB log files — works against R1.</span></li>
+        <li class="w"><code>cloudtrail:LookupEvents</code><span class="note">Same audit-history exposure as ViewOnly.</span></li>
+        <li class="w"><code>iam:Get*</code>, <code>guardduty:Get*</code>, <code>securityhub:Get*</code>, <code>inspector:Get*</code>, <code>secretsmanager:DescribeSecret</code>, <code>cloudformation:GetTemplate</code><span class="note">Deep security-config exposure — works against R3.</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout warn">
+    <div class="mk">Watch</div>
+    <div>
+      <h4>"metric check" is read as reading CloudWatch metric data and graphs.</h4>
+      <p>Under this reading, SecurityAudit's missing <code>GetMetricData</code>/<code>GetMetricStatistics</code> is a hard gap: even a dashboard renders empty without it, because the console calls <code>GetMetricData</code> to populate every widget. If "metric check" instead meant only viewing alarm/dashboard <em>definitions</em>, SecurityAudit would partially cover it — but that is an unusually narrow interpretation and is stated here so it can be corrected.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RECOMMENDATION ============ -->
+<section id="recommendation">
+  <div class="section-label"><span class="dot"></span><span class="num">05</span> &nbsp;Recommendation</div>
+  <h2 class="sec">A layered design: ViewOnly base + explicit Deny + a small add-on</h2>
+  <p class="sec-intro">No single managed policy is a perfect fit — SecurityAudit is deeper on configuration, ViewOnly is shallower there but correct on metrics, logs, and sensitivity. The senior answer keeps the tight base and adds exactly what is missing.</p>
+
+  <div class="layers">
+    <div class="layer base anim">
+      <div class="ln">1</div>
+      <div>
+        <h4>Base — <code>ViewOnlyAccess</code></h4>
+        <p>Covers metric reads (R2) and the broad configuration listing, while keeping the sensitive surface small (R3). Attach the <code>job-function/</code> ARN.</p>
+      </div>
+    </div>
+    <div class="conn"></div>
+    <div class="layer deny anim" style="animation-delay:.06s">
+      <div class="ln">2</div>
+      <div>
+        <h4>Guardrail — explicit <code>Deny</code> for log &amp; audit-trail reads</h4>
+        <p>An explicit Deny always wins over any Allow. This closes the one real gap (<code>cloudtrail:LookupEvents</code>) and is defense-in-depth against log reads even if a future managed-policy version adds them. Fully satisfies R1.</p>
+      </div>
+    </div>
+    <div class="conn"></div>
+    <div class="layer add anim" style="animation-delay:.12s">
+      <div class="ln">3</div>
+      <div>
+        <h4>Add-on — a tiny customer-managed policy for any deeper config reads actually needed</h4>
+        <p>If specific services need configuration reads that ViewOnly lacks, add only those <code>Describe*</code>/<code>Get*</code> config actions — <em>not</em> the security-findings / IAM-document surface that SecurityAudit would drag in.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="code">
+    <div class="hd"><span>deny-log-and-audit-reads.json — explicit guardrail (layer 2)</span><span>IAM policy</span></div>
+<pre><span class="c">// An explicit Deny overrides every Allow, including the managed base.</span>
+{
+  <span class="k">"Version"</span>: <span class="str">"2012-10-17"</span>,
+  <span class="k">"Statement"</span>: [{
+    <span class="k">"Sid"</span>: <span class="str">"DenyLogAndAuditTrailReads"</span>,
+    <span class="k">"Effect"</span>: <span class="deny">"Deny"</span>,
+    <span class="k">"Action"</span>: [
+      <span class="str">"logs:GetLogEvents"</span>, <span class="str">"logs:FilterLogEvents"</span>, <span class="str">"logs:GetLogRecord"</span>,
+      <span class="str">"logs:GetQueryResults"</span>, <span class="str">"logs:StartQuery"</span>,
+      <span class="str">"cloudtrail:LookupEvents"</span>,
+      <span class="str">"rds:DownloadDBLogFilePortion"</span>, <span class="str">"rds:DownloadCompleteDBLogFile"</span>
+    ],
+    <span class="k">"Resource"</span>: <span class="str">"*"</span>
+  }]
+}</pre>
+  </div>
+
+  <div class="code">
+    <div class="hd"><span>viewer-role.tf — illustrative wiring</span><span>Terraform</span></div>
+<pre><span class="k">resource</span> <span class="str">"aws_iam_role"</span> <span class="str">"metric_config_viewer"</span> {
+  name               = <span class="str">"metric-config-viewer"</span>
+  assume_role_policy = data.aws_iam_policy_document.viewer_trust.json
+}
+
+<span class="c"># Layer 1 — tight managed base (note the job-function/ path)</span>
+<span class="k">resource</span> <span class="str">"aws_iam_role_policy_attachment"</span> <span class="str">"view_only_base"</span> {
+  role       = aws_iam_role.metric_config_viewer.name
+  policy_arn = <span class="str">"arn:aws:iam::aws:policy/job-function/ViewOnlyAccess"</span>
+}
+
+<span class="c"># Layer 2 — explicit Deny guardrail for logs + audit trail</span>
+<span class="k">resource</span> <span class="str">"aws_iam_role_policy"</span> <span class="str">"deny_log_reads"</span> {
+  role   = aws_iam_role.metric_config_viewer.id
+  name   = <span class="str">"deny-log-and-audit-reads"</span>
+  policy = data.aws_iam_policy_document.deny_logs.json
+}
+
+<span class="c"># Layer 3 — OPTIONAL: add only the extra config reads you truly need</span>
+<span class="c"># resource "aws_iam_role_policy" "extra_config_reads" { ... }</span></pre>
+  </div>
+
+  <div class="callout key">
+    <div class="mk">Bottom&nbsp;line</div>
+    <div>
+      <h4>Switch the base from SecurityAudit to ViewOnlyAccess, then add the Deny guardrail.</h4>
+      <p>This satisfies all three requirements: metrics work (R2), logs and the audit trail are walled off (R1), and the sensitive-config surface is minimised (R3). Keep SecurityAudit only if the role's real purpose later expands into security posture review — at which point the "no sensitive info" requirement no longer holds.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ASSUMPTIONS ============ -->
+<section id="assumptions">
+  <div class="section-label"><span class="dot"></span><span class="num">06</span> &nbsp;Assumptions &amp; caveats</div>
+  <h2 class="sec">What this verdict depends on</h2>
+  <div class="notes">
+    <div class="note-card">
+      <div class="h">Interpretation</div>
+      <p>"Metric check" = reading CloudWatch metric data and graphs (requires <code>GetMetricData</code>). "Log" includes CloudWatch Logs, RDS DB logs, and CloudWatch Logs Insights; CloudTrail audit history is treated as in-scope for R1 and denied — confirm if that matches intent.</p>
+    </div>
+    <div class="note-card">
+      <div class="h">CloudTrail nuance</div>
+      <p><code>cloudtrail:LookupEvents</code> reads management-plane API history, not application logs. Whether it counts as a "sensitive log" is a judgement call; the recommendation denies it to be safe, not because ViewOnly fails R1 on its own.</p>
+    </div>
+    <div class="note-card">
+      <div class="h">Versions drift</div>
+      <p>Both policies are AWS-maintained and auto-update (ViewOnly v45, SecurityAudit v88 as observed). New service actions can appear in future versions — the explicit Deny guardrail is what makes the design robust to that drift.</p>
+    </div>
+    <div class="note-card">
+      <div class="h">Config depth trade-off</div>
+      <p>ViewOnly is shallower than SecurityAudit on some security-relevant configuration. If a specific config read is missing, add it narrowly in layer 3 rather than swapping the whole base back to SecurityAudit.</p>
+    </div>
+  </div>
+
+  <ul class="sources">
+    <li><strong>Sources (AWS official, public):</strong></li>
+    <li><a href="https://docs.aws.amazon.com/aws-managed-policy/latest/reference/ViewOnlyAccess.html">ViewOnlyAccess — AWS Managed Policy Reference</a> (full JSON, ARN, type)</li>
+    <li><a href="https://docs.aws.amazon.com/aws-managed-policy/latest/reference/SecurityAudit.html">SecurityAudit — AWS Managed Policy Reference</a> (full JSON, ARN, type)</li>
+    <li><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_job-functions.html">AWS managed policies for job functions</a> (ReadOnly vs ViewOnly use-case definitions)</li>
+  </ul>
+</section>
+
+<footer>
+  Read-only IAM evaluation · evidence taken verbatim from AWS Managed Policy Reference · policy versions auto-update, re-verify before applying.
+</footer>
+
+</div>
+</body>
+</html>

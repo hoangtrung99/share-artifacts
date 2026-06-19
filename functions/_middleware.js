@@ -1,79 +1,72 @@
-// Cloudflare Pages Functions middleware — chạy trên MỌI request ở edge.
-// Bảo vệ Basic Auth theo từng folder (project) cấp 1 của đường dẫn.
+// Cloudflare Pages Functions middleware — runs at the edge on EVERY request.
+// Guards the first path segment (the project folder) with a styled-login + signed-cookie scheme
+// (replaces the old HTTP Basic Auth popup).
 //
-// Một folder "X" cần mật khẩu khi:
-//   - X nằm trong protected-folders.js (sinh từ protected.list), HOẶC
-//   - tồn tại secret env "PW_<X>"
-//   trong đó <X> = tên folder viết HOA, mọi ký tự ngoài [A-Z0-9] đổi thành "_"
-//   (vd: /reports/.. -> PW_REPORTS ; /project-a/.. -> PW_PROJECT_A).
+// A project "X" requires auth when:
+//   - X is in protected-folders.js (generated from protected.list), OR
+//   - a secret env "PW_<SNAKE(X)>" exists
+//   where SNAKE(X) = X uppercased, every char outside [A-Z0-9] -> "_"
+//   (e.g. /reports/.. -> PW_REPORTS ; /project-a/.. -> PW_PROJECT_A). Matches protect.sh.
 //
-// FAIL-CLOSED: nếu folder được đánh dấu bảo vệ nhưng THIẾU secret -> trả 403 (KHÔNG để public).
-// Đây là điểm an toàn quan trọng: không bao giờ "hiện 🔒 nhưng thực ra public".
+// To pass, the request must carry a valid signed cookie cf_auth_<SNAKE(X)> — verified with
+// HMAC-SHA256 over COOKIE_SECRET (crypto.subtle), checking expiry AND that the token's project
+// matches the path. Missing/invalid on a navigation request -> 302 to the styled /login page.
 //
-// Set/đổi mật khẩu: ./protect.sh <folder> [password]  (lưu dạng secret, KHÔNG vào git).
+// FAIL-CLOSED. A project is denied (never served) if it is listed-protected but EITHER its
+// PW_<X> secret OR the COOKIE_SECRET signing key is missing — a misconfigured lock must not
+// silently become public.
+//
+// /login, /logout, /pagefind/*, /_astro/*, favicon, sitemap, robots all have a non-project
+// first segment, so they pass through next() without auth (no explicit allowlist needed —
+// just don't name a protected project "login" or "pagefind").
 
 import PROTECTED from './protected-folders.js';
+import { pwKey, cookieName, verifyToken, readCookie } from './_auth.js';
+
 const protectedFolders = new Set(PROTECTED);
-
-const keyFor = (seg) =>
-  'PW_' + decodeURIComponent(seg).toUpperCase().replace(/[^A-Z0-9]/g, '_');
-
-function passwordFromHeader(header) {
-  try {
-    const bin = atob(header.slice(6).trim()); // bỏ "Basic "
-    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-    const text = new TextDecoder().decode(bytes); // "user:pass" (UTF-8 an toàn)
-    const i = text.indexOf(':');
-    return i >= 0 ? text.slice(i + 1) : '';
-  } catch {
-    return '';
-  }
-}
-
-// So sánh hằng thời gian, tránh timing attack.
-function safeEqual(a, b) {
-  const enc = new TextEncoder();
-  const ab = enc.encode(a);
-  const bb = enc.encode(b);
-  if (ab.length !== bb.length) return false;
-  let r = 0;
-  for (let i = 0; i < ab.length; i++) r |= ab[i] ^ bb[i];
-  return r === 0;
-}
 
 const baseHeaders = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' };
 
-function needPassword(folder) {
-  const realm = folder.replace(/["\\]/g, '');
-  return new Response('🔒 Password required to view this folder.', {
-    status: 401,
-    headers: { ...baseHeaders, 'WWW-Authenticate': `Basic realm="${realm}", charset="UTF-8"` },
-  });
+function misconfigured() {
+  // Listed protected but a required secret (PW_<X> or COOKIE_SECRET) is missing -> hard lock.
+  return new Response(
+    '🔒 This folder is protected but is not fully configured. Please contact the site owner.',
+    { status: 403, headers: baseHeaders },
+  );
 }
 
-function misconfigured() {
-  // Đánh dấu bảo vệ nhưng chưa có secret -> khoá hẳn, không hiện popup vô nghĩa.
-  return new Response('🔒 This folder is protected but no password has been configured. Please contact the site owner.', {
-    status: 403,
-    headers: baseHeaders,
-  });
+// Treat as a navigation/document request (worth redirecting to a login page) when the client
+// asks for HTML, or it's a top-level navigation. Non-document asset requests get a plain 401.
+function isDocumentRequest(request) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return false;
+  const dest = request.headers.get('Sec-Fetch-Dest');
+  if (dest) return dest === 'document' || dest === 'iframe' || dest === 'empty';
+  const accept = request.headers.get('Accept') || '';
+  return accept.includes('text/html');
 }
 
 export const onRequest = async ({ request, env, next }) => {
-  const { pathname } = new URL(request.url);
-  const seg = pathname.split('/').filter(Boolean)[0];
-  if (!seg) return next(); // trang gốc: public
+  const url = new URL(request.url);
+  const seg = url.pathname.split('/').filter(Boolean)[0];
+  if (!seg) return next(); // home page: public
 
-  const folder = decodeURIComponent(seg);
-  const expected = env[keyFor(seg)];
-  const mustAuth = protectedFolders.has(folder) || !!expected;
-  if (!mustAuth) return next(); // folder không bảo vệ
+  const project = decodeURIComponent(seg);
+  const expected = env[pwKey(project)];
+  const mustAuth = protectedFolders.has(project) || !!expected;
+  if (!mustAuth) return next(); // unprotected folder
 
-  if (!expected) return misconfigured(); // fail-closed
+  // Fail-closed: a listed/protected project with no password or no signing key is never served.
+  if (!expected || !env.COOKIE_SECRET) return misconfigured();
 
-  const auth = request.headers.get('Authorization') || '';
-  if (auth.startsWith('Basic ') && safeEqual(passwordFromHeader(auth), expected)) {
-    return next();
+  const token = readCookie(request.headers.get('Cookie'), cookieName(project));
+  if (await verifyToken(env.COOKIE_SECRET, token, project)) return next();
+
+  // Not authenticated.
+  if (isDocumentRequest(request)) {
+    const loginUrl = new URL('/login', url);
+    loginUrl.searchParams.set('next', url.pathname + url.search);
+    loginUrl.searchParams.set('project', project);
+    return Response.redirect(loginUrl.href, 302);
   }
-  return needPassword(folder);
+  return new Response('🔒 Authentication required.', { status: 401, headers: baseHeaders });
 };

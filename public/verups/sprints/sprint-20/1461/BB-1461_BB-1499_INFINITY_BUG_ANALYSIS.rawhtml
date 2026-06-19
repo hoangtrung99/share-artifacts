@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>+Infinity% Bug Analysis — BB-1461/BB-1499 Redis Encryption</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+  --bg: #f0f4f8;
+  --surface: #ffffff;
+  --surface2: #e8edf2;
+  --surface-elevated: #f7f9fb;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-bright: rgba(0, 0, 0, 0.15);
+  --text: #1e2a3a;
+  --text-dim: #5a6b7f;
+  --accent: #1e3a5f;
+  --accent-dim: rgba(30, 58, 95, 0.07);
+  --gold: #d4a73a;
+  --gold-dim: rgba(212, 167, 58, 0.10);
+  --red: #be123c;
+  --red-dim: rgba(190, 18, 60, 0.07);
+  --green: #059669;
+  --green-dim: rgba(5, 150, 105, 0.07);
+  --teal: #0891b2;
+  --teal-dim: rgba(8, 145, 178, 0.07);
+  --orange: #d97706;
+  --orange-dim: rgba(217, 119, 6, 0.08);
+  --grid-color: rgba(30, 58, 95, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1923;
+    --surface: #172130;
+    --surface2: #1e2d3e;
+    --surface-elevated: #1f3044;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-bright: rgba(255, 255, 255, 0.12);
+    --text: #dce4ec;
+    --text-dim: #7a8fa3;
+    --accent: #5b9bd5;
+    --accent-dim: rgba(91, 155, 213, 0.12);
+    --gold: #f0c74a;
+    --gold-dim: rgba(240, 199, 74, 0.12);
+    --red: #f87171;
+    --red-dim: rgba(248, 113, 113, 0.10);
+    --green: #34d399;
+    --green-dim: rgba(52, 211, 153, 0.10);
+    --teal: #22d3ee;
+    --teal-dim: rgba(34, 211, 238, 0.10);
+    --orange: #fbbf24;
+    --orange-dim: rgba(251, 191, 36, 0.10);
+    --grid-color: rgba(91, 155, 213, 0.04);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  background-image:
+    radial-gradient(circle, var(--grid-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+  color: var(--text);
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.page { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+
+/* Hero */
+.hero {
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, var(--accent) 50%);
+  border-radius: 12px;
+  padding: 36px 32px;
+  margin-bottom: 32px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  animation: fadeUp 0.6s ease both;
+}
+.hero__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--red);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hero__label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.hero h1 {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.hero h1 code {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  color: var(--red);
+  background: var(--red-dim);
+  padding: 2px 10px;
+  border-radius: 6px;
+}
+.hero p {
+  font-size: 16px;
+  color: var(--text-dim);
+  max-width: 640px;
+}
+.hero__meta {
+  display: flex;
+  gap: 24px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.hero__meta span {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--surface2);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* Cards */
+.ve-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  margin-bottom: 20px;
+  position: relative;
+  min-width: 0;
+}
+.ve-card--elevated {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.ve-card--recessed {
+  background: color-mix(in srgb, var(--bg) 70%, var(--surface) 30%);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+}
+.ve-card__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ve-card__label::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.label--accent { color: var(--accent); }
+.label--red { color: var(--red); }
+.label--green { color: var(--green); }
+.label--gold { color: var(--gold); }
+.label--teal { color: var(--teal); }
+.label--orange { color: var(--orange); }
+
+.ve-card h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.ve-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.ve-card p { color: var(--text-dim); font-size: 14px; margin-bottom: 10px; }
+
+/* Accent borders */
+.border-red { border-left: 3px solid var(--red); }
+.border-green { border-left: 3px solid var(--green); }
+.border-gold { border-left: 3px solid var(--gold); }
+.border-accent { border-left: 3px solid var(--accent); }
+.border-teal { border-left: 3px solid var(--teal); }
+.border-orange { border-left: 3px solid var(--orange); }
+
+/* Code blocks */
+.code-file { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 12px 0; }
+.code-file__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.code-file__body {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 14px;
+  background: var(--surface);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow: auto;
+  margin: 0;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Inline highlight */
+.hl-red { background: var(--red-dim); color: var(--red); padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+.hl-green { background: var(--green-dim); color: var(--green); padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+.hl-gold { background: var(--gold-dim); color: var(--gold); padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+
+/* Comparison table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 12px 0;
+}
+th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--border-bright);
+  background: var(--surface2);
+}
+td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tr:hover td { background: var(--accent-dim); }
+
+/* Flow arrow */
+.flow-arrow {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+
+/* Grid layouts */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.grid-2 > * { min-width: 0; }
+@media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* KPI row */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+}
+.kpi__value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.kpi__label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+@media (max-width: 600px) { .kpi-row { grid-template-columns: 1fr; } }
+
+/* Callout */
+.callout {
+  background: var(--gold-dim);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent 70%);
+  border-left: 3px solid var(--gold);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 16px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.callout strong { color: var(--gold); }
+
+.callout--red {
+  background: var(--red-dim);
+  border-color: color-mix(in srgb, var(--red) 30%, transparent 70%);
+  border-left-color: var(--red);
+}
+.callout--red strong { color: var(--red); }
+
+.callout--green {
+  background: var(--green-dim);
+  border-color: color-mix(in srgb, var(--green) 30%, transparent 70%);
+  border-left-color: var(--green);
+}
+.callout--green strong { color: var(--green); }
+
+/* Mermaid */
+.mermaid-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 16px;
+  overflow-x: auto;
+  position: relative;
+}
+
+/* Collapsible */
+details { margin: 8px 0; }
+details summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  padding: 6px 0;
+  font-weight: 500;
+}
+
+/* Animation */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.anim { animation: fadeUp 0.5s ease both; }
+.anim-1 { animation-delay: 0.1s; }
+.anim-2 { animation-delay: 0.2s; }
+.anim-3 { animation-delay: 0.3s; }
+.anim-4 { animation-delay: 0.4s; }
+.anim-5 { animation-delay: 0.5s; }
+.anim-6 { animation-delay: 0.6s; }
+.anim-7 { animation-delay: 0.7s; }
+.anim-8 { animation-delay: 0.8s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim, .hero { animation: none; opacity: 1; }
+}
+
+/* Section divider */
+.section-gap { margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero__label">Bug Analysis</div>
+  <h1><code>+Infinity%</code> Change Rate After Redis Encryption Deploy</h1>
+  <p>Root cause analysis of the +Infinity% display bug observed on DEV 販売所 (salesoffice) page after ElastiCache cluster recreation for BB-1461/BB-1499.</p>
+  <div class="hero__meta">
+    <span>BB-1461 + BB-1499</span>
+    <span>ENV: dev-ex</span>
+    <span>PAGE: /exchange/salesoffice</span>
+    <span>2026-03-12</span>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-row anim anim-1">
+  <div class="kpi border-red">
+    <div class="kpi__value" style="color: var(--red);">+Infinity%</div>
+    <div class="kpi__label">BTC/JPY Change Rate</div>
+  </div>
+  <div class="kpi border-gold">
+    <div class="kpi__value" style="color: var(--gold);">0</div>
+    <div class="kpi__label">24h High / Low</div>
+  </div>
+  <div class="kpi border-green">
+    <div class="kpi__value" style="color: var(--green);">11,040,859</div>
+    <div class="kpi__label">Current Price (OK)</div>
+  </div>
+</div>
+
+<!-- EXECUTIVE SUMMARY -->
+<div class="ve-card ve-card--elevated border-accent anim anim-2">
+  <div class="ve-card__label label--accent">Executive Summary</div>
+  <h2>Not a Bug from Encryption — Pre-existing Data Gap Unmasked</h2>
+  <p>The +Infinity% is caused by <strong style="color:var(--text)">division by zero</strong> in the frontend when the 24h closing price (<code>close</code>) is <code>0</code>. This value is <code>0</code> because there are <strong style="color:var(--text)">no POS trades for BTC_JPY in the database</strong> for the past 24 hours — and there never were on DEV.</p>
+  <p>Before the Redis wipe, stale cached data (with non-zero OHLC from the last trade, possibly days/weeks ago) masked this condition. After the cluster recreation, the cache was empty, forcing a fresh DB query that returned zero rows.</p>
+  <div class="callout" style="margin-top: 16px;">
+    <strong>Key finding:</strong> Both <code>updateTickerByTrades()</code> and <code>updateTickerByCandlesticks()</code> read from the <strong>database</strong>, not Redis. The Redis wipe did not cause data loss — it exposed that the DB has no recent POS trades for BTC_JPY on DEV.
+  </div>
+</div>
+
+<!-- DATA FLOW DIAGRAM -->
+<div class="ve-card anim anim-3 section-gap">
+  <div class="ve-card__label label--teal">Data Flow</div>
+  <h2>How Ticker Data Reaches the Frontend</h2>
+  <p>The POS ticker pipeline: external price feed → backend computation → Redis cache → WebSocket → frontend display.</p>
+  <div class="mermaid-wrap">
+    <pre class="mermaid">
+flowchart TD
+    A["Amber Exchange<br/>(External Price Feed)"] -->|bestAsk, bestBid| B["PosBestPriceService<br/>.handleBestPrice()"]
+    DB[(Database)] -->|"POS trades (24h)"| B
+    DB -->|"POS candlesticks (24h)"| B
+    DB -->|"Daily candlestick (P1D)"| B
+    B -->|"Compute OHLC + close + mid"| C["PosBestPriceData"]
+    C -->|"setUnexpireValue()"| R[("Redis Cache<br/>(no TTL)")]
+    C -->|"redisPublisher.publish()"| WS["WebSocket<br/>/topic/pos/price.symbol.*"]
+    WS -->|"msg with all fields"| FE["Frontend<br/>CurrencyStore.rawTickersPos"]
+    FE -->|"tickers_v2 computed"| CALC["percentage =<br/>(mid - close) / close"]
+    CALC -->|"close = 0"| INF["<b style='color:#be123c'>+Infinity%</b>"]
+
+    classDef ext fill:#0891b2,stroke:#0891b2,color:#fff
+    classDef svc fill:#1e3a5f,stroke:#1e3a5f,color:#fff
+    classDef data fill:#059669,stroke:#059669,color:#fff
+    classDef cache fill:#d97706,stroke:#d97706,color:#fff
+    classDef fe fill:#7c3aed,stroke:#7c3aed,color:#fff
+    classDef bug fill:#be123c,stroke:#be123c,color:#fff
+
+    class A ext
+    class B svc
+    class DB data
+    class C svc
+    class R cache
+    class WS cache
+    class FE fe
+    class CALC fe
+    class INF bug
+    </pre>
+  </div>
+</div>
+
+<!-- ROOT CAUSE: BACKEND -->
+<div class="section-gap"></div>
+<div class="ve-card ve-card--elevated border-gold anim anim-4">
+  <div class="ve-card__label label--gold">Root Cause — Backend</div>
+  <h2>PosBestPriceService reads from DB, not Redis</h2>
+  <p>The OHLC computation queries the database for POS trades and candlesticks within the past 24 hours. If no records exist, all values remain <code>BigDecimal.ZERO</code>.</p>
+
+  <div class="code-file">
+    <div class="code-file__header">PosBestPriceService.java — lines 147-168</div>
+    <pre class="code-file__body"><code>// All 5 calls query the DATABASE, not Redis
+PosBestPriceData.PosTicker ticker = new PosBestPriceData.PosTicker();
+updateTickerByTrades(symbol, ticker, before1Day, minute1From);       // → posTradeService.findMakerByCondition() → DB
+updateTickerByCandlesticks(symbol, ticker, PT1M, minute1From, ...);  // → posCandlestickService.findByCondition() → DB
+updateTickerByCandlesticks(symbol, ticker, PT1H, ...);               // → DB
+updateTickerByCandlesticks(symbol, ticker, PT1M, ...);               // → DB
+updateTickerByTrades(symbol, ticker, minute1To, date);               // → DB
+
+// If no trades/candlesticks found → ticker.getLast() = BigDecimal.ZERO
+
+// close = yesterday's daily candlestick close, OR fallback to last
+PosCandlestick posCandlestick = posCandlestickService.findOne(
+    symbolId, CandlestickType.P1D, yesterday);   // → DB query
+
+bestPrice.setClose(
+    posCandlestick == null
+        ? symbol.getCurrencyPair().getScaledPrice(<span class="hl-red">ticker.getLast()</span>)  // ← 0 if no trades
+        : posCandlestick.getClose());
+
+// mid = (bestAsk + bestBid) / 2 → real value from Amber (~11,040,859)
+bestPrice.setMid((bestAsk + bestBid) / 2);  // ← valid number</code></pre>
+  </div>
+
+  <div class="callout--red callout">
+    <strong>Result:</strong> <code>close = 0</code> (no DB data), <code>mid = 11,040,859</code> (real-time from Amber). These values are published to Redis and WebSocket.
+  </div>
+</div>
+
+<!-- ROOT CAUSE: FRONTEND -->
+<div class="ve-card ve-card--elevated border-red anim anim-5">
+  <div class="ve-card__label label--red">Root Cause — Frontend</div>
+  <h2>Division by zero produces JavaScript Infinity</h2>
+  <p>The frontend computes the change rate percentage using <code>close</code> as the denominator. When <code>close = 0</code>, the result is <code>Infinity</code>.</p>
+
+  <div class="code-file">
+    <div class="code-file__header">CurrencyStore.ts — line 315</div>
+    <pre class="code-file__body"><code>// The guard t.close === 0 SHOULD catch this...
+// BUT if close arrives as string "0" from BigDecimal serialization,
+// then "0" === 0 is FALSE (strict equality, type mismatch)
+
+percentage: <span class="hl-red">t.close === 0</span> ? 0
+  : Math.round(((<span class="hl-green">t.mid</span> - <span class="hl-red">t.close</span>) / <span class="hl-red">t.close</span>) * 10000) / 100 || 0,
+
+// When close = 0 (or "0"):
+//   (11040859 - 0) / 0 = <span class="hl-red">Infinity</span>
+//   Math.round(Infinity * 10000) / 100 = Infinity
+//   Infinity || 0 = Infinity  ← || 0 does NOT catch Infinity (it's truthy!)</code></pre>
+  </div>
+
+  <div class="grid-2" style="margin-top: 16px;">
+    <div class="ve-card ve-card--recessed">
+      <h3>Why <code>|| 0</code> fails</h3>
+      <p>In JavaScript, <code>Infinity</code> is a <strong style="color:var(--text)">truthy</strong> value. The <code>||</code> operator only falls through to <code>0</code> for falsy values (<code>null</code>, <code>undefined</code>, <code>0</code>, <code>NaN</code>, <code>""</code>, <code>false</code>). Since <code>Infinity</code> is truthy, <code>Infinity || 0</code> evaluates to <code>Infinity</code>.</p>
+    </div>
+    <div class="ve-card ve-card--recessed">
+      <h3>Why <code>=== 0</code> might fail</h3>
+      <p>Java's <code>BigDecimal</code> can serialize to JSON as either <code>0</code> (number) or <code>"0"</code> (string). If the WebSocket message delivers <code>close</code> as a string, then <code>"0" === 0</code> is <code>false</code> in strict equality — bypassing the guard entirely.</p>
+    </div>
+  </div>
+</div>
+
+<!-- WHY IT WAS MASKED -->
+<div class="section-gap"></div>
+<div class="ve-card border-accent anim anim-6">
+  <div class="ve-card__label label--accent">Why It Was Hidden Before</div>
+  <h2>Redis Cache Masked the Missing Data</h2>
+  <p><code>bestPriceRedisTemplate.setUnexpireValue()</code> stores data with <strong style="color:var(--text)">no TTL</strong> — the cached value persists forever until explicitly deleted or the Redis instance is restarted.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:35%">Aspect</th>
+        <th style="width:32%">Before Redis Wipe</th>
+        <th style="width:33%">After Redis Wipe</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>PosBestPriceData</code> in Redis</td>
+        <td>Stale data from the <strong>last BTC_JPY POS trade</strong> (days/weeks ago) with non-zero OHLC</td>
+        <td>Empty — must be recomputed fresh</td>
+      </tr>
+      <tr>
+        <td><code>handleBestPrice()</code> runs</td>
+        <td>Updates <code>bestAsk</code>/<code>bestBid</code>/<code>mid</code> from Amber. OHLC fields overwritten with DB query results — still 0, but the <strong>old cached close was non-zero</strong></td>
+        <td>Same computation, but starts from scratch. <code>close = 0</code> because no daily candlestick and <code>last = 0</code></td>
+      </tr>
+      <tr>
+        <td>Frontend display</td>
+        <td>Shows stale but valid-looking percentage</td>
+        <td><span class="hl-red">+Infinity%</span> — division by zero</td>
+      </tr>
+      <tr>
+        <td>Actual DB POS trades (24h)</td>
+        <td colspan="2" style="text-align:center; color:var(--red); font-weight:600;">0 rows — no BTC_JPY POS trading on DEV</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout" style="margin-top: 12px;">
+    <strong>Insight:</strong> The display was always inaccurate — it showed stale data from the last BTC_JPY trade (which could have been weeks ago). The Redis wipe simply exposed the truth: there is no active BTC_JPY POS trading on DEV.
+  </div>
+</div>
+
+<!-- EVIDENCE FROM LOGS -->
+<div class="section-gap"></div>
+<div class="ve-card border-teal anim anim-7">
+  <div class="ve-card__label label--teal">Evidence from Logs</div>
+  <h2>Worker Activity Confirms No BTC_JPY Trading</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Symbol ID</th>
+        <th>Type</th>
+        <th>Worker Events (5 min)</th>
+        <th>Active Trading</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>4</code> (XRP_JPY SPOT)</td>
+        <td>SPOT</td>
+        <td style="font-family:var(--font-mono)">410</td>
+        <td><span class="hl-green">Yes — spotCopyOrderer active</span></td>
+      </tr>
+      <tr>
+        <td><code>5</code> (ETH_JPY SPOT)</td>
+        <td>SPOT</td>
+        <td style="font-family:var(--font-mono)">258</td>
+        <td><span class="hl-green">Yes</span></td>
+      </tr>
+      <tr>
+        <td><code>6, 7, 10, 11</code></td>
+        <td>SPOT</td>
+        <td style="font-family:var(--font-mono)">80 each</td>
+        <td><span class="hl-green">Yes</span></td>
+      </tr>
+      <tr>
+        <td><code>202</code> (BTC_JPY POS)</td>
+        <td>POS</td>
+        <td style="font-family:var(--font-mono)">2</td>
+        <td><span class="hl-red">No trades — minimal activity</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-file" style="margin-top: 16px;">
+    <div class="code-file__header">CircuitBreaker log — confirms candlestick data exists for SPOT but values are synthetic</div>
+    <pre class="code-file__body"><code>// symbolId 4 (XRP_JPY) — has candlestick data with open/close = 110
+latestCandlestick: {symbolId:4, open:110, high:110, low:110, close:110, volume:0}
+previousCandlestick: {symbolId:4, open:110, high:110, low:110, close:110, volume:0}
+
+// Note: volume = 0 even though OHLC exists
+// This is because spotCopyOrderer places orders but not all execute into trades</code></pre>
+  </div>
+</div>
+
+<!-- RECOVERY & FIX -->
+<div class="section-gap"></div>
+<div class="grid-2 anim anim-8">
+  <div class="ve-card border-green">
+    <div class="ve-card__label label--green">Self-Recovery</div>
+    <h3>Will it fix itself?</h3>
+    <table>
+      <thead><tr><th>Scenario</th><th>Recovery</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Symbols with active trading (XRP, ETH)</td>
+          <td><span class="hl-green">Minutes to hours</span> — trade data accumulates in DB, ticker rebuilds</td>
+        </tr>
+        <tr>
+          <td>BTC_JPY POS on DEV</td>
+          <td><span class="hl-red">Never</span> — no POS trades happening</td>
+        </tr>
+        <tr>
+          <td>STG / PRD (with real trading)</td>
+          <td><span class="hl-green">Minutes</span> — active trading ensures DB has 24h data</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ve-card border-orange">
+    <div class="ve-card__label label--orange">Recommended Fix</div>
+    <h3>Frontend guard for Infinity</h3>
+    <div class="code-file">
+      <div class="code-file__header">CurrencyStore.ts — line 315 (proposed)</div>
+      <pre class="code-file__body"><code>// Before (buggy):
+percentage: t.close === 0 ? 0
+  : Math.round(((t.mid - t.close) / t.close) * 10000) / 100 || 0,
+
+// After (safe):
+percentage: (() => {
+  const c = Number(t.close);
+  if (!c) return 0;
+  const raw = ((t.mid - c) / c) * 100;
+  return Number.isFinite(raw)
+    ? Math.round(raw * 100) / 100
+    : 0;
+})(),</code></pre>
+    </div>
+    <p style="margin-top:8px"><strong style="color:var(--text)">Fixes:</strong> Coerces <code>close</code> to number (handles string "0"), checks <code>Number.isFinite()</code> (catches both <code>Infinity</code> and <code>NaN</code>).</p>
+  </div>
+</div>
+
+<!-- CONCLUSION -->
+<div class="section-gap"></div>
+<div class="ve-card ve-card--elevated border-accent">
+  <div class="ve-card__label label--accent">Conclusion</div>
+  <h2>Summary</h2>
+  <table>
+    <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr><td>Is this caused by Redis encryption?</td><td><span class="hl-gold">Indirectly</span> — the Redis wipe exposed a pre-existing data gap, not a new bug</td></tr>
+      <tr><td>Is data read from Redis or DB?</td><td><span class="hl-green">DB</span> — both <code>posTradeService</code> and <code>posCandlestickService</code> use JPA queries</td></tr>
+      <tr><td>Why was it hidden before?</td><td><code>setUnexpireValue()</code> kept stale data in Redis forever — no TTL</td></tr>
+      <tr><td>Will it self-resolve on DEV?</td><td><span class="hl-red">No</span> — no BTC_JPY POS trading activity on DEV</td></tr>
+      <tr><td>Will it affect STG/PRD?</td><td><span class="hl-green">Temporary only</span> — active trading will rebuild 24h data within minutes</td></tr>
+      <tr><td>Should we rollback?</td><td><span class="hl-green">No</span> — encryption is working correctly. This is a display issue.</td></tr>
+      <tr><td>Recommended action</td><td>Fix frontend guard for <code>close = 0</code> and <code>Infinity</code> (separate ticket)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</div><!-- .page -->
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {
+    primaryColor: isDark ? '#1f3044' : '#e8edf2',
+    primaryTextColor: isDark ? '#dce4ec' : '#1e2a3a',
+    primaryBorderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.15)',
+    lineColor: isDark ? '#5b9bd5' : '#1e3a5f',
+    secondaryColor: isDark ? '#172130' : '#f0f4f8',
+    tertiaryColor: isDark ? '#1e2d3e' : '#ffffff',
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+    fontSize: '14px',
+  },
+  flowchart: { curve: 'basis', padding: 16 },
+});
+</script>
+</body>
+</html>

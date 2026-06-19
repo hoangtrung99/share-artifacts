@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maintenance-Split · Code walkthrough (Phase 2 — Independent per-brand toggle)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css" rel="stylesheet">
+<style>
+:root {
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --bg: #f4f6f8;
+  --grid: rgba(30, 58, 95, 0.04);
+  --surface: #ffffff;
+  --surface-recessed: #eef1f5;
+  --surface-elevated: #ffffff;
+  --border: rgba(30, 58, 95, 0.12);
+  --border-bright: rgba(30, 58, 95, 0.22);
+  --text: #1e3a5f;
+  --text-dim: #5a7395;
+  --text-faint: #8aa0bc;
+  --accent: #1e3a5f;
+  --accent-bright: #2e5586;
+  --accent-dim: rgba(30, 58, 95, 0.08);
+  --gold: #b88a2e;
+  --gold-bright: #d4a73a;
+  --gold-dim: rgba(212, 167, 58, 0.14);
+  --good: #4d7c52;
+  --good-dim: rgba(77, 124, 82, 0.12);
+  --warn: #b35c1e;
+  --warn-dim: rgba(179, 92, 30, 0.12);
+  --bad: #a83232;
+  --bad-dim: rgba(168, 50, 50, 0.12);
+  --code-bg: #fafbfc;
+  --code-border: rgba(30, 58, 95, 0.10);
+  --radius: 6px;
+  --radius-lg: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1923; --grid: rgba(180, 200, 230, 0.04);
+    --surface: #18242f; --surface-recessed: #131d27; --surface-elevated: #1d2b38;
+    --border: rgba(180, 200, 230, 0.10); --border-bright: rgba(180, 200, 230, 0.20);
+    --text: #e2ecf5; --text-dim: #9ab1c8; --text-faint: #6b8195;
+    --accent: #6fa8d8; --accent-bright: #9fc5e5; --accent-dim: rgba(111, 168, 216, 0.14);
+    --gold: #d4a73a; --gold-bright: #e8c062; --gold-dim: rgba(212, 167, 58, 0.18);
+    --good: #7fb288; --good-dim: rgba(127, 178, 136, 0.14);
+    --warn: #d4914e; --warn-dim: rgba(212, 145, 78, 0.14);
+    --bad: #d97373; --bad-dim: rgba(217, 115, 115, 0.14);
+    --code-bg: #131d27; --code-border: rgba(180, 200, 230, 0.10);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; font-family: var(--font-body); font-size: 15px; line-height: 1.65;
+  color: var(--text); background-color: var(--bg);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px; background-position: -1px -1px;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+.layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1480px; margin: 0 auto; gap: 32px; padding: 0 24px; }
+@media (max-width: 1000px) { .layout { grid-template-columns: 1fr; padding: 0 16px; } }
+.sidebar { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; padding: 24px 0; border-right: 1px solid var(--border); font-size: 13px; }
+@media (max-width: 1000px) { .sidebar { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--border); padding: 16px 0; } }
+.sidebar-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--text-dim); margin: 0 0 12px; padding-right: 24px; }
+.sidebar ol { list-style: none; margin: 0; padding: 0 16px 0 0; counter-reset: tocsec; }
+.sidebar ol li { counter-increment: tocsec; }
+.sidebar ol a { color: var(--text); text-decoration: none; display: block; padding: 5px 8px 5px 0; border-left: 2px solid transparent; padding-left: 12px; margin-left: -2px; transition: color 0.15s, border-color 0.15s; }
+.sidebar ol a::before { content: '§' counter(tocsec) ' · '; color: var(--gold); font-family: var(--font-mono); font-size: 11px; }
+.sidebar ol a:hover, .sidebar ol a.active { color: var(--gold); border-left-color: var(--gold); }
+.sidebar details { margin: 4px 0; padding-left: 14px; }
+.sidebar details summary { font-size: 12.5px; color: var(--text-dim); cursor: pointer; padding: 2px 0; }
+.sidebar details ul { list-style: none; padding-left: 12px; margin: 4px 0; }
+.sidebar details a { color: var(--text-dim); text-decoration: none; font-size: 12px; display: block; padding: 3px 0; }
+.sidebar details a:hover { color: var(--gold); }
+.main { padding: 36px 0 96px; min-width: 0; }
+@media print { .layout { grid-template-columns: 1fr; } .sidebar { display: none; } .main { padding: 24px 0; } }
+.hero { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 48px 40px; margin-bottom: 40px; position: relative; overflow: hidden; }
+.hero::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--accent) 0%, var(--accent-bright) 50%, var(--gold) 100%); }
+.hero-meta { display: flex; gap: 16px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); margin-bottom: 20px; }
+.hero-meta span { display: flex; align-items: center; gap: 6px; }
+.hero-meta span::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(34px, 4.5vw, 52px); line-height: 1.05; margin: 0 0 16px; color: var(--text); font-weight: 400; letter-spacing: -0.02em; }
+.hero p.tagline { font-size: 17px; line-height: 1.55; color: var(--text-dim); margin: 0 0 24px; max-width: 800px; }
+.hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-top: 28px; }
+.hero-stat { background: var(--surface); padding: 16px 18px; }
+.hero-stat-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-faint); margin-bottom: 6px; }
+.hero-stat-value { font-family: var(--font-mono); font-size: 20px; font-weight: 600; color: var(--accent); line-height: 1; }
+.hero-stat-value small { font-size: 13px; color: var(--text-dim); font-weight: 400; margin-left: 4px; }
+@media (prefers-color-scheme: dark) { .hero-stat-value { color: var(--accent-bright); } }
+section { margin-bottom: 56px; scroll-margin-top: 24px; }
+.section-label { font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; color: var(--gold); margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.section-label::before { content: ''; width: 28px; height: 1px; background: var(--gold); }
+h2 { font-family: var(--font-serif); font-style: italic; font-size: 30px; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 22px; color: var(--text); line-height: 1.2; }
+h3 { font-family: var(--font-body); font-size: 17px; font-weight: 600; margin: 32px 0 12px; color: var(--text); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+h4 { font-family: var(--font-body); font-size: 14.5px; font-weight: 600; margin: 22px 0 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+p { margin: 0 0 14px; }
+a { color: var(--accent-bright); text-decoration: none; border-bottom: 1px dotted var(--accent-bright); }
+a:hover { color: var(--gold); border-bottom-color: var(--gold); }
+ul, ol { margin: 0 0 14px; padding-left: 24px; }
+li { margin-bottom: 4px; }
+strong { color: var(--text); font-weight: 600; }
+em { font-style: italic; }
+:not(pre) > code { font-family: var(--font-mono); font-size: 0.86em; background: var(--surface-recessed); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--accent-bright); word-break: break-word; }
+@media (prefers-color-scheme: dark) { :not(pre) > code { color: var(--gold-bright); } }
+pre[class*="language-"], pre:not([class*="language-"]) { background: var(--code-bg) !important; border: 1px solid var(--code-border); border-radius: var(--radius); padding: 18px 22px !important; font-size: 12.8px !important; line-height: 1.55 !important; margin: 14px 0 18px !important; overflow-x: auto; font-family: var(--font-mono) !important; text-shadow: none !important; }
+pre[class*="language-"] code, pre:not([class*="language-"]) code { font-family: var(--font-mono) !important; font-size: inherit !important; text-shadow: none !important; background: none !important; border: none !important; padding: 0 !important; color: var(--text); }
+@media (prefers-color-scheme: dark) {
+  pre[class*="language-"] code { color: #e2ecf5; }
+  .token.comment, .token.prolog, .token.doctype, .token.cdata { color: #8aa0bc; }
+  .token.punctuation { color: #9ab1c8; }
+  .token.property, .token.tag, .token.boolean, .token.number, .token.constant, .token.symbol, .token.deleted { color: #d4a73a; }
+  .token.selector, .token.attr-name, .token.string, .token.char, .token.builtin, .token.inserted { color: #7fb288; }
+  .token.operator, .token.entity, .token.url, .language-css .token.string, .style .token.string { color: #9ab1c8; }
+  .token.atrule, .token.attr-value, .token.keyword { color: #6fa8d8; }
+  .token.function, .token.class-name { color: #d4a73a; }
+  .token.regex, .token.important, .token.variable { color: #d97373; }
+}
+.code-caption { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); margin: 18px 0 -8px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.code-caption .code-tag { background: var(--accent-dim); color: var(--accent); padding: 2px 8px; border-radius: 3px; font-size: 10px; }
+@media (prefers-color-scheme: dark) { .code-caption .code-tag { color: var(--accent-bright); } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px; }
+.mermaid-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 22px 16px; margin: 22px 0; }
+.mermaid-block-caption { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-dim); margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; }
+.mermaid-block-caption .caption-tag { background: var(--accent-dim); color: var(--accent); padding: 2px 8px; border-radius: 3px; font-size: 10px; }
+@media (prefers-color-scheme: dark) { .mermaid-block-caption .caption-tag { color: var(--accent-bright); } }
+.mermaid { text-align: center; overflow-x: auto; }
+.mermaid svg { max-width: 100%; height: auto; }
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin: 18px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13.2px; }
+thead th { background: var(--surface-recessed); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+tbody tr:nth-child(even) { background: rgba(0, 0, 0, 0.015); }
+@media (prefers-color-scheme: dark) { tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); } }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.row-allow td { background: var(--good-dim); }
+tbody tr.row-block td { background: var(--warn-dim); }
+tbody tr.row-total td { background: var(--gold-dim); font-weight: 600; border-top: 2px solid var(--gold); }
+.cell-mono { font-family: var(--font-mono); font-size: 12.5px; }
+.cell-num { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+td code, th code { font-size: 0.86em; background: var(--surface-recessed); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); color: var(--accent-bright); }
+@media (prefers-color-scheme: dark) { td code, th code { color: var(--gold-bright); } }
+.badge { display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.08em; }
+.badge.allow { background: var(--good-dim); color: var(--good); }
+.badge.block { background: var(--warn-dim); color: var(--warn); }
+.badge.new { background: var(--gold-dim); color: var(--gold); }
+.badge.json { background: var(--accent-dim); color: var(--accent-bright); }
+.badge.html { background: var(--gold-dim); color: var(--gold); }
+.badge.bold { background: var(--good-dim); color: var(--good); font-weight: 700; }
+.cell-good { color: var(--good); font-weight: 600; }
+.cell-bad { color: var(--bad); font-weight: 600; }
+.cell-bold { font-weight: 700; color: var(--good); background: var(--good-dim) !important; }
+.callout { border-left: 3px solid var(--gold); background: var(--gold-dim); padding: 14px 18px; border-radius: 0 var(--radius) var(--radius) 0; margin: 18px 0; font-size: 13.8px; }
+.callout-label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.15em; color: var(--gold); margin-bottom: 4px; }
+.callout.warn { border-left-color: var(--warn); background: var(--warn-dim); }
+.callout.warn .callout-label { color: var(--warn); }
+.callout.good { border-left-color: var(--good); background: var(--good-dim); }
+.callout.good .callout-label { color: var(--good); }
+.callout.bad { border-left-color: var(--bad); background: var(--bad-dim); }
+.callout.bad .callout-label { color: var(--bad); }
+.callout p:last-child { margin-bottom: 0; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-dim); font-family: var(--font-mono); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } html { scroll-behavior: auto; } }
+.sidebar ol li.no-count { counter-increment: none; }
+.sidebar ol li.no-count a::before { content: '§2.5 · '; color: var(--gold); font-family: var(--font-mono); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ═══ SIDEBAR TOC ═══ -->
+<aside class="sidebar" aria-label="Table of contents">
+  <div class="sidebar-label">Code walkthrough</div>
+  <ol>
+    <li><a href="#1-design-goal-and-isolation-guarantee">Design goal · isolation</a></li>
+    <li><a href="#2-system-architecture">System architecture</a></li>
+    <li class="no-count"><a href="#25-path-c-why-rules-live-in-their-own-files">Path C migration</a></li>
+    <li><a href="#3-path-ownership-matrix">Path ownership matrix</a></li>
+    <li><a href="#4-request-flow-scenarios-isolation-proofs">Request flow scenarios</a>
+      <details><summary>sub-scenarios</summary>
+        <ul>
+          <li><a href="#41-maintenance-off-baseline">4.1 OFF baseline</a></li>
+          <li><a href="#42-exchange-only-on--point-service-stays-operational">4.2 Exchange-only ON</a></li>
+          <li><a href="#43-point-only-on--exchange-service-stays-operational">4.3 Point-only ON</a></li>
+          <li><a href="#44-combined-on-legacy--both-brands">4.4 Combined ON</a></li>
+        </ul>
+      </details>
+    </li>
+    <li><a href="#5-operational-risks">Operational risks</a>
+      <details><summary>sub-sections</summary>
+        <ul>
+          <li><a href="#51-path-coverage-risks-today">5.1 Path coverage risks today</a></li>
+          <li><a href="#52-path-expansion-risks">5.2 Path expansion risks</a></li>
+          <li><a href="#53-operational-hazards-during-toggle">5.3 Operational hazards during toggle</a></li>
+          <li><a href="#54-lambda-runtime-risks">5.4 Lambda runtime risks</a></li>
+          <li><a href="#55-out-of-scope-follow-ups">5.5 Out-of-scope follow-ups</a></li>
+        </ul>
+      </details>
+    </li>
+    <li><a href="#6-glossary">Glossary</a></li>
+    <li><a href="#7-file-index">File index</a></li>
+  </ol>
+</aside>
+
+<main class="main">
+
+<!-- ═══ HERO ═══ -->
+<div class="hero">
+  <div class="hero-meta">
+    <span>verup</span>
+    <span>sprint-23</span>
+    <span>maintenance-split</span>
+    <span>Phase 2 — Independent per-brand toggle</span>
+    <span>Last updated 2026-05-14</span>
+  </div>
+  <h1>Maintenance-Split — Code Walkthrough</h1>
+  <p class="tagline">Line-by-line walkthrough of the per-brand independent maintenance toggle for <code>bs-exchange-infra</code> WebACL <code>point-cloudfront-customer</code>. Two brand-scoped WAF rule groups, a smart-merge Lambda accepting three event shapes, brand-split static maintenance pages, and the CloudFront cache behaviors that route them.</p>
+  <p class="tagline"><strong>Isolation goal</strong>: Maintenance on one brand (Exchange OR Point) MUST NOT block the other brand's runtime endpoints — <code>/api/*</code>, <code>/app/exchange/v1/*</code>, <code>/app/v1/*</code>, <code>/farm-game/*</code>, <code>/point/*</code> / <code>/exchange/*</code> frontend assets.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-label">Exchange RG</div><div class="hero-stat-value">5 <small>rules / 14 WCU</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Point RG</div><div class="hero-stat-value">7 <small>rules / 23 WCU</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Event shapes</div><div class="hero-stat-value">3 <small>A · B · C</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Unit tests</div><div class="hero-stat-value">22 <small>pure-Python</small></div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Mermaid diagrams</div><div class="hero-stat-value">5</div></div>
+    <div class="hero-stat"><div class="hero-stat-label">Sections</div><div class="hero-stat-value">8</div></div>
+  </div>
+</div>
+
+<!-- ═══ §1 DESIGN GOAL ═══ -->
+<section id="1-design-goal-and-isolation-guarantee">
+  <div class="section-label">§1 · Design goal</div>
+  <h2>Design goal and isolation guarantee</h2>
+  <p>The unified maintenance rule group was replaced by two brand-scoped rule groups so that operators can put one brand into maintenance while the other continues serving traffic. The implementation must guarantee the following behavior matrix:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Lambda state</th>
+          <th><code>/exchange/*</code><br><small>(BACKSEAT UI)</small></th>
+          <th><code>/api/*</code><br><small>(Exchange crypto API)</small></th>
+          <th><code>/app/exchange/v1/*</code><br><small>(BACKSEAT BFF)</small></th>
+          <th><code>/point/*</code><br><small>(Ponta UI)</small></th>
+          <th><code>/farm-game/*</code><br><small>(Ponta game)</small></th>
+          <th><code>/app/v1/*</code><br><small>(Invest UI BFF)</small></th>
+          <th><code>/app/v1/game/home/*</code><br><small>(Ponta landing)</small></th>
+          <th><code>/admin/*</code><br><small>(shared)</small></th>
+          <th><code>/exchange/maintenance/</code></th>
+          <th><code>/point/maintenance/</code></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>OFF</strong> (both detached)</td>
+          <td><span class="badge allow">200</span></td><td><span class="badge allow">200</span></td><td><span class="badge allow">200</span></td>
+          <td><span class="badge allow">200</span></td><td><span class="badge allow">200</span></td><td><span class="badge allow">200</span></td>
+          <td><span class="badge allow">200</span></td><td><span class="badge allow">200</span></td>
+          <td><span class="badge allow">200 (S3)</span></td><td><span class="badge allow">200 (S3)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Exchange ON</strong>, Point OFF</td>
+          <td><span class="badge block">503 HTML</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td class="cell-bold">200</td>
+          <td class="cell-bold">200</td>
+          <td class="cell-bold">200</td>
+          <td class="cell-bold">200</td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge allow">200 (allow)</span></td>
+          <td><span class="badge allow">200 (no match)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Point ON</strong>, Exchange OFF</td>
+          <td class="cell-bold">200</td>
+          <td class="cell-bold">200</td>
+          <td class="cell-bold">200</td>
+          <td><span class="badge block">503 HTML</span></td>
+          <td><span class="badge block">503 HTML</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge block">503 HTML</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge allow">200 (no match)</span></td>
+          <td><span class="badge allow">200 (allow)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Combined ON</strong> (both)</td>
+          <td><span class="badge block">503 HTML exch</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge block">503 HTML pt</span></td>
+          <td><span class="badge block">503 HTML pt</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge block">503 HTML pt</span></td>
+          <td><span class="badge json">503 JSON</span></td>
+          <td><span class="badge allow">200</span></td>
+          <td><span class="badge allow">200</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout"><div class="callout-label">Load-bearing cells</div><p>The highlighted cells (Point columns under "Exchange ON" and Exchange columns under "Point ON") are the load-bearing isolation guarantees. They are what makes the per-brand toggle meaningfully different from the legacy "both brands at once" toggle.</p></div>
+
+  <p>Two important non-goals:</p>
+  <ol>
+    <li><strong><code>/admin/*</code> is shared</strong> — 133 admin endpoints span both brands; splitting them is out of scope. Either brand's maintenance blocks <code>/admin/*</code> from non-allowlisted IPs, with operator-IP bypass via the <code>maintenance_ips</code> set.</li>
+    <li><strong>Backend (<code>bs-integration-server</code>, Aurora, Redis) is shared</strong> — the toggle is a WAF/frontend control. A backend incident still affects both brands.</li>
+  </ol>
+</section>
+
+<!-- ═══ §2 SYSTEM ARCHITECTURE ═══ -->
+<section id="2-system-architecture">
+  <div class="section-label">§2 · System architecture</div>
+  <h2>System architecture</h2>
+
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Phase 2 runtime topology</span><span class="caption-tag">Mermaid · flowchart</span></div>
+<pre class="mermaid">
+flowchart LR
+    Cron[EventBridge cron] -->|Shape A: maintenance start/end| Lambda
+    Console[AWS Console aws lambda invoke] -->|Shape A/B/C| Lambda
+    Lambda[Lambda: maintenance<br/>app.py + state.py + utils.py]
+    Lambda -->|read state via get_web_acl| WebACL
+    Lambda -->|insert/remove rule references<br/>retry on optimistic-lock| WebACL
+
+    WebACL[WebACL point-cloudfront-customer<br/>anchor rule country_restrict at P0]
+    WebACL -.->|attached when exchange ON| RGExch[Rule group<br/>maintenance-exchange-rulegroup<br/>capacity 60, 5 rules]
+    WebACL -.->|attached when point ON| RGPoint[Rule group<br/>maintenance-point-rulegroup<br/>capacity 80, 7 rules]
+
+    CF[CloudFront distribution<br/>point-cloudfront-customer] -->|every viewer request| WebACL
+    User[End-user browser] -->|HTTPS| CF
+    CF -->|cache behavior /exchange/maintenance/*| S3M[S3 maintenance bucket<br/>exchange/maintenance/index.html<br/>point/maintenance/index.html]
+    CF -->|cache behavior /point/maintenance/*| S3M
+    CF -->|default + /exchange/* + /farm-game/* + /api/* + /app/* + /websocket| Origins[Other origins<br/>frontend buckets + ALB]
+
+    Lambda -->|publish event JSON| SNS[SNS topic alert-lambda-infra]
+
+    classDef new fill:#e1f5e1,stroke:#2e7d32
+    classDef changed fill:#fff3cd,stroke:#856404
+    class RGExch,RGPoint,Lambda new
+    class WebACL,CF changed
+</pre>
+  </div>
+
+  <p><strong>Legend</strong>: green = added/rewritten by this PR, yellow = modified by this PR.</p>
+  <p>The WebACL never references either rule group at the Terraform layer — <code>acl.tf</code> is untouched. The Lambda inserts and removes the references at runtime, immediately after a sentinel rule named <code>country_restrict</code> (the anchor). All other rules in the ACL keep their relative order; only <code>Priority</code> indices are re-numbered.</p>
+</section>
+
+<!-- ═══ §2.5 PATH C MIGRATION ═══ -->
+<section id="25-path-c-why-rules-live-in-their-own-files">
+  <div class="section-label">§2.5 · Path C migration</div>
+  <h2>Path C: why rules live in their own files</h2>
+
+  <h3 id="251-the-problem-priority-drift">The problem: priority drift</h3>
+  <p>Before Path C, <code>aws_wafv2_web_acl</code> in <code>acl.tf</code> managed all 12 static rules via inline <code>rule { }</code> blocks. The Lambda also wrote to the same WebACL <code>Rules</code> array at runtime to attach and detach the two maintenance rule groups. After every Lambda toggle, the next <code>terraform plan</code> detected that rule priorities and ordering differed from the state file, producing a phantom diff proposing changes to 7–10 rules. Applying that diff undid the maintenance toggle; ignoring it accumulated Terraform drift. This was the <strong>priority drift bug</strong>.</p>
+
+  <h3 id="252-the-fix">The fix: provider bump + separate rule resources</h3>
+  <p>Path C resolves the conflict with three coordinated changes:</p>
+  <ol>
+    <li><strong>Bump the AWS provider to <code>~&gt; 6.40</code></strong> — the <code>aws_wafv2_web_acl_rule</code> resource (a standalone resource per rule) was released in v6.37 (February 2026). Earlier provider versions do not have it.</li>
+    <li><strong>Move 12 static rules to 12 separate <code>aws_wafv2_web_acl_rule</code> resources</strong> — each rule becomes an independent Terraform resource inside <code>module-waf/</code>. The Lambda continues writing to the WebACL <code>Rules</code> array to attach/detach maintenance rule groups; Terraform no longer manages that array.</li>
+    <li><strong>Add <code>lifecycle { ignore_changes = [rule] }</code> to the <code>aws_wafv2_web_acl</code> resource in <code>acl.tf</code></strong> — this block is required by HashiCorp's official documentation when using <code>aws_wafv2_web_acl_rule</code> resources (see evidence below). It prevents Terraform from reclaiming ownership of the <code>Rules</code> array on every plan.</li>
+  </ol>
+
+  <div class="code-caption"><span>terraform/components/waf-customer/module-waf/acl.tf — after Path C</span><span class="code-tag">HCL</span></div>
+<pre><code class="language-hcl">resource "aws_wafv2_web_acl" "this" {
+  name  = var.web_acl_name
+  scope = "CLOUDFRONT"
+  # ... default_action, visibility_config ...
+
+  lifecycle {
+    ignore_changes = [rule]   # required when aws_wafv2_web_acl_rule resources are used
+  }
+}
+
+# Each rule is now a separate resource, e.g.:
+resource "aws_wafv2_web_acl_rule" "country_restrict" {
+  name       = "country_restrict"
+  priority   = 0
+  web_acl_id = aws_wafv2_web_acl.this.id
+  # ...
+}</code></pre>
+
+  <h3 id="253-concrete-benefits">Concrete benefits</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Benefit</th><th>Mechanism</th></tr></thead>
+      <tbody>
+        <tr><td>(a)</td><td><strong>Priority drift eliminated</strong></td><td>Terraform no longer manages the <code>Rules</code> array on the WebACL (<code>ignore_changes</code>); each rule resource manages only itself.</td></tr>
+        <tr><td>(b)</td><td><strong><code>WAFAssociatedItemException</code> on IP-set deletion fixed</strong></td><td>Each <code>aws_wafv2_web_acl_rule</code> produces an explicit dependency edge to the IP set or rule group it references; Terraform orders destroys correctly.</td></tr>
+        <tr><td>(c)</td><td><strong>Single-rule edits are genuinely single-rule operations</strong></td><td>Adding or changing one <code>aws_wafv2_web_acl_rule</code> resource does not cascade into recreating other rules, unlike inline <code>rule { }</code> blocks.</td></tr>
+        <tr><td>(d)</td><td><strong>Aligned with HashiCorp's documented direction</strong></td><td>Inline rules are soft-deprecated via issue #46947 (March 2026); the official <code>aws_wafv2_web_acl_rule</code> docs reflect this direction.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="254-apply-time-mechanism">Apply-time mechanism: resource model vs inline rules</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Stage</th><th>Approach A (inline <code>rule { }</code>)</th><th>Path C (separate <code>aws_wafv2_web_acl_rule</code>)</th></tr></thead>
+      <tbody>
+        <tr><td><code>terraform plan</code></td><td>Parent <code>aws_wafv2_web_acl</code> compares the FULL <code>Rules</code> array config vs state; any rule out of order shows in the diff (and drags phantom drift on neighbouring rules)</td><td>Each rule resource compares state vs config ONLY for its own rule (matched by <code>name</code>); the parent has <code>ignore_changes = [rule]</code> and contributes no diff</td></tr>
+        <tr><td><code>terraform apply</code></td><td>Single <code>UpdateWebACL</code> call carrying the ENTIRE <code>Rules</code> array. Editing one attribute on one rule retransmits all 12 rules and can cascade-recreate the rest (<a href="https://github.com/hashicorp/terraform-provider-aws/issues/25669">issue #25669</a>)</td><td>One <code>UpdateWebACL</code> per rule resource via the provider's <code>updateWebACLWithRetry</code> helper, which re-fetches and re-applies each resource's intent (<code>append</code>/<code>replace</code>/<code>remove</code>) per <a href="https://github.com/hashicorp/terraform-provider-aws/pull/46682">PR #46682 implementation notes</a></td></tr>
+        <tr><td>Optimistic lock</td><td>One <code>LockToken</code> for the entire batch — race window with the Lambda is larger because the payload is larger</td><td>Fresh <code>LockToken</code> is re-fetched between every per-resource retry — interoperates naturally with the Lambda's own retry (both use the same compare-and-swap pattern)</td></tr>
+        <tr><td>State tracking</td><td>Parent state stores the whole nested <code>Rules</code> array; <code>terraform state show</code> dumps everything</td><td>Each rule has its own address <code>module.for_cloudfront.aws_wafv2_web_acl_rule.&lt;name&gt;</code>; <code>terraform state list</code> enumerates rules individually</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="255-maintenance-on-apply-safe">Running <code>terraform plan/apply</code> while maintenance is ON does not touch Lambda-injected rules</h3>
+  <p>Concrete scenario (mirrored by the <code>TestBuildNewRulesPriorityStable</code> tests in <code>tests/test_app.py</code>):</p>
+  <ol>
+    <li>Lambda is invoked with <code>{"maintenance-exchange":"start","maintenance-point":"start"}</code>. Lambda calls <code>UpdateWebACL</code>; the AWS-side <code>Rules</code> array now contains 14 entries: 12 Terraform-managed rules (priorities 0, 3–7, 9–15) plus 2 Lambda-managed maintenance rules (priorities 1, 2).</li>
+    <li>An operator runs <code>terraform plan</code> (say, to update <code>allow_country_codes</code>).</li>
+    <li><strong>Parent <code>aws_wafv2_web_acl.this</code></strong>: refresh reads all 14 rules from AWS, but <code>lifecycle { ignore_changes = [rule] }</code> suppresses any diff on the <code>rule</code> field — the parent contributes <strong>0 changes</strong> to the plan.</li>
+    <li><strong>The 12 <code>aws_wafv2_web_acl_rule</code> resources</strong>: each refreshes ONLY the rule whose <code>name</code> matches the resource. The resource for <code>country_restrict</code> refreshes the <code>country_restrict</code> rule; the resource for <code>block_exepct_allow_ipv4</code> refreshes the rule with that name; etc. No resource declares a rule named <code>maintenance-exchange</code> or <code>maintenance-point</code>, so those two Lambda-injected rules are <strong>invisible</strong> to the plan.</li>
+    <li><strong><code>terraform apply</code></strong> only applies the diff shown in the plan. The 2 maintenance rules do not appear in the plan, so they are not touched.</li>
+  </ol>
+  <p>Result: Terraform operations during maintenance ON are safe — Lambda-injected rules retain their slot 1, 2 positions with the exact content the Lambda wrote. The same protection holds for races between Lambda toggles and concurrent applies: both sides retry on <code>LockToken</code> rotation via the optimistic-lock convention and converge.</p>
+  <p>This guarantee is rooted in the AWS API itself (see <a href="https://docs.aws.amazon.com/waf/latest/APIReference/API_UpdateWebACL.html">UpdateWebACL — AWS WAFv2 API Reference</a>): every <code>UpdateWebACL</code> is an atomic compare-and-swap keyed on <code>LockToken</code>. There is no notion of "rule owner" at the API layer — Path C partitions ownership in Terraform state, not in AWS.</p>
+
+  <h3 id="256-plan-still-detects-edits">Plan still detects per-rule edits — no change state is missed</h3>
+  <p>When an operator edits one rule via a PR (for example, adding a country code to <code>var.allow_country_codes</code>), Terraform computes the diff per resource:</p>
+  <ul>
+    <li>The resource <code>aws_wafv2_web_acl_rule.country_restrict</code> refreshes from AWS, compares against the new config, and reports a diff on <code>statement.not_statement.statement.geo_match_statement.country_codes</code>.</li>
+    <li>The other 11 rule resources refresh, find no diff, and contribute 0 changes.</li>
+    <li>The parent WebACL with <code>ignore_changes = [rule]</code> also contributes 0.</li>
+  </ul>
+  <p>Plan summary: <code>0 to add, 1 to change, 0 to destroy</code>. Apply emits a single <code>UpdateWebACL</code> call via the provider's retry helper, rewriting only the <code>country_restrict</code> rule — the other 11 rules and the 2 Lambda-managed maintenance rules are not touched.</p>
+  <p>Compare this to the Approach A baseline: the same edit could trigger a cascade recreation of 10+ rules because the parent treats <code>Rules</code> as a set with unstable ordering (<a href="https://github.com/hashicorp/terraform-provider-aws/issues/25669">issue #25669</a>). Path C guarantees the plan output maps 1:1 to the attribute that changed.</p>
+  <p>Other edit shapes — adding a new rule, deleting a rule, changing <code>priority</code>, toggling a <code>count</code> meta-argument, renaming, provider minor bumps — preserve the same per-resource property: Terraform tracks each rule independently, so no change state is missed.</p>
+
+  <h3 id="257-evidence-lifecycle-ignore-changes">Evidence: <code>lifecycle { ignore_changes = [rule] }</code> is mandatory</h3>
+  <p>HashiCorp Registry documentation for <strong>both</strong> involved resources uses the word <em>"must"</em>:</p>
+
+  <blockquote>
+    <p><strong><code>aws_wafv2_web_acl_rule</code></strong> (<a href="https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/wafv2_web_acl_rule">registry.terraform.io/…/wafv2_web_acl_rule</a>):<br>
+    <em>"You <strong>must</strong> add <code>lifecycle { ignore_changes = [rule] }</code> to your Web ACL resource to prevent conflicts."</em></p>
+  </blockquote>
+
+  <blockquote>
+    <p><strong><code>aws_wafv2_web_acl</code></strong> (<a href="https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/wafv2_web_acl">registry.terraform.io/…/wafv2_web_acl</a>):<br>
+    <em>"If choosing this approach, users <strong>must add</strong> <code>lifecycle { ignore_changes = [rule] }</code> to the main Web ACL resource to prevent configuration drift from external rule management."</em></p>
+  </blockquote>
+
+  <p>The architectural reason: at the AWS API level, WAFv2 rules are <em>fields</em> of the parent WebACL resource, not independent resources. When Terraform calls <code>UpdateWebACL</code> it must submit the entire current <code>Rules</code> array. Without <code>ignore_changes</code>, Terraform has an opinion about that field on every plan and would wipe all Lambda-managed rules. PR <a href="https://github.com/hashicorp/terraform-provider-aws/pull/46682">#46682</a> documents this architectural constraint in its implementation notes.</p>
+
+</section>
+
+<!-- ═══ §3 PATH OWNERSHIP MATRIX ═══ -->
+<section id="3-path-ownership-matrix">
+  <div class="section-label">§3 · Path ownership matrix</div>
+  <h2>Path ownership matrix</h2>
+  <p>Path ownership is authoritative — every URI prefix belongs to exactly one brand (with <code>/admin/*</code> and <code>/maintenance/*</code> as documented shared/legacy exceptions). The matrix drives the WAF rule layout in <code>rulegroup-maintenance-*.tf</code>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Path prefix</th><th>Brand</th><th>Owning rule group (rule priority)</th><th>Action when that brand is in maintenance</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/exchange/maintenance/*</code></td><td>EXCHANGE</td><td>exchange P1 (allow)</td><td>allow — short-circuits exchange P2 to prevent redirect loop</td><td>Static page served by S3 maintenance origin</td></tr>
+        <tr><td><code>/exchange/*</code> (non-maintenance)</td><td>EXCHANGE</td><td>exchange P2 (block)</td><td>503 → HTML redirect to <code>/exchange/maintenance/</code></td><td>BACKSEAT frontend assets</td></tr>
+        <tr><td><code>/api/*</code></td><td>EXCHANGE</td><td>exchange P3 (block)</td><td>503 → JSON <code>{"code":10005}</code></td><td>Crypto REST API (11 endpoints, HMAC-auth)</td></tr>
+        <tr><td><code>/app/exchange/v1/*</code></td><td>EXCHANGE</td><td>exchange P4 (block)</td><td>503 → JSON</td><td>BACKSEAT BFF (Exchange JWT)</td></tr>
+        <tr><td><code>/admin/*</code></td><td>SHARED</td><td>exchange P5 + point P6 (block, duplicated)</td><td>503 → JSON</td><td>133 admin endpoints; IP bypass for operators</td></tr>
+        <tr><td><code>/point/maintenance/*</code></td><td>POINT</td><td>point P1 (allow)</td><td>allow — short-circuits point P3-P7</td><td>Static page served by S3</td></tr>
+        <tr><td><code>/maintenance/*</code> (legacy fallback)</td><td>POINT</td><td>point P2 (allow)</td><td>allow — preserves pre-split bookmark behavior</td><td>Routed via legacy CloudFront behavior</td></tr>
+        <tr><td><code>/app/v1/game/home/*</code></td><td>POINT</td><td>point P3 (block)</td><td>503 → HTML redirect to <code>/point/maintenance/</code></td><td>Ponta game landing — special-case HTML</td></tr>
+        <tr><td><code>/farm-game/*</code></td><td>POINT</td><td>point P4 (block)</td><td>503 → HTML redirect to <code>/point/maintenance/</code></td><td>Ponta game frontend</td></tr>
+        <tr><td><code>/app/v1/*</code> (Invest/Operate, excl. game/home)</td><td>POINT</td><td>point P5 (block)</td><td>503 → JSON</td><td>Invest UI + Operate BFF</td></tr>
+        <tr><td><code>/</code>, <code>/doc/*</code>, <code>/point/*</code> (other than maintenance)</td><td>POINT</td><td>point P7 (block, scoped catch-all)</td><td>503 → HTML redirect to <code>/point/maintenance/</code></td><td>"Point owns the catch-all" — but EXCLUDES exchange paths</td></tr>
+        <tr><td><code>/websocket</code></td><td>SHARED (point-app deployment, no JWT)</td><td>only point P7 catch-all (no explicit rule)</td><td><strong>asymmetric</strong> — see §3.2</td><td>Used by both BACKSEAT + Ponta SPA</td></tr>
+        <tr><td>All other CloudFront cache miss paths</td><td>n/a</td><td>not in any rule group</td><td>unaffected by maintenance</td><td>Defaults to origin behavior</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="31-the-load-bearing-p7-design-choice">3.1 The load-bearing P7 design choice</h3>
+  <p>Point's P7 is a catch-all (<code>AND(NOT(maintenance_ips), NOT(STARTS_WITH /exchange/), NOT(STARTS_WITH /api/), NOT(STARTS_WITH /app/exchange/v1/))</code>). The four exclusion predicates ensure that <strong>when the point rule group is attached alone, requests to exchange-owned paths fall through the rule group without matching</strong>, then reach their normal origins via CloudFront. Without those exclusions, P7 would block <code>/exchange/*</code>, <code>/api/*</code>, and <code>/app/exchange/v1/*</code> too, breaking the bold isolation guarantees in §1's matrix.</p>
+  <p>Exchange's rule group has no equivalent catch-all — every exchange block rule names an explicit prefix. When only exchange's rule group is attached, anything outside the named prefixes (<code>/exchange/</code>, <code>/api/</code>, <code>/app/exchange/v1/</code>, <code>/admin/</code>) is not matched by any rule and therefore passes through. So exchange-only maintenance's isolation guarantee is satisfied by <em>absence</em> of catch-all, whereas point-only maintenance's isolation guarantee requires <em>explicit exclusions</em> in P7.</p>
+
+  <h3 id="32-the-websocket-asymmetric-behavior-accepted">3.2 The <code>/websocket</code> asymmetric behavior (accepted)</h3>
+  <p><code>/websocket</code> is served by the <code>point-app</code> deployment (per <code>docs/guides/api-system-architecture.en.md</code> §2: "Ingress path <code>/app</code>, <code>/websocket</code>"). It is used by both BACKSEAT (Exchange UI) and Ponta (Point UI) SPAs for real-time market data and game state. The design did not assign <code>/websocket</code> to either brand — it is effectively a shared infrastructure path.</p>
+  <p>The current implementation produces asymmetric behavior:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Maintenance state</th><th><code>/websocket</code> (non-allowlisted IP)</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>OFF</td><td><span class="badge allow">PASS THROUGH → ALB</span></td><td>No rule attached</td></tr>
+        <tr><td>Exchange-only ON</td><td><span class="badge allow">PASS THROUGH → ALB</span></td><td>No exchange rule matches <code>/websocket</code></td></tr>
+        <tr><td>Point-only ON</td><td><span class="badge block">BLOCKED by point P7</span></td><td>P7 catch-all has NO exclusion for <code>/websocket</code> (the four <code>NOT(STARTS_WITH …)</code> predicates only exclude exchange-owned UI/API/BFF paths)</td></tr>
+        <tr><td>Combined ON</td><td><span class="badge block">BLOCKED</span></td><td>Same as above</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>This asymmetry was explicitly accepted as a design choice: "point owns the catch-all". Two alternatives were considered and deferred:</p>
+  <ol>
+    <li>Add a fifth <code>NOT(STARTS_WITH /websocket)</code> predicate to P7 — would symmetrize behavior (neither brand alone blocks <code>/websocket</code>) but treats websocket as "out of any maintenance scope".</li>
+    <li>Duplicate a <code>/websocket</code> block rule in both groups (like <code>/admin/*</code>) — would symmetrize the other way (either brand blocks <code>/websocket</code>).</li>
+  </ol>
+  <p>If <code>/websocket</code> traffic becomes a recurring source of confusion in operations, revisit and pick option 1 or 2. Until then, operators should be aware that point-only maintenance will sever websocket connections.</p>
+</section>
+
+<!-- ═══ §4 REQUEST FLOW SCENARIOS ═══ -->
+<section id="4-request-flow-scenarios-isolation-proofs">
+  <div class="section-label">§4 · Request flow scenarios</div>
+  <h2>Request flow scenarios (isolation proofs)</h2>
+  <p>The four scenarios below correspond to the four rows of §1's behavior matrix. Each is illustrated as a Mermaid sequence diagram.</p>
+
+  <h3 id="41-maintenance-off-baseline">4.1 Maintenance OFF (baseline)</h3>
+  <p>Neither rule group is attached to the WebACL. The Lambda has not executed (or has executed with end-event), so the WebACL contains only the anchor rule <code>country_restrict</code> and any pre-existing static rules. CloudFront cache behaviors still route <code>/exchange/maintenance/*</code> and <code>/point/maintenance/*</code> to S3, but no maintenance block fires.</p>
+
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>OFF baseline · request passes through</span><span class="caption-tag">Mermaid · sequenceDiagram</span></div>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as Browser
+    participant CF as CloudFront
+    participant WAF as WebACL
+    participant Origin as Origin (ALB/S3)
+
+    U->>CF: GET /exchange/foo (or /api/v1/ticker, /app/v1/user, /point/foo)
+    CF->>WAF: evaluate
+    Note over WAF: No maintenance rule attached.<br/>Only country_restrict + static rules evaluate.
+    WAF-->>CF: allow
+    CF->>Origin: forward to matched origin
+    Origin-->>CF: response
+    CF-->>U: 200 (normal traffic)
+</pre>
+  </div>
+
+  <h3 id="42-exchange-only-on--point-service-stays-operational">4.2 Exchange-only ON — Point service stays operational</h3>
+  <p><code>{"maintenance-exchange": "start"}</code> invocation results in the Lambda inserting <code>maintenance-exchange-rulegroup</code> reference into the WebACL, immediately after the anchor. Point's rule group is NOT attached.</p>
+
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Exchange-only ON · Cases A-E</span><span class="caption-tag">Mermaid · sequenceDiagram</span></div>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as Browser (non-allowlisted IP)
+    participant CF as CloudFront
+    participant ACL as WebACL (exchange RG only)
+    participant RG as exchange-rulegroup
+    participant S3 as S3 maintenance bucket
+    participant ALB as ALB (point + exchange BFF)
+
+    Note over U,ALB: --- Case A: Exchange path → BLOCKED ---
+    U->>CF: GET /exchange/index.html
+    CF->>ACL: evaluate
+    ACL->>RG: dive into rule group
+    Note over RG: P1 /exchange/maintenance/ — no match<br/>P2 /exchange/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + body maintenance_html_exchange
+    ACL-->>CF: blocked
+    CF-->>U: 503 + script: location.href = "/exchange/maintenance/"
+
+    Note over U,ALB: --- Case B: Exchange API path → BLOCKED ---
+    U->>CF: GET /api/v1/ticker
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1, P2 — no match<br/>P3 /api/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + maintenance_json
+    CF-->>U: 503 + body {"code":10005}
+
+    Note over U,ALB: --- Case C: Point path → PASSES THROUGH ---
+    U->>CF: GET /point/index.html
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1 /exchange/maintenance/ — no<br/>P2 /exchange/ — no<br/>P3 /api/ — no<br/>P4 /app/exchange/v1/ — no<br/>P5 /admin/ — no<br/>NO MORE RULES (no catch-all in exchange group)
+    RG-->>ACL: no match (default action of group passes through)
+    ACL-->>CF: allow (no other ACL rule blocks)
+    CF->>ALB: forward to default origin
+    ALB-->>CF: 200 (Ponta UI asset)
+    CF-->>U: 200
+
+    Note over U,ALB: --- Case D: Point BFF path → PASSES THROUGH ---
+    U->>CF: GET /app/v1/user (Invest UI BFF, no JWT)
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1-P5 — no match. Group has no catch-all.
+    RG-->>ACL: no match
+    ACL-->>CF: allow
+    CF->>ALB: forward to /app/* origin
+    ALB-->>CF: 401 (Invest BFF rejects without JWT — its normal behavior)
+    CF-->>U: 401 (NOT 503 — service is up)
+
+    Note over U,ALB: --- Case E: Farm-game / Ponta paths → PASS THROUGH ---
+    U->>CF: GET /farm-game/foo
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: No exchange rule matches /farm-game/.
+    RG-->>ACL: no match
+    ACL-->>CF: allow
+    CF->>S3: forward to /farm-game/* origin (s3_choice_origin)
+    S3-->>CF: 200
+    CF-->>U: 200 (Ponta game frontend serves)
+</pre>
+  </div>
+
+  <div class="callout good"><div class="callout-label">Why this works</div><p>The exchange rule group's rules are <em>all</em> prefix-scoped to exchange-owned paths (<code>/exchange/</code>, <code>/api/</code>, <code>/app/exchange/v1/</code>, <code>/admin/</code>). Anything outside those prefixes generates zero matches inside the rule group, so the rule group returns no decision and the WebACL falls through to the default action (allow).</p></div>
+
+  <h3 id="43-point-only-on--exchange-service-stays-operational">4.3 Point-only ON — Exchange service stays operational</h3>
+  <p><code>{"maintenance-point": "start"}</code> invocation results in the Lambda inserting <code>maintenance-point-rulegroup</code> reference, with exchange's rule group still detached.</p>
+
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Point-only ON · Cases A-F</span><span class="caption-tag">Mermaid · sequenceDiagram</span></div>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as Browser (non-allowlisted IP)
+    participant CF as CloudFront
+    participant ACL as WebACL (point RG only)
+    participant RG as point-rulegroup
+    participant S3 as S3 (maintenance + exchange bucket)
+    participant ALB as ALB (point + exchange BFF)
+
+    Note over U,ALB: --- Case A: Point path → BLOCKED (via catch-all P7) ---
+    U->>CF: GET /point/index.html (or / or /doc/foo)
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1 /point/maintenance/ — no<br/>P2 /maintenance/ — no<br/>P3 /app/v1/game/home/ — no<br/>P4 /farm-game/ — no<br/>P5 /app/v1/ — no<br/>P6 /admin/ — no<br/>P7 catch-all (NOT IPset AND NOT /exchange/ AND NOT /api/ AND NOT /app/exchange/v1/) — MATCH
+    RG-->>ACL: block 503 + maintenance_html_point
+    CF-->>U: 503 + script: location.href = "/point/maintenance/"
+
+    Note over U,ALB: --- Case B: Farm-game path → BLOCKED ---
+    U->>CF: GET /farm-game/foo
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1, P2 — no<br/>P3 /app/v1/game/home/ — no<br/>P4 /farm-game/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + maintenance_html_point
+    CF-->>U: 503 + HTML redirect
+
+    Note over U,ALB: --- Case C: Invest UI BFF → BLOCKED ---
+    U->>CF: GET /app/v1/user
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1-P4 — no<br/>P5 /app/v1/ AND NOT(IPset) — MATCH
+    RG-->>ACL: block 503 + maintenance_json
+    CF-->>U: 503 + {"code":10005}
+
+    Note over U,ALB: --- Case D: Exchange UI → PASSES THROUGH (load-bearing) ---
+    U->>CF: GET /exchange/index.html
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1 /point/maintenance/ — no<br/>P2 /maintenance/ — no<br/>P3 /app/v1/game/home/ — no<br/>P4 /farm-game/ — no<br/>P5 /app/v1/ — no<br/>P6 /admin/ — no<br/>P7 evaluates AND statement:<br/>  NOT(IPset) = true<br/>  NOT(STARTS_WITH /exchange/) = false (string starts with /exchange/)<br/>→ AND short-circuits FALSE → no match
+    RG-->>ACL: no rule matched
+    ACL-->>CF: allow
+    CF->>S3: forward to s3_exchange_origin
+    S3-->>CF: 200 (BACKSEAT UI asset)
+    CF-->>U: 200
+
+    Note over U,ALB: --- Case E: Exchange API → PASSES THROUGH ---
+    U->>CF: GET /api/v1/ticker
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1-P6 — no<br/>P7 AND statement: NOT(IPset)=true, NOT(/exchange/)=true, NOT(/api/)=false → AND=false<br/>→ no match
+    RG-->>ACL: no match
+    ACL-->>CF: allow
+    CF->>ALB: forward to /api/* origin
+    ALB-->>CF: 200 (crypto API serves market data)
+    CF-->>U: 200
+
+    Note over U,ALB: --- Case F: Exchange BFF → PASSES THROUGH ---
+    U->>CF: GET /app/exchange/v1/user (BACKSEAT BFF)
+    CF->>ACL: evaluate
+    ACL->>RG: rule group
+    Note over RG: P1-P6 — no<br/>P7 AND: NOT(IPset)=true, NOT(/exchange/)=true, NOT(/api/)=true, NOT(/app/exchange/v1/)=false → AND=false<br/>→ no match
+    RG-->>ACL: no match
+    ACL-->>CF: allow
+    CF->>ALB: forward to /app/* origin
+    ALB-->>CF: 200 (or 401 if no JWT)
+    CF-->>U: 200/401 (NOT 503 — service is up)
+</pre>
+  </div>
+
+  <div class="callout good"><div class="callout-label">Why this works (after the P7 fix)</div><p>P7's AND statement contains four <code>NOT(...)</code> predicates. For any request that starts with <code>/exchange/</code>, <code>/api/</code>, or <code>/app/exchange/v1/</code>, exactly one of those <code>NOT()</code> predicates evaluates to false, which short-circuits the AND to false, and the rule does not fire. The request falls out of the rule group with no match, the WebACL defaults to allow, and CloudFront forwards to the normal origin.</p></div>
+
+  <div class="callout warn"><div class="callout-label">Before-fix behavior (now corrected)</div><p>The earlier implementation of P7 was just <code>NOT(IPset)</code> with no path exclusions. That meant point-only maintenance would block <code>/exchange/*</code> and <code>/api/*</code> from non-allowlisted IPs, breaking the isolation guarantee. The four <code>NOT(STARTS_WITH …)</code> predicates added in P7 fix this. See <code>CODE_WALKTHROUGH.md</code> §6 for the line-by-line code.</p></div>
+
+  <h3 id="44-combined-on-legacy--both-brands">4.4 Combined ON (legacy / both brands)</h3>
+  <p><code>{"maintenance": "start"}</code> (Shape A) or <code>{"maintenance-exchange": "start", "maintenance-point": "start"}</code> (Shape C) results in BOTH rule groups attached.</p>
+
+  <div class="mermaid-block">
+    <div class="mermaid-block-caption"><span>Combined ON · both brands blocked, maintenance pages still serve</span><span class="caption-tag">Mermaid · sequenceDiagram</span></div>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as Browser (non-allowlisted IP)
+    participant CF as CloudFront
+    participant ACL as WebACL (both RGs)
+    participant ExchRG as exchange-rulegroup
+    participant PointRG as point-rulegroup
+
+    Note over U: --- Exchange paths blocked by exchange RG ---
+    U->>CF: GET /exchange/foo
+    CF->>ACL: evaluate
+    ACL->>ExchRG: first attached RG
+    Note over ExchRG: P2 MATCH
+    ExchRG-->>ACL: block 503 + maintenance_html_exchange
+    CF-->>U: 503 + redirect to /exchange/maintenance/
+
+    Note over U: --- Point + catch-all paths blocked by point RG ---
+    U->>CF: GET /farm-game/foo (or /, /doc/*, /point/foo)
+    CF->>ACL: evaluate
+    ACL->>ExchRG: first RG (no exchange match for /farm-game/)
+    ExchRG-->>ACL: no match
+    ACL->>PointRG: second RG
+    Note over PointRG: matches some prefix or catch-all P7
+    PointRG-->>ACL: block 503 + maintenance_html_point
+    CF-->>U: 503 + redirect to /point/maintenance/
+
+    Note over U: --- Maintenance pages still load ---
+    U->>CF: GET /exchange/maintenance/index.html
+    CF->>ACL: evaluate
+    ACL->>ExchRG: rule group
+    Note over ExchRG: P1 allow MATCH
+    ExchRG-->>ACL: allow → short-circuit RG
+    Note over ACL: Point RG also evaluates<br/>P1-P7 do not match /exchange/maintenance/<br/>(P7 excludes /exchange/)
+    ACL-->>CF: allow
+    CF->>S3: forward to s3_maintenance_origin
+    S3-->>CF: 200 BACKSEAT page
+    CF-->>U: 200
+</pre>
+  </div>
+
+  <p>In the combined state, the exchange and point rule groups both attach. AWS WAF evaluates them in the order the Lambda inserts them (immediately after <code>country_restrict</code>, exchange before point by Lambda's loop order). The maintenance pages themselves still serve because the explicit allow rules (exchange P1, point P1, point P2) match first within their respective groups.</p>
+</section>
+
+<!-- ═══ §5 OPERATIONAL RISKS ═══ -->
+<section id="5-operational-risks">
+  <div class="section-label">§5 · Operational risks</div>
+  <h2>Operational risks</h2>
+  <p>Risks that affect the running maintenance feature once it is in production. The scope is intentionally narrow — implementation evidence, test results, and deployment-process gates are tracked elsewhere. This section catalogues path coverage today, paths that future development might break, operational hazards during normal toggle operations, Lambda runtime risks, and follow-up items out of scope today.</p>
+
+  <h3 id="51-path-coverage-risks-today">5.1 Path coverage risks today</h3>
+  <p>Risks tied to URI prefixes that the rule groups handle today. Each item describes the behavior an operator should expect during single-brand maintenance and the surprise factor for an unfamiliar SRE.</p>
+
+  <h4>5.1.1 <code>/websocket</code> — asymmetric isolation (LOW)</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Maintenance state</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Exchange-only ON</td><td><code>/websocket</code> continues to serve (no exchange rule matches)</td></tr>
+        <tr><td>Point-only ON</td><td><code>/websocket</code> returns 503 + HTML redirect to <code>/point/maintenance/</code> (caught by point catch-all)</td></tr>
+        <tr><td>Combined ON</td><td>Blocked</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>/websocket</code> is served by the shared <code>point-app</code> deployment and used by both Backseat and Ponta SPAs for real-time data. The point rule group's catch-all owns "everything not exchange-owned", which means a point-only maintenance window will sever websocket connections for both brands' SPAs. The expectation is that the SPAs reconnect when the brand returns. An SRE who runs <code>point-only</code> maintenance for an "operator-side issue" should know that Backseat's websocket consumers (real-time price feed) will see disconnects during the window.</p>
+  <div class="callout"><div class="callout-label">Operational guidance</div><p>If a future incident requires keeping <code>/websocket</code> up during point-only maintenance, add a fifth <code>NOT(STARTS_WITH /websocket)</code> predicate to the point catch-all (point capacity has ~57 WCU headroom — room for the extra 2 WCU cost). Otherwise document this asymmetry in the operator runbook.</p></div>
+
+  <h4>5.1.2 <code>/doc/*</code> (Swagger) — blocked during point maintenance (LOW)</h4>
+  <p><code>/doc/*</code> is routed by CloudFront to a dedicated S3 bucket (<code>s3_doc_origin</code>) hosting Swagger / OpenAPI documentation. It has no brand owner. Point-only maintenance currently blocks it via the catch-all (same mechanism as <code>/websocket</code>). Exchange-only maintenance leaves it reachable.</p>
+  <div class="callout"><div class="callout-label">Operational guidance</div><p>Documentation access during a maintenance window is not normally critical, so this asymmetric behavior is accepted. If <code>/doc/*</code> becomes load-bearing for vendor / partner integrations during a window, add <code>NOT(STARTS_WITH /doc/)</code> to the point catch-all.</p></div>
+
+  <h4>5.1.3 <code>/admin/*</code> — shared block by design (INFO)</h4>
+  <p><code>/admin/*</code> is intentionally blocked by BOTH rule groups. When EITHER brand is in maintenance, the admin panel returns 503 + JSON for non-allowlisted IPs. Office and dev IPs in the <code>maintenance_ips</code> set bypass the block and can access the admin panel during a maintenance window — this is how operations confirms backend state without re-enabling customer traffic.</p>
+  <div class="callout"><div class="callout-label">Operational guidance</div><p>Rotating the office / VPN IP without updating <code>maintenance_ips</code> will lock out admin access during maintenance. Treat <code>maintenance_ips</code> as a member of the operator runbook for any IP-rotation change request.</p></div>
+
+  <h4>5.1.4 Anchor rule dependency — <code>country_restrict</code> (LOW)</h4>
+  <p>The Lambda inserts maintenance rule references immediately AFTER a WebACL rule named <code>country_restrict</code>. If a future PR removes or renames that rule, the Lambda fails fast on the next invocation with <code>Exception: anchor rule 'country_restrict' not found in WebACL</code>. No rules are silently inserted at the wrong position; no silent corruption occurs.</p>
+  <div class="callout"><div class="callout-label">Operational guidance</div><p>Changes to <code>country_restrict</code> are a hard cross-team dependency. The WAF / Security team should be looped in before any WebACL refactor that touches priority 0.</p></div>
+
+  <h4>5.1.5 Health probes — out of scope (INFO)</h4>
+  <p>Kubernetes liveness / readiness probes hit <code>/actuator/health/liveness</code> and <code>/actuator/health/readiness</code> on port 8082 (pod-local management port), NOT via CloudFront. They are not affected by maintenance mode at any time. Public requests to <code>/healthcheck</code> via CloudFront resolve to the default frontend bucket (no health endpoint exists in that path), so they 404 regardless of maintenance state.</p>
+  <div class="callout"><div class="callout-label">Operational guidance</div><p>No maintenance impact. Liveness / readiness alarms during maintenance windows indicate a real infrastructure problem, not a side effect of the toggle.</p></div>
+
+  <h3 id="52-path-expansion-risks">5.2 Path expansion risks</h3>
+  <p>Risks that materialize when a future PR adds new endpoint prefixes without updating the maintenance rules. These are the most common cause of "we forgot to put X in maintenance" incidents.</p>
+
+  <h4>5.2.1 New top-level paths bypass maintenance entirely (MED)</h4>
+  <p>A future PR that adds a top-level path NOT under <code>/app/</code>, <code>/api/</code>, <code>/admin/</code>, <code>/exchange/</code>, <code>/point/</code>, <code>/farm-game/</code>, <code>/maintenance/</code>, <code>/doc/</code>, or <code>/websocket</code> will reach CloudFront's default behavior (the customer frontend bucket) and bypass both rule groups during exchange-only maintenance. The point catch-all still blocks it during point-only maintenance, but the exchange-only case is a silent gap.</p>
+  <p><strong>Examples that could appear in future</strong>: <code>/v2/api/*</code>, <code>/webhooks/*</code>, <code>/partner/*</code>, <code>/marketing/*</code>.</p>
+  <div class="callout warn"><div class="callout-label">Mitigation</div><ul>
+    <li>Add a CI check that scans new CloudFront cache behaviors and warns if the path is not covered by an exchange or point rule.</li>
+    <li>Add a smoke test to the maintenance runbook: pick a representative path from every CloudFront behavior and curl it under exchange-only and point-only maintenance. Any unexpected 200 from exchange-only is a coverage gap.</li>
+    <li>Document the path-ownership contract in this register: every new top-level path must be assigned to exchange or point (or explicitly classified as "shared" and added to both groups).</li>
+  </ul></div>
+
+  <h4>5.2.2 New <code>/api/v2/*</code> (or other <code>/api/</code> sub-prefix) (LOW)</h4>
+  <p>Exchange P3 blocks <code>STARTS_WITH /api/</code> — any future <code>/api/v2/*</code>, <code>/api/v3/*</code>, etc. is covered automatically. Conversely, an unintended cross-brand <code>/api/</code> endpoint (e.g., a Point-side <code>/api/v1/point/...</code>) would be wrongly blocked by exchange-only maintenance. The <code>/api/</code> namespace is contracted as exchange-only and must remain so.</p>
+  <p><strong>Mitigation</strong>: enforce the <code>/api/</code> = exchange contract in code review. If Point needs a new public API, route it under <code>/app/v1/*</code> (BFF) instead.</p>
+
+  <h4>5.2.3 New <code>/app/v1/&lt;...&gt;</code> Point sub-prefixes (LOW)</h4>
+  <p><code>STARTS_WITH /app/v1/</code> (point P5) catches everything under <code>/app/v1/*</code> except the special case <code>/app/v1/game/home/*</code> (point P3, HTML redirect for the Ponta game landing). New sub-prefixes under <code>/app/v1/</code> are automatically covered.</p>
+  <p><strong>Watch out</strong>: a future PR that adds another "landing page" style endpoint under <code>/app/v1/&lt;x&gt;/home/</code> will be JSON-503 by P5 — operators must add a P3-style HTML-redirect rule if browser users land directly on the new path.</p>
+
+  <h4>5.2.4 New <code>/app/exchange/v1/&lt;...&gt;</code> Exchange sub-prefixes (LOW)</h4>
+  <p>Exchange P4 blocks <code>STARTS_WITH /app/exchange/v1/</code> — automatically covered. The cross-domain pattern <code>/app/exchange/v1/point/&lt;...&gt;</code> (Exchange JWT reads Point data) stays in the exchange rule group by routing ownership.</p>
+
+  <h4>5.2.5 New brand or sub-brand (MED, if it happens)</h4>
+  <p>Adding a third brand (or splitting an existing brand's product line) requires:</p>
+  <ul>
+    <li>A new WAF rule group <code>maintenance-&lt;brand&gt;-rulegroup</code> with its own path block rules.</li>
+    <li>Updates to the Lambda's <code>RULE_GROUP_NAMES</code>, <code>RULE_TEMPLATE_FILES</code>, and <code>RULE_NAMES</code> dicts in <code>app.py</code>.</li>
+    <li>A new rule template JSON in <code>src/rules/maintenance-&lt;brand&gt;.json</code>.</li>
+    <li>New unit tests in <code>test_state.py</code> extending the <code>BRANDS</code> tuple.</li>
+    <li>Update to the point catch-all P7's <code>NOT(STARTS_WITH …)</code> predicates if the new brand owns paths that previously fell into the catch-all.</li>
+  </ul>
+  <p>The anchor mechanism scales without WebACL changes, but the WCU budget of the point group should be re-verified.</p>
+
+  <h4>5.2.6 Cross-domain refactor (LOW)</h4>
+  <p><code>/app/exchange/v1/point/pos/*</code> currently routes via Exchange JWT (Exchange ownership) but reads Point data. If a future refactor moves these to <code>/app/v1/exchange-pos/*</code> under Invest JWT, they would shift to Point ownership. Both rule groups must be updated at the same time as the route change.</p>
+
+  <h4>5.2.7 Spring Security WebSecurityConfig path namespace changes (MED)</h4>
+  <p>The rule groups encode assumptions about Spring's path namespaces:</p>
+  <ul>
+    <li><code>/app/exchange/v1/**</code> = Exchange JWT</li>
+    <li><code>/app/v1/**</code> (excluding <code>/operate/</code>) = Invest JWT</li>
+    <li><code>/app/v1/operate/**</code> = Operate JWT</li>
+  </ul>
+  <p>If <code>WebSecurityConfig</code> is refactored to use different prefixes (e.g., <code>/v2/auth/...</code>), the WAF rules must follow in the same PR. A mismatch between Spring auth scope and WAF block scope is a high-severity coverage gap.</p>
+  <p><strong>Mitigation</strong>: cross-link this register from <code>WebSecurityConfig.java</code> (a code comment referencing the WAF dependency).</p>
+
+  <h3 id="53-operational-hazards-during-toggle">5.3 Operational hazards during toggle</h3>
+  <p>Risks that materialize when the toggle is invoked, regardless of which paths are involved.</p>
+
+  <h4>5.3.1 Optimistic-lock contention (LOW)</h4>
+  <p>Concurrent Lambda invocations (e.g., an EventBridge cron firing while an operator manually invokes via the AWS Console) can race on the WebACL's <code>LockToken</code>. AWS returns <code>WAFOptimisticLockException</code> to the losing writer. The Lambda retries up to 3 times with backoff 1 s and 2 s (no sleep after the final attempt) — cumulative ~3 s. After 3 failures, an SNS alert fires and the operator must re-invoke manually.</p>
+  <p><strong>Detection</strong>: CloudWatch metric on Lambda retry counter; SNS alert on terminal failure.</p>
+
+  <h4>5.3.2 Operator confuses brand (MED)</h4>
+  <p>The three event shapes look similar enough that an operator can accidentally toggle the wrong brand (e.g., <code>maintenance-exchange</code> when meaning <code>maintenance-point</code>). The SNS message echoes the brand + new state immediately on every invocation, so the mistake is visible in Slack within seconds. Re-invoking with the corrected payload is idempotent and reverses the mistake.</p>
+  <div class="callout warn"><div class="callout-label">Mitigation</div><ul>
+    <li>SNS message format includes brand + state explicitly (no ambiguous wording).</li>
+    <li>The operator runbook includes a "confirm in Slack before invoking" step.</li>
+    <li>Pre-saved AWS Console test events (one per shape) so operators don't compose JSON by hand.</li>
+  </ul></div>
+
+  <h4>5.3.3 SNS notification silently dropped (LOW)</h4>
+  <p>If the SNS topic lookup fails at Lambda cold start (e.g., topic was renamed without redeploying the Lambda), the toggle still succeeds but the audit alert is silently dropped. Operators discover this only by absence of expected Slack messages.</p>
+  <p><strong>Mitigation</strong>: add a CloudWatch metric filter + alarm on the cold-start log line <code>"SNS topic ... lookup failed at cold start"</code>. Currently this is a manual log-tail audit.</p>
+
+  <h4>5.3.4 WCU capacity exhaustion (LOW)</h4>
+  <p>Each rule group has a declared capacity (60 for exchange, 80 for point). Adding rules that push the total above declared capacity forces a destroy+create of the rule group, which is BLOCKED if the group is currently attached to the WebACL (<code>WAFAssociatedItemException</code>). The terraform apply will fail loudly — not silently.</p>
+  <div class="callout"><div class="callout-label">Mitigation</div><ul>
+    <li>The operator runbook's first step verifies maintenance is OFF before any <code>terraform apply</code> on <code>waf-customer</code>.</li>
+    <li>The exchange group has ~46 WCU headroom (used 14, capacity 60). The point group has ~57 WCU headroom (used 23, capacity 80). Plenty of room for incremental rule additions.</li>
+  </ul></div>
+
+  <h4>5.3.5 Cron + manual race during scheduled maintenance window (LOW)</h4>
+  <p>If an operator manually invokes <code>{"maintenance":"end"}</code> during a scheduled cron window, the next cron tick will re-enable maintenance. This is the system working as designed — the cron is authoritative for its window. The mitigation is operator awareness, not code.</p>
+  <div class="callout"><div class="callout-label">Operational guidance</div><p>If a manual override during a cron window is needed, also disable the cron rule in EventBridge for the duration.</p></div>
+
+  <h3 id="54-lambda-runtime-risks">5.4 Lambda runtime risks</h3>
+
+  <h4>5.4.1 IAM permission drift (LOW)</h4>
+  <p>The Lambda's execution role needs <code>wafv2:GetWebACL</code>, <code>wafv2:UpdateWebACL</code>, <code>wafv2:ListRuleGroups</code>, <code>wafv2:ListWebACLs</code>, and <code>sns:Publish</code>. A least-privilege refactor that strips one of these breaks the toggle. The Lambda fails with <code>AccessDenied</code> and SNS publishes the stack trace.</p>
+  <p><strong>Detection</strong>: SNS alert on <code>AccessDenied</code>.</p>
+
+  <h4>5.4.2 AWS SDK rule-group / WebACL schema change (LOW)</h4>
+  <p><code>update_web_acl</code> rejects unknown fields. AWS occasionally adds read-only fields to the WebACL JSON response that <code>update_web_acl</code> does not accept on update (this has happened twice in history — <code>RetrofittedByFirewallManager</code> and <code>LabelNamespace</code>). The Lambda's <code>update_webacl</code> helper strips known read-only fields with <code>pop(k, None)</code>. A future AWS-side change that adds another such field will cause an <code>update_web_acl</code> rejection.</p>
+  <div class="callout"><div class="callout-label">Mitigation</div><ul>
+    <li>The strip-list in <code>src/utils.py::update_webacl</code> is the contract surface. Track AWS WAFv2 release notes.</li>
+    <li>Lambda failure surfaces via SNS — operators will see the rejection within seconds of the cron firing.</li>
+  </ul></div>
+
+  <h4>5.4.3 Pagination of WAF / SNS list APIs (LOW)</h4>
+  <p>The Lambda uses paginators for <code>list_topics</code>, <code>list_web_acls</code>, and <code>list_rule_groups</code>. Accounts with fewer than 100 of each are unaffected. Future growth (more SNS topics, more WebACLs, more rule groups) is handled transparently.</p>
+
+  <h4>5.4.4 Rule-template JSON drift (LOW)</h4>
+  <p><code>src/rules/maintenance-exchange.json</code> and <code>src/rules/maintenance-point.json</code> are loaded at runtime and the placeholder <code>__RULE_GROUP_ARN__</code> is substituted. A typo in the template (e.g., capitalized <code>Name</code> field misspelled) is not caught at deploy time — the broken rule is only revealed at the next Lambda invocation when AWS rejects the malformed Rules array.</p>
+  <div class="callout"><div class="callout-label">Mitigation</div><ul>
+    <li>Treat the rule-template files as code under review for any PR that touches them.</li>
+    <li>Consider a JSON-schema validation step at build time (currently not implemented).</li>
+  </ul></div>
+
+  <h3 id="55-out-of-scope-follow-ups">5.5 Out-of-scope follow-ups</h3>
+  <p>These are observations that do not block service operation but should be tracked for future improvements.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Theme</th><th>Observation</th><th>Suggested follow-up</th></tr></thead>
+      <tbody>
+        <tr><td>Test coverage</td><td>The Lambda's <code>_validate_event</code>, <code>_build_new_rules</code>, <code>_load_rule_template</code>, and <code>lambda_handler</code> have no direct unit tests. Only <code>state.py</code> is covered by the 22 pure-Python tests.</td><td>Add <code>test_app.py</code> with mock-based tests for the four pure-logic functions.</td></tr>
+        <tr><td>Observability</td><td>SNS cold-start init failure has no CloudWatch alarm — operators discover it only by tailing logs.</td><td>Add a CloudWatch metric filter + alarm on the cold-start log pattern.</td></tr>
+        <tr><td>Anchor dependency hint</td><td>The <code>country_restrict</code> rule in the WebACL config has no comment warning future engineers that the Lambda anchors against this rule's name.</td><td>Add a comment to the WebACL Terraform config noting the cross-component dependency.</td></tr>
+        <tr><td>Cron schedule timezone</td><td>EventBridge cron expressions use UTC; the operator runbook comments say JST. A timezone audit confirms the math but a code comment would prevent future confusion.</td><td>Add <code># UTC; JST = UTC+9</code> comment to each cron expression.</td></tr>
+        <tr><td>Brand expansion</td><td>Adding a third brand requires changes in 5 places (rule group, JSON template, Python dicts, tests, point catch-all).</td><td>If a third brand is ever proposed, refactor <code>BRANDS</code> into a registry pattern first.</td></tr>
+        <tr><td>Per-brand cron schedules</td><td>Today only Shape A cron is used (both brands at once). Per-brand crons are possible but not yet defined.</td><td>If operators need separate exchange / point maintenance windows, add per-brand EventBridge rules with Shape B payloads.</td></tr>
+        <tr><td><code>/admin/*</code> finer split</td><td>38 <code>/admin/v1/exchange/*</code> endpoints vs ~100 other <code>/admin/v1/*</code>. Today they share a single block rule duplicated in both rule groups.</td><td>If <code>/admin/*</code> blocking proves operationally painful (e.g., a brand-isolated admin window is needed), split the admin block per brand.</td></tr>
+        <tr><td>Cross-region DR</td><td>The Lambda runs in a single region (<code>us-east-1</code> for CloudFront scope). A regional outage would prevent toggling.</td><td>Out of scope today; would require deploying the Lambda and EventBridge in a secondary region with a failover mechanism.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><em>This register is reviewed when a path coverage incident occurs or when a new top-level URL prefix is added to CloudFront.</em></p>
+</section>
+
+<!-- ═══ §6 GLOSSARY ═══ -->
+<section id="6-glossary">
+  <div class="section-label">§6 · Glossary</div>
+  <h2>Glossary</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Brand</strong></td><td>One of <code>exchange</code> or <code>point</code>. The two brands share infrastructure but expose different frontends and BFFs.</td></tr>
+        <tr><td><strong>Rule group</strong></td><td>A reusable AWS WAF construct holding a set of rules. Has a fixed <code>capacity</code> (WCU budget). The rule group references in the WebACL are inserted/removed by the Lambda.</td></tr>
+        <tr><td><strong>WebACL</strong></td><td>The WAF resource attached to CloudFront. References rule groups (statically via TF or dynamically via Lambda). Here: <code>point-cloudfront-customer</code>.</td></tr>
+        <tr><td><strong>Anchor rule</strong></td><td>The static rule <code>country_restrict</code> in <code>acl.tf</code>. The Lambda uses it as a stable insertion point: maintenance rules are inserted immediately AFTER the anchor, then all priorities are renumbered.</td></tr>
+        <tr><td><strong>Smart-merge</strong></td><td>The Lambda's algorithm: read current state from WebACL → derive desired state from event → compute diff → apply only the diff. Idempotent on re-invocation.</td></tr>
+        <tr><td><strong>WCU</strong></td><td>Web ACL Capacity Unit — the cost unit AWS uses for rule engine work. Each rule group has a <code>capacity</code> budget that is <strong>immutable</strong> (changing it forces destroy+create).</td></tr>
+        <tr><td><strong>Event shape</strong></td><td>The three accepted Lambda payload formats: A (<code>{"maintenance":"start|end"}</code>), B (per-brand single key), C (both per-brand keys).</td></tr>
+        <tr><td><strong>Path ownership</strong></td><td>The authoritative mapping of URI prefix → brand. Source: <code>docs/guides/api-system-architecture.en.md</code>.</td></tr>
+        <tr><td><strong>Isolation guarantee</strong></td><td>When one brand's rule group is attached, the other brand's endpoints (<code>/api/*</code>, <code>/app/v1/*</code>, etc.) must continue serving normal traffic. Encoded by absence of catch-all in exchange + explicit path exclusions in point P7.</td></tr>
+        <tr><td><strong>maintenance_ips</strong></td><td>An AWS WAFv2 IP set referenced by every block rule so office and dev IPs bypass the maintenance block.</td></tr>
+        <tr><td><strong>maintenance_html_exchange / maintenance_html_point</strong></td><td>Custom response bodies containing JS that redirects the browser to <code>/exchange/maintenance/</code> or <code>/point/maintenance/</code>.</td></tr>
+        <tr><td><strong>maintenance_json</strong></td><td>Custom response body returning <code>{"code": 10005}</code> for API paths.</td></tr>
+        <tr><td><strong>WAFOptimisticLockException</strong></td><td>Concurrency error returned by AWS WAFv2 when the <code>LockToken</code> is stale. Lambda retries up to 3 times with 1s, 2s backoff (no sleep on attempt 3 — re-raise).</td></tr>
+        <tr><td><strong>Cache behavior</strong></td><td>A CloudFront construct mapping a URL path pattern to an origin + caching/security config. Evaluated <strong>first-match-by-order</strong>, not longest-prefix.</td></tr>
+        <tr><td><strong>Origin</strong></td><td>The backend CloudFront fetches from on cache miss (S3 bucket, ALB, custom HTTP).</td></tr>
+        <tr><td><strong>Lambda@Edge</strong></td><td>A Lambda attached to a CloudFront event (origin-request here) that can rewrite the request/response in flight. Used to convert <code>/exchange/maintenance/</code> → <code>/exchange/maintenance/index.html</code>.</td></tr>
+        <tr><td><strong>Shape A backward-compat</strong></td><td>EventBridge daily/weekly cron continues to send Shape A payloads, which apply to both brands. No cron change in this PR.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══ §7 FILE INDEX ═══ -->
+<section id="7-file-index">
+  <div class="section-label">§7 · File index</div>
+  <h2>File index</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Concern</th><th>File</th><th>Key lines / area</th></tr></thead>
+      <tbody>
+        <tr><td>Exchange rule group</td><td><code>bs-exchange-infra/terraform/components/waf-customer/module-waf/rulegroup-maintenance-exchange.tf</code></td><td>1-256 (full file; 5 rules, capacity 60)</td></tr>
+        <tr><td>Point rule group</td><td><code>bs-exchange-infra/terraform/components/waf-customer/module-waf/rulegroup-maintenance-point.tf</code></td><td>1-379 (full file; 7 rules, capacity 80; P7 path-exclusion fix at 280-372)</td></tr>
+        <tr><td>WebACL definition (anchor <code>country_restrict</code>)</td><td><code>bs-exchange-infra/terraform/components/waf-customer/module-waf/acl.tf</code></td><td>unchanged in this PR; anchor at priority 0</td></tr>
+        <tr><td>Lambda entrypoint</td><td><code>bs-exchange-infra/terraform/components/waf-maintenance-lambda/src/app.py</code></td><td>1-188</td></tr>
+        <tr><td>State machine (pure functions)</td><td>same component <code>src/state.py</code></td><td>1-86</td></tr>
+        <tr><td>AWS SDK helpers (with Phase 2 defect fixes)</td><td>same component <code>src/utils.py</code></td><td>63-81</td></tr>
+        <tr><td>Rule templates (per-brand)</td><td>same component <code>src/rules/maintenance-{exchange,point}.json</code></td><td>17 lines each</td></tr>
+        <tr><td>Event samples (Shape B + C)</td><td>same component <code>src/events/maintenance-{exchange,point}-{start,end}.json</code> + <code>maintenance-combined.json</code></td><td>3-4 lines each</td></tr>
+        <tr><td>Build pipeline</td><td>same component <code>src/scripts/build.sh</code> + <code>src/Makefile</code></td><td>build.sh L5, Makefile L14 (test target)</td></tr>
+        <tr><td>Unit tests</td><td>same component <code>src/tests/test_state.py</code></td><td>1-162 (22 tests, all pure Python)</td></tr>
+        <tr><td>CloudFront cache behaviors</td><td><code>bs-exchange-infra/terraform/components/frontend-customer/cloudfront.tf</code></td><td>141-208 (new behaviors); 72-80 (s3_maintenance_origin)</td></tr>
+        <tr><td>Lambda@Edge URL rewriter</td><td><code>bs-exchange-infra/terraform/components/frontend-customer/src/index.js</code></td><td>1-9</td></tr>
+        <tr><td>S3 static asset deployment</td><td><code>bs-exchange-infra/terraform/components/s3-maintenance/s3-objects.tf</code></td><td>33-62</td></tr>
+        <tr><td>Static asset directory (7 files)</td><td><code>bs-exchange-infra/terraform/components/s3-maintenance/static/{exchange,point}/maintenance/...</code></td><td>—</td></tr>
+        <tr><td>Phase 2 design</td><td><code>docs/sprints/sprint-23/maintenance-split/DESIGN_INDEPENDENT_TOGGLE.md</code></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div>verup · sprint-23 · maintenance-split · Phase 2 (Independent per-brand toggle)</div>
+  <div>Source: <code>CODE_WALKTHROUGH.md</code></div>
+</footer>
+
+</main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script>
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    securityLevel: 'loose',
+    fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+    themeVariables: isDark ? {
+      background: '#18242f', primaryColor: '#1d2b38', primaryTextColor: '#e2ecf5',
+      primaryBorderColor: '#6fa8d8', lineColor: '#9ab1c8', secondaryColor: '#2e4258',
+      tertiaryColor: '#1d2b38', mainBkg: '#1d2b38', secondBkg: '#2e4258', tertiaryBkg: '#18242f',
+      nodeBorder: '#6fa8d8', clusterBkg: 'rgba(111, 168, 216, 0.08)', clusterBorder: '#6fa8d8',
+      defaultLinkColor: '#9ab1c8', titleColor: '#e2ecf5', edgeLabelBackground: '#18242f',
+      actorBkg: '#1d2b38', actorBorder: '#6fa8d8', actorTextColor: '#e2ecf5', actorLineColor: '#9ab1c8',
+      signalColor: '#e2ecf5', signalTextColor: '#e2ecf5',
+      labelBoxBkgColor: '#2e4258', labelBoxBorderColor: '#6fa8d8', labelTextColor: '#e2ecf5',
+      loopTextColor: '#e2ecf5', noteBkgColor: 'rgba(212, 167, 58, 0.18)',
+      noteTextColor: '#e2ecf5', noteBorderColor: '#d4a73a',
+      activationBkgColor: '#2e4258', activationBorderColor: '#6fa8d8', sequenceNumberColor: '#1e3a5f',
+    } : {
+      background: '#ffffff', primaryColor: '#ffffff', primaryTextColor: '#1e3a5f',
+      primaryBorderColor: '#1e3a5f', lineColor: '#5a7395', secondaryColor: '#eef1f5',
+      tertiaryColor: '#ffffff', mainBkg: '#ffffff', secondBkg: '#eef1f5', tertiaryBkg: '#f4f6f8',
+      nodeBorder: '#1e3a5f', clusterBkg: 'rgba(30, 58, 95, 0.04)', clusterBorder: '#1e3a5f',
+      defaultLinkColor: '#5a7395', titleColor: '#1e3a5f', edgeLabelBackground: '#ffffff',
+      actorBkg: '#ffffff', actorBorder: '#1e3a5f', actorTextColor: '#1e3a5f', actorLineColor: '#5a7395',
+      signalColor: '#1e3a5f', signalTextColor: '#1e3a5f',
+      labelBoxBkgColor: '#eef1f5', labelBoxBorderColor: '#1e3a5f', labelTextColor: '#1e3a5f',
+      loopTextColor: '#1e3a5f', noteBkgColor: 'rgba(212, 167, 58, 0.14)',
+      noteTextColor: '#1e3a5f', noteBorderColor: '#b88a2e',
+      activationBkgColor: '#eef1f5', activationBorderColor: '#1e3a5f', sequenceNumberColor: '#ffffff',
+    },
+    flowchart: { curve: 'basis', padding: 18, nodeSpacing: 50, rankSpacing: 60 },
+    sequence: {
+      diagramMarginX: 30, diagramMarginY: 18,
+      actorMargin: 60, messageMargin: 38,
+      boxMargin: 12, noteMargin: 10,
+      mirrorActors: false, showSequenceNumbers: false
+    }
+  });
+
+  if (window.Prism) {
+    Prism.plugins.autoloader.languages_path = 'https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/';
+  }
+
+  const sections = document.querySelectorAll('section[id]');
+  const sidebarLinks = document.querySelectorAll('.sidebar ol > li > a');
+  const linkMap = new Map();
+  sidebarLinks.forEach(a => {
+    const href = a.getAttribute('href');
+    if (href && href.startsWith('#')) linkMap.set(href.slice(1), a);
+  });
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      const link = linkMap.get(entry.target.id);
+      if (!link) return;
+      if (entry.isIntersecting) {
+        sidebarLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

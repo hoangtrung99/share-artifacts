@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Point DEV Bastion — Disk Usage Report &amp; Storage Upgrade Proposal</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a23; --panel2:#1d212c; --line:#2a2f3c;
+    --txt:#e6e9ef; --muted:#9aa4b2; --accent:#4f9cff; --green:#34d399;
+    --amber:#fbbf24; --red:#f87171; --violet:#a78bfa; --teal:#2dd4bf;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+    line-height:1.6;font-size:15px}
+  .wrap{max-width:1060px;margin:0 auto;padding:32px 22px 80px}
+  h1{font-size:27px;margin:0 0 4px;letter-spacing:-.3px}
+  h2{font-size:20px;margin:38px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:16px;margin:22px 0 10px;color:var(--accent)}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 18px}
+  code,.mono{font-family:"SF Mono", "JetBrains Mono",Menlo,Consolas,monospace;font-size:13px}
+  .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:18px 0}
+  .meta div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px}
+  .meta b{display:block;color:var(--muted);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+  .meta span{font-size:14px}
+  .tldr{background:linear-gradient(135deg,#16263f,#172033);border:1px solid #2f4a72;border-radius:14px;padding:20px 22px;margin:8px 0 6px}
+  .tldr h2{border:0;margin:0 0 10px;font-size:19px;color:#cfe2ff}
+  .tldr .big{font-size:34px;font-weight:700;color:#fff;letter-spacing:-.5px}
+  .tldr .big small{font-size:15px;color:var(--muted);font-weight:400}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;margin-left:6px}
+  .pill.rec{background:rgba(52,211,153,.16);color:var(--green);border:1px solid rgba(52,211,153,.4)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;background:var(--panel)}
+  tr:hover td{background:#161a24}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace}
+  .bar{height:13px;border-radius:4px;background:var(--accent);min-width:2px}
+  .barcell{display:flex;align-items:center;gap:9px}
+  .barcell .lab{font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;font-size:12.5px;color:var(--muted);min-width:62px;text-align:right}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  .opt{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel)}
+  .opt.win{border-color:rgba(52,211,153,.5);background:linear-gradient(180deg,rgba(52,211,153,.07),var(--panel))}
+  .opt h3{margin-top:0}
+  .kv{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);padding:5px 0;font-size:13.5px}
+  .kv:last-child{border:0}
+  .kv span:last-child{font-family:"SF Mono",Menlo,monospace;color:var(--txt)}
+  .note{background:rgba(251,191,36,.08);border-left:3px solid var(--amber);padding:11px 15px;border-radius:0 8px 8px 0;margin:14px 0;font-size:13.5px}
+  .good{background:rgba(52,211,153,.08);border-left:3px solid var(--green);padding:11px 15px;border-radius:0 8px 8px 0;margin:14px 0;font-size:13.5px}
+  pre{background:#0b0d13;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.55}
+  pre .c{color:#6b7689}
+  pre .w{color:var(--amber)}
+  .tag{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:600}
+  .t-keep{background:rgba(45,212,191,.16);color:var(--teal)}
+  .t-del{background:rgba(248,113,113,.16);color:var(--red)}
+  .foot{color:var(--muted);font-size:12px;margin-top:46px;border-top:1px solid var(--line);padding-top:14px}
+  .legend{font-size:12px;color:var(--muted);margin:6px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Point DEV Bastion — Disk Usage Report &amp; Storage Upgrade Proposal</h1>
+  <p class="sub">Read-only investigation via SSM Session Manager · ap-northeast-1 · 2026-06-18</p>
+
+  <div class="meta">
+    <div><b>Instance</b><span class="mono">i-03a7a4aeec795d170</span></div>
+    <div><b>Name / OS</b><span>point-bastion · Ubuntu 20.04 · t2.medium</span></div>
+    <div><b>Account</b><span class="mono">905418018638 (point dev)</span></div>
+    <div><b>Root volume</b><span class="mono">vol-04b94f01753a85c7f</span></div>
+    <div><b>Current volume</b><span>30 GB · <b style="color:var(--amber)">gp2</b> · 100 IOPS · unencrypted</span></div>
+    <div><b>Status</b><span style="color:var(--red);font-weight:600">28 GB / 30 GB — 96% full</span></div>
+  </div>
+
+  <div class="tldr">
+    <h2>Final recommendation <span class="pill rec">RECOMMENDED</span></h2>
+    <div class="big">50 GB · gp3 <small>&nbsp;+ enable <code>TF_PLUGIN_CACHE_DIR</code> (keep providers, delete nothing)</small></div>
+    <p style="margin:12px 0 0;color:#cfe2ff">
+      Why: the 22 GB in use is just <b>61 duplicate copies</b> of only <b>8 provider versions</b>. Consolidating
+      them into a shared plugin cache keeps <b>every provider available for reuse</b> while costing only <b>~6 GB</b>
+      (each component is left with a symlink into the cache). At that point 50 GB gp3 gives ~2 years of headroom plus
+      room for DB dumps / jmeter, at only ~+1.2 USD/month over today — and is <i>cheaper per GB</i> because it moves gp2 → gp3.
+    </p>
+  </div>
+  <p class="legend">If the plugin cache is <b>not</b> adopted and the current per-component duplication is kept, the disk would have to jump straight to <b>~100 GB</b> and would still need periodic cleanup (see Option A below).</p>
+
+  <h2>1. Current disk usage</h2>
+  <p>Root filesystem <code>/dev/root</code> = 30 GB, 28 GB used (96%), 1.3 GB free. Inode usage is only 5% → the problem is purely <b>bytes</b>, not inode exhaustion.</p>
+
+  <table>
+    <thead><tr><th>Item</th><th style="width:46%">Share</th><th class="num">Size</th><th>Classification</th></tr></thead>
+    <tbody>
+      <tr><td><code>terraform/tmp/dev</code> — provider cache (61 binaries)</td>
+        <td><div class="barcell"><div class="bar" style="width:100%;background:var(--red)"></div><span class="lab">22.0 G</span></div></td>
+        <td class="num">22.0 GB</td><td><span class="tag t-keep">keep — consolidate to cache</span></td></tr>
+      <tr><td><code>/usr</code> — OS</td>
+        <td><div class="barcell"><div class="bar" style="width:13%;background:var(--violet)"></div><span class="lab">2.8 G</span></div></td>
+        <td class="num">2.8 GB</td><td>fixed</td></tr>
+      <tr><td><code>/var</code> — logs, snapd, ssm, apt</td>
+        <td><div class="barcell"><div class="bar" style="width:11%;background:var(--amber)"></div><span class="lab">2.4 G</span></div></td>
+        <td class="num">2.4 GB</td><td>~1.2 G reclaimable</td></tr>
+      <tr><td><code>/home/ssm-user</code> other (x01, jmeter, backseat, .kube)</td>
+        <td><div class="barcell"><div class="bar" style="width:4%;background:var(--teal)"></div><span class="lab">0.8 G</span></div></td>
+        <td class="num">0.8 GB</td><td>optional</td></tr>
+      <tr><td><code>/boot</code> + remainder</td>
+        <td><div class="barcell"><div class="bar" style="width:1%;background:var(--muted)"></div><span class="lab">0.2 G</span></div></td>
+        <td class="num">0.2 GB</td><td>fixed</td></tr>
+    </tbody>
+  </table>
+  <p class="legend">For comparison: the actual <code>bs-point-infra</code> repo (excluding tmp) is only <b>63 MB</b> (<code>.git</code> 16 MB). The entire 22 GB is <b>regenerable</b> data.</p>
+
+  <h2>2. Root cause</h2>
+  <div class="panel">
+    <p style="margin-top:0"><code>terraform.sh</code> sets a per-component <code>TF_DATA_DIR=$TERRAFORM_DIR/tmp/&lt;env&gt;/&lt;component&gt;</code> and <b>does not declare a shared <code>TF_PLUGIN_CACHE_DIR</code></b>.</p>
+    <p>As a result, every component (eks, vpc, redshift, frontend-customer, …) × every provider version downloads <b>its own copy of the plugin</b> (each AWS provider is 345 MB – 869 MB) into its own tmp directory. About 30+ components × multiple versions = <b>61 binaries = 22 GB</b>. Each subsequent <code>plan</code> that bumps a version adds yet another copy and nothing ever prunes them — this is why the bastion fills up <b>again and again</b>.</p>
+    <p style="margin-bottom:0">The bastion was <b>rebuilt on 2026-06-11</b> with only a 30 GB root, so the full threshold is reached very quickly.</p>
+  </div>
+
+  <h3>The 8 cached provider versions (one copy each if deduplicated)</h3>
+  <table>
+    <thead><tr><th>AWS provider version</th><th class="num">1 copy (MB)</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">4.67.0</td><td class="num">345</td><td>old</td></tr>
+      <tr><td class="mono">5.76.0</td><td class="num">606</td><td></td></tr>
+      <tr><td class="mono">5.100.0</td><td class="num">674</td><td></td></tr>
+      <tr><td class="mono">6.14.0 / 6.14.1</td><td class="num">784 / 784</td><td></td></tr>
+      <tr><td class="mono">6.44.0 / 6.45.0</td><td class="num">844 / 812</td><td></td></tr>
+      <tr><td class="mono">6.50.0</td><td class="num">869</td><td>current</td></tr>
+      <tr style="font-weight:700"><td>Deduplicated total (8 versions) + minor providers</td><td class="num">~6 GB</td><td>vs 22 GB today</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Sizing analysis — how many GB to upgrade to?</h2>
+  <p>The non-provider baseline (OS + var after log vacuum + boot + home misc) ≈ <b>6 GB</b>. Three options:</p>
+
+  <div class="grid2">
+    <div class="opt">
+      <h3>A · Keep duplication, resize only</h3>
+      <div class="kv"><span>Recommended size</span><span>~100 GB</span></div>
+      <div class="kv"><span>Providers</span><span>61+ copies, keeps growing</span></div>
+      <div class="kv"><span>Trajectory</span><span>39 comp × ~3.5 ver × ~0.7 G ≈ 95 G</span></div>
+      <div class="kv"><span>Maintenance</span><span style="color:var(--amber)">still needs periodic cleanup</span></div>
+      <div class="kv"><span>gp3 cost/month</span><span>~9.6 USD</span></div>
+      <p class="legend" style="margin-top:10px">Wasteful: paying for dozens of identical provider copies.</p>
+    </div>
+
+    <div class="opt win">
+      <h3>B · Plugin cache + resize <span class="pill rec">CHOSEN</span></h3>
+      <div class="kv"><span>Recommended size</span><span><b>50 GB · gp3</b></span></div>
+      <div class="kv"><span>Providers</span><span>all 8 versions kept, ~6 GB, <b>reusable</b></span></div>
+      <div class="kv"><span>Current content</span><span>6 (base) + 6 (cache) = 12 G → 24%</span></div>
+      <div class="kv"><span>After 2 yrs + scratch</span><span>~35 G → ~70% (comfortable)</span></div>
+      <div class="kv"><span>Maintenance</span><span style="color:var(--green)">near-zero</span></div>
+      <div class="kv"><span>gp3 cost/month</span><span>~4.8 USD (+1.2)</span></div>
+    </div>
+  </div>
+
+  <div class="opt" style="margin-top:14px">
+    <h3>C · Plugin cache only, keep 30 GB (zero-cost stopgap)</h3>
+    <div class="kv"><span>After consolidation</span><span>~12 GB / 30 GB = 40% — works today</span></div>
+    <div class="kv"><span>Drawback</span><span>little margin for large DB dumps (connect-memo workflows dump on the bastion) &amp; future growth</span></div>
+    <div class="kv"><span>Cost</span><span>0 (unchanged)</span></div>
+  </div>
+
+  <h2>4. EBS cost comparison (ap-northeast-1, indicative)</h2>
+  <table>
+    <thead><tr><th>Configuration</th><th class="num">$/GB-month</th><th class="num">Total/month</th><th>IOPS / Throughput</th></tr></thead>
+    <tbody>
+      <tr><td>30 GB gp2 (current)</td><td class="num">0.12</td><td class="num">~3.60</td><td>100 IOPS (size-based)</td></tr>
+      <tr style="background:rgba(52,211,153,.06)"><td><b>50 GB gp3 (proposed)</b></td><td class="num">0.096</td><td class="num"><b>~4.80</b></td><td><b>3000 IOPS / 125 MB-s</b> (free)</td></tr>
+      <tr><td>100 GB gp3 (Option A)</td><td class="num">0.096</td><td class="num">~9.60</td><td>3000 IOPS / 125 MB-s</td></tr>
+    </tbody>
+  </table>
+  <div class="good">Moving <b>gp2 → gp3</b> is both ~20% cheaper per GB and raises the baseline from 100 IOPS to 3000 IOPS / 125 MB-s — a good fit for a bastion (terraform init writes many small files + DB dumps). Both the resize and the type change are <b>online, with no downtime</b>.</div>
+
+  <h2>5. Implementation plan</h2>
+
+  <h3>Step 1 — Resize + convert gp2 → gp3 (admin runs; these are write operations)</h3>
+  <pre><span class="c"># Account guard first (MANDATORY)</span>
+aws sts get-caller-identity --profile &lt;write-profile&gt; --query Account --output text   <span class="c"># = 905418018638</span>
+
+<span class="c"># Modify volume: 30 -&gt; 50 GB, gp2 -&gt; gp3 (online)</span>
+aws ec2 modify-volume --region ap-northeast-1 --profile &lt;write-profile&gt; \
+  --volume-id vol-04b94f01753a85c7f --size 50 --volume-type gp3
+
+<span class="c"># Watch until state = completed</span>
+aws ec2 describe-volumes-modifications --region ap-northeast-1 --profile &lt;write-profile&gt; \
+  --volume-ids vol-04b94f01753a85c7f --query "VolumesModifications[].[ModificationState,Progress]" --output table</pre>
+  <div class="note"><code>point-operator-dev</code> is a <b>read-only</b> profile — do not use it to modify. Use a write-capable profile (assume <code>custodian-AdministratorRole</code>). The AI assistant does not run write/destructive commands itself.</div>
+
+  <h3>Step 2 — Grow the partition + filesystem on the bastion (SSM Session)</h3>
+  <pre><span class="c"># t2 = Xen → device is usually /dev/xvda (verify with lsblk)</span>
+lsblk
+sudo growpart /dev/xvda 1
+sudo resize2fs /dev/xvda1
+df -h /            <span class="c"># confirm it is now 50 GB</span></pre>
+
+  <h3>Step 3 — Enable the shared plugin cache (keep providers, prevent recurrence)</h3>
+  <pre>mkdir -p /home/ssm-user/.terraform.d/plugin-cache
+echo 'export TF_PLUGIN_CACHE_DIR=$HOME/.terraform.d/plugin-cache' &gt;&gt; /home/ssm-user/.bashrc
+source /home/ssm-user/.bashrc
+
+<span class="c"># The next init loads providers into the shared cache;</span>
+<span class="c"># each later component only creates a symlink into the cache (near-zero extra bytes).</span></pre>
+  <div class="good">Important for the "do not delete providers" requirement: the <b>plugin cache IS the reusable provider store</b>. Once the cache is enabled, even if you clean <code>tmp/dev</code> the providers remain in the cache and continue to be reused by every component — nothing is lost.</div>
+
+  <h3>Step 4 — (optional) one-time consolidation of the existing 22 GB into the cache</h3>
+  <pre><span class="c"># After TF_PLUGIN_CACHE_DIR is enabled, clean the old working dirs ONCE to</span>
+<span class="c"># reclaim the 22 GB of duplicates — providers repopulate into the shared cache on the next plan.</span>
+<span class="c"># Note: if a component still holds a saved plan (terraform plan -out=tfplan) that is not yet applied, re-plan it.</span>
+rm -rf /home/ssm-user/bs-point-infra/terraform/tmp/dev    <span class="w"># destructive — admin decides</span></pre>
+
+  <h2>6. Recommendation summary</h2>
+  <div class="panel">
+    <ol style="margin:0;padding-left:20px">
+      <li><b>Upgrade the root EBS 30 → 50 GB and convert gp2 → gp3</b> (online, ~+1.2 USD/month, with a 3000-IOPS bonus).</li>
+      <li><b>Enable <code>TF_PLUGIN_CACHE_DIR</code></b> to keep every provider in shared form (~6 GB instead of 22 GB) — exactly satisfying the "keep providers for reuse" requirement.</li>
+      <li>With the cache, 50 GB gives ~2 years of headroom plus room for DB dumps / jmeter; no periodic cleanup needed.</li>
+      <li>Avoid Option A (resize only to 100 GB) — twice the cost and still requires maintenance.</li>
+    </ol>
+  </div>
+
+  <p class="foot">
+    Data sources: <code>df</code>, <code>du</code>, <code>find</code>, <code>journalctl --disk-usage</code>, <code>snap list</code> run read-only via <code>aws ssm send-command</code> (AWS-RunShellScript) on <code>i-03a7a4aeec795d170</code>; <code>aws ec2 describe-volumes</code> for the EBS specs; the <code>TF_DATA_DIR</code> mechanism confirmed in <code>terraform/terraform.sh:153</code>. EBS prices for ap-northeast-1 are indicative — re-confirm on AWS Pricing before sign-off.
+  </p>
+
+</div>
+</body>
+</html>

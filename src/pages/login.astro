@@ -1,0 +1,70 @@
+---
+// Styled login page — served as a static asset at /login. GET requests land here (the
+// login.js function only handles POST, so GET falls through to this page).
+//
+// This is a STATIC page: it is rendered once at build time and cannot read per-request query
+// params in frontmatter. So `project`, `next`, and the `error` flag are read CLIENT-SIDE from
+// location.search and injected into the form (hidden fields) + the visible project name + the
+// error message. The form POSTs back to /login (handled by functions/login.js).
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Sign in — Artifacts" description="Password required to view this protected project.">
+  <section class="login" aria-labelledby="login-title">
+    <div class="login-card">
+      <p class="login-kicker">
+        <span class="lock-dot" aria-hidden="true">🔒</span> Protected project
+      </p>
+      <h1 id="login-title">Sign in to <span class="login-project" data-project>this project</span></h1>
+      <p class="login-lede">Enter the password to view <span class="login-project-inline" data-project>this project</span>.</p>
+
+      <p class="login-error" data-error role="alert" hidden>
+        Incorrect password. Please try again.
+      </p>
+
+      <form class="login-form" method="POST" action="/login" autocomplete="off">
+        <input type="hidden" name="project" data-field-project value="" />
+        <input type="hidden" name="next" data-field-next value="/" />
+        <label class="login-label" for="password">Password</label>
+        <input
+          class="login-input"
+          id="password"
+          name="password"
+          type="password"
+          required
+          autofocus
+          autocomplete="current-password"
+          aria-describedby="login-note"
+        />
+        <button class="btn btn-primary login-submit" type="submit">Sign in</button>
+      </form>
+
+      <p class="login-note" id="login-note">
+        Access is granted for 12 hours on this device. <a href="/">Back to gallery</a>
+      </p>
+    </div>
+  </section>
+
+  <script is:inline>
+    // Read per-request context from the URL (static page → no server-side params).
+    const params = new URLSearchParams(location.search);
+    const rawProject = params.get('project') || '';
+    const project = rawProject.trim();
+    const next = params.get('next') || (project ? '/' + project + '/' : '/');
+    const hasError = params.get('error') === '1';
+
+    if (project) {
+      for (const el of document.querySelectorAll('[data-project]')) el.textContent = project;
+      document.title = 'Sign in to ' + project + ' — Artifacts';
+    }
+    const pf = document.querySelector('[data-field-project]');
+    if (pf) pf.value = project;
+    const nf = document.querySelector('[data-field-next]');
+    // Only keep same-origin absolute paths in the hidden next field (defense in depth; the
+    // function re-sanitizes server-side too).
+    if (nf) nf.value = next.startsWith('/') && next[1] !== '/' ? next : (project ? '/' + project + '/' : '/');
+
+    const err = document.querySelector('[data-error]');
+    if (err && hasError) err.hidden = false;
+  </script>
+</Base>

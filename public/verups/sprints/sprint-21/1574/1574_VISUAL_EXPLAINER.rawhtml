@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB-1574 | EKS Secret Storage — Visual Explainer</title>
+<style>
+  :root {
+    --bg: #f8fafc;
+    --bg-card: #ffffff;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --accent-blue: #3b82f6;
+    --accent-blue-bg: #eff6ff;
+    --accent-green: #22c55e;
+    --accent-green-bg: #f0fdf4;
+    --accent-orange: #f59e0b;
+    --accent-orange-bg: #fffbeb;
+    --accent-red: #ef4444;
+    --accent-red-bg: #fef2f2;
+    --accent-purple: #8b5cf6;
+    --accent-purple-bg: #faf5ff;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.06);
+    --radius: 12px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  [data-theme="dark"] {
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --accent-blue-bg: #1e3a5f;
+    --accent-green-bg: #14532d;
+    --accent-orange-bg: #451a03;
+    --accent-red-bg: #450a0a;
+    --accent-purple-bg: #2e1065;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 3rem 0 2rem;
+    position: relative;
+  }
+  .header .ticket {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    color: #fff;
+    padding: 0.3rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin-bottom: 1rem;
+  }
+  .header h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.5rem;
+  }
+  .header .subtitle {
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    max-width: 650px;
+    margin: 0 auto;
+  }
+
+  /* Theme toggle */
+  .theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 100;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    box-shadow: var(--shadow);
+    transition: all 0.2s;
+  }
+  .theme-toggle:hover { transform: scale(1.1); }
+
+  /* Section */
+  .section {
+    margin-bottom: 2.5rem;
+  }
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+  .section-label.blue { color: var(--accent-blue); }
+  .section-label.green { color: var(--accent-green); }
+  .section-label.orange { color: var(--accent-orange); }
+  .section-label.red { color: var(--accent-red); }
+  .section-label.purple { color: var(--accent-purple); }
+
+  .section h2 {
+    font-size: 1.55rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.25rem;
+    transition: box-shadow 0.2s;
+  }
+  .card:hover { box-shadow: var(--shadow-lg); }
+
+  .card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* Flow diagrams */
+  .flow-diagram {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+  }
+
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .flow-row:last-child { margin-bottom: 0; }
+
+  .flow-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .flow-box.aws { background: var(--accent-orange-bg); border-color: var(--accent-orange); color: var(--accent-orange); }
+  .flow-box.k8s { background: var(--accent-blue-bg); border-color: var(--accent-blue); color: var(--accent-blue); }
+  .flow-box.pod { background: var(--accent-green-bg); border-color: var(--accent-green); color: var(--accent-green); }
+  .flow-box.danger { background: var(--accent-red-bg); border-color: var(--accent-red); color: var(--accent-red); }
+  .flow-box.neutral { background: var(--accent-purple-bg); border-color: var(--accent-purple); color: var(--accent-purple); }
+
+  .flow-arrow {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .flow-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-left: 0.25rem;
+  }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 2.5rem;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0.9rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent-blue), var(--accent-green));
+  }
+  .timeline-step {
+    position: relative;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .timeline-step:last-child { margin-bottom: 0; }
+  .timeline-dot {
+    position: absolute;
+    left: -2.1rem;
+    top: 0.15rem;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #fff;
+    z-index: 1;
+  }
+  .timeline-dot.blue { background: var(--accent-blue); }
+  .timeline-dot.green { background: var(--accent-green); }
+  .timeline-dot.orange { background: var(--accent-orange); }
+  .timeline-dot.purple { background: var(--accent-purple); }
+
+  .timeline-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+  }
+  .timeline-desc {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+  }
+  .timeline-detail {
+    margin-top: 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    color: var(--text-muted);
+    overflow-x: auto;
+  }
+
+  /* Comparison table */
+  .comp-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .comp-table thead { background: var(--accent-blue); color: #fff; }
+  .comp-table th {
+    padding: 0.75rem 0.9rem;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.3px;
+  }
+  .comp-table td {
+    padding: 0.65rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .comp-table tbody tr { background: var(--bg-card); transition: background 0.15s; }
+  .comp-table tbody tr:hover { background: var(--accent-blue-bg); }
+  .comp-table tbody tr:last-child td { border-bottom: none; }
+  .comp-table .winner { background: var(--accent-green-bg) !important; }
+
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .badge.yes { background: #dcfce7; color: #166534; }
+  .badge.no { background: #fee2e2; color: #991b1b; }
+  .badge.partial { background: #fef3c7; color: #92400e; }
+  [data-theme="dark"] .badge.yes { background: #14532d; color: #86efac; }
+  [data-theme="dark"] .badge.no { background: #450a0a; color: #fca5a5; }
+  [data-theme="dark"] .badge.partial { background: #451a03; color: #fcd34d; }
+
+  /* Security items */
+  .security-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .sec-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.2rem;
+    border-left: 4px solid var(--accent-green);
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .sec-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .sec-item .sec-icon {
+    font-size: 1.4rem;
+    margin-bottom: 0.5rem;
+  }
+  .sec-item h4 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+  }
+  .sec-item p {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  /* File tree */
+  .file-tree {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 2;
+  }
+  .file-tree .dir { color: var(--accent-blue); font-weight: 600; }
+  .file-tree .file { color: var(--text); }
+  .file-tree .desc { color: var(--text-muted); font-family: var(--font); font-size: 0.78rem; }
+  .file-tree .new { color: var(--accent-green); }
+  .file-tree .mod { color: var(--accent-orange); }
+  .file-indent { padding-left: 1.5rem; }
+
+  /* Animated pulse on key elements */
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.3); }
+    70% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+    100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+  }
+  .pulse { animation: pulse-ring 2s ease-out infinite; }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-in {
+    animation: slide-in 0.5s ease-out forwards;
+    opacity: 0;
+  }
+  .delay-1 { animation-delay: 0.1s; }
+  .delay-2 { animation-delay: 0.2s; }
+  .delay-3 { animation-delay: 0.3s; }
+  .delay-4 { animation-delay: 0.4s; }
+  .delay-5 { animation-delay: 0.5s; }
+
+  /* Callout */
+  .callout {
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    font-size: 0.88rem;
+    margin: 1rem 0;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  .callout.info { background: var(--accent-blue-bg); border-left: 3px solid var(--accent-blue); }
+  .callout.warn { background: var(--accent-orange-bg); border-left: 3px solid var(--accent-orange); }
+  .callout.success { background: var(--accent-green-bg); border-left: 3px solid var(--accent-green); }
+  .callout .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* Separator */
+  .sep {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 2rem 0;
+  }
+
+  /* Before/After banner */
+  .ba-label {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    margin-bottom: 0.75rem;
+  }
+  .ba-label.before { background: var(--accent-red-bg); color: var(--accent-red); }
+  .ba-label.after { background: var(--accent-green-bg); color: var(--accent-green); }
+
+  /* SVG animation */
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -20; }
+  }
+  .animated-line {
+    stroke-dasharray: 8 4;
+    animation: dash-flow 1s linear infinite;
+  }
+
+  /* TOC */
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2.5rem;
+    box-shadow: var(--shadow);
+  }
+  .toc h3 { font-size: 0.9rem; margin-bottom: 0.75rem; color: var(--text-muted); }
+  .toc ol { padding-left: 1.25rem; }
+  .toc li { margin-bottom: 0.3rem; font-size: 0.88rem; }
+  .toc a { color: var(--accent-blue); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .highlight-box {
+    background: linear-gradient(135deg, var(--accent-green-bg), var(--accent-blue-bg));
+    border: 2px solid var(--accent-green);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    text-align: center;
+    margin: 1.5rem 0;
+  }
+  .highlight-box .big-text {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--accent-green);
+  }
+  .highlight-box .sub-text {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode" aria-label="Toggle theme">
+  <span id="theme-icon">&#9790;</span>
+</button>
+
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header animate-in">
+    <div class="ticket">BB-1574 | CyberZeal Item #1</div>
+    <h1>EKS Secret Storage with CSI Driver</h1>
+    <p class="subtitle">
+      Eliminate Kubernetes Secrets from etcd entirely. AWS Secrets Manager mounts directly into pods via CSI Driver; an init container converts JSON to environment variables.
+    </p>
+  </div>
+
+  <!-- TOC -->
+  <nav class="toc animate-in delay-1">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#problem">Problem Statement</a></li>
+      <li><a href="#architecture">Architecture: Before vs After</a></li>
+      <li><a href="#timeline">Pod Startup Sequence</a></li>
+      <li><a href="#comparison">Before vs After Comparison</a></li>
+      <li><a href="#security">Security Improvements</a></li>
+      <li><a href="#files">File Changes Overview</a></li>
+    </ol>
+  </nav>
+
+  <!-- ===================== 1. PROBLEM ===================== -->
+  <div class="section animate-in delay-2" id="problem">
+    <div class="section-label red">01 &mdash; Problem</div>
+    <h2>CyberZeal Audit Finding</h2>
+
+    <div class="card">
+      <div style="display:flex; gap:1rem; align-items:flex-start; flex-wrap:wrap;">
+        <div style="flex:1; min-width:250px;">
+          <h3>Finding: EKS Secret Storage</h3>
+          <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">
+            CyberZeal audit checked whether the EKS cluster uses <strong>Secrets Store CSI Driver</strong> to manage secrets through AWS Secrets Manager.
+          </p>
+          <table style="font-size:0.85rem; width:100%; border-collapse:collapse;">
+            <tr><td style="padding:0.3rem 0; color:var(--text-muted); width:130px;">Audit Item</td><td style="font-weight:600;">#1 &mdash; EKS Secret Storage</td></tr>
+            <tr><td style="padding:0.3rem 0; color:var(--text-muted);">Severity</td><td><span class="badge partial">LOW</span></td></tr>
+            <tr><td style="padding:0.3rem 0; color:var(--text-muted);">Result</td><td><span class="badge no">FAIL</span></td></tr>
+            <tr><td style="padding:0.3rem 0; color:var(--text-muted);">Cluster</td><td style="font-family:var(--font-mono); font-size:0.82rem;">point (EKS 1.30)</td></tr>
+          </table>
+        </div>
+        <div style="flex:0 0 280px; background:var(--accent-red-bg); border-radius:8px; padding:1rem;">
+          <div style="font-size:0.8rem; font-weight:700; color:var(--accent-red); margin-bottom:0.5rem;">What CyberZeal Found</div>
+          <ul style="font-size:0.82rem; color:var(--text-muted); padding-left:1rem; line-height:1.8;">
+            <li>No Secrets Store CSI Driver installed</li>
+            <li>etcd encryption: <strong>disabled</strong></li>
+            <li>Secrets managed via manual shell script</li>
+            <li>K8s Secret <code>point-secrets</code> stored in etcd as base64</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-icon">&#9888;</span>
+      <div><strong>Requirement:</strong> EKS Secrets must be managed via AWS Secrets Manager + Secrets Store CSI Driver. The script-based workflow does not satisfy CyberZeal's criteria.</div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- ===================== 2. ARCHITECTURE ===================== -->
+  <div class="section animate-in delay-3" id="architecture">
+    <div class="section-label blue">02 &mdash; Architecture</div>
+    <h2>Before vs After BB-1574</h2>
+
+    <div class="grid-2">
+      <!-- BEFORE -->
+      <div class="card" style="border-top: 3px solid var(--accent-red);">
+        <div class="ba-label before">Before BB-1574</div>
+        <div style="font-size:0.88rem; margin-bottom:1rem;">Manual script copies secrets from AWS SM into a K8s Secret object stored in etcd (unencrypted).</div>
+
+        <svg viewBox="0 0 340 360" width="100%" style="max-width:340px; display:block; margin:0 auto;">
+          <!-- AWS SM -->
+          <rect x="20" y="10" width="130" height="50" rx="8" fill="var(--accent-orange-bg)" stroke="var(--accent-orange)" stroke-width="1.5"/>
+          <text x="85" y="32" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent-orange)">AWS Secrets Manager</text>
+          <text x="85" y="47" text-anchor="middle" font-size="8" fill="var(--text-muted)">5 JSON secrets</text>
+
+          <!-- Arrow SM -> Script -->
+          <line x1="85" y1="60" x2="85" y2="90" stroke="var(--text-muted)" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+
+          <!-- Script -->
+          <rect x="20" y="90" width="130" height="50" rx="8" fill="var(--accent-purple-bg)" stroke="var(--accent-purple)" stroke-width="1.5"/>
+          <text x="85" y="112" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent-purple)">rehearsal_secrets.sh</text>
+          <text x="85" y="127" text-anchor="middle" font-size="8" fill="var(--text-muted)">manual run required</text>
+
+          <!-- Arrow Script -> K8s Secret -->
+          <line x1="85" y1="140" x2="85" y2="170" stroke="var(--text-muted)" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+          <text x="160" y="160" font-size="8" fill="var(--text-muted)">kubectl apply</text>
+
+          <!-- etcd box -->
+          <rect x="10" y="170" width="155" height="75" rx="10" fill="none" stroke="var(--accent-red)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="88" y="185" text-anchor="middle" font-size="8" font-weight="600" fill="var(--accent-red)">etcd (UNENCRYPTED)</text>
+
+          <!-- K8s Secret -->
+          <rect x="25" y="195" width="125" height="40" rx="6" fill="var(--accent-red-bg)" stroke="var(--accent-red)" stroke-width="1.5"/>
+          <text x="88" y="213" text-anchor="middle" font-size="9" font-weight="700" fill="var(--accent-red)">point-secrets</text>
+          <text x="88" y="227" text-anchor="middle" font-size="7.5" fill="var(--text-muted)">K8s Secret (base64)</text>
+
+          <!-- Arrow K8s -> Pod -->
+          <line x1="88" y1="245" x2="88" y2="280" stroke="var(--text-muted)" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+          <text x="155" y="268" font-size="8" fill="var(--text-muted)">envFrom: secretRef</text>
+
+          <!-- Pod -->
+          <rect x="25" y="280" width="125" height="45" rx="8" fill="var(--accent-blue-bg)" stroke="var(--accent-blue)" stroke-width="1.5"/>
+          <text x="88" y="300" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent-blue)">Pod</text>
+          <text x="88" y="315" text-anchor="middle" font-size="8" fill="var(--text-muted)">reads env vars</text>
+
+          <defs>
+            <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6" fill="var(--text-muted)"/>
+            </marker>
+          </defs>
+        </svg>
+
+        <div class="callout warn" style="margin-top:1rem;">
+          <span class="callout-icon">&#9888;</span>
+          <div style="font-size:0.82rem;">Must manually re-run script every time a SM value changes. Secrets sit in etcd as base64 (not encrypted).</div>
+        </div>
+      </div>
+
+      <!-- AFTER -->
+      <div class="card pulse" style="border-top: 3px solid var(--accent-green);">
+        <div class="ba-label after">After BB-1574 (Current)</div>
+        <div style="font-size:0.88rem; margin-bottom:1rem;">CSI Driver mounts SM JSON files directly. Init container generates env vars. <strong>Zero secrets in etcd.</strong></div>
+
+        <svg viewBox="0 0 340 420" width="100%" style="max-width:340px; display:block; margin:0 auto;">
+          <!-- AWS SM -->
+          <rect x="20" y="10" width="130" height="50" rx="8" fill="var(--accent-orange-bg)" stroke="var(--accent-orange)" stroke-width="1.5"/>
+          <text x="85" y="32" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent-orange)">AWS Secrets Manager</text>
+          <text x="85" y="47" text-anchor="middle" font-size="8" fill="var(--text-muted)">5 JSON secrets</text>
+
+          <!-- Arrow SM -> CSI -->
+          <path d="M85,60 L85,95" stroke="var(--accent-green)" stroke-width="2" class="animated-line" marker-end="url(#arrow-green)"/>
+          <text x="155" y="80" font-size="8" fill="var(--accent-green)" font-weight="600">IRSA auth</text>
+
+          <!-- CSI Driver -->
+          <rect x="20" y="95" width="130" height="45" rx="8" fill="var(--accent-green-bg)" stroke="var(--accent-green)" stroke-width="1.5"/>
+          <text x="85" y="115" text-anchor="middle" font-size="9.5" font-weight="700" fill="var(--accent-green)">CSI Driver + ASCP</text>
+          <text x="85" y="130" text-anchor="middle" font-size="8" fill="var(--text-muted)">automatic mount</text>
+
+          <!-- Arrow CSI -> Volume -->
+          <path d="M85,140 L85,170" stroke="var(--accent-green)" stroke-width="2" class="animated-line" marker-end="url(#arrow-green)"/>
+
+          <!-- Pod boundary -->
+          <rect x="5" y="165" width="175" height="245" rx="12" fill="none" stroke="var(--accent-blue)" stroke-width="1.5" stroke-dasharray="6 3"/>
+          <text x="92" y="182" text-anchor="middle" font-size="9" font-weight="700" fill="var(--accent-blue)">Pod</text>
+
+          <!-- Volume mount -->
+          <rect x="20" y="190" width="145" height="35" rx="6" fill="var(--accent-orange-bg)" stroke="var(--accent-orange)" stroke-width="1"/>
+          <text x="92" y="206" text-anchor="middle" font-size="8.5" font-weight="600" fill="var(--accent-orange)">/mnt/secrets-store/*.json</text>
+          <text x="92" y="219" text-anchor="middle" font-size="7" fill="var(--text-muted)">5 JSON files (read-only)</text>
+
+          <!-- Arrow Volume -> Init -->
+          <path d="M92,225 L92,245" stroke="var(--text-muted)" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+          <!-- Init container -->
+          <rect x="20" y="245" width="145" height="40" rx="6" fill="var(--accent-purple-bg)" stroke="var(--accent-purple)" stroke-width="1"/>
+          <text x="92" y="262" text-anchor="middle" font-size="8.5" font-weight="600" fill="var(--accent-purple)">Init: alpine + jq</text>
+          <text x="92" y="276" text-anchor="middle" font-size="7.5" fill="var(--text-muted)">JSON -&gt; secrets-env.sh</text>
+
+          <!-- Arrow Init -> emptyDir -->
+          <path d="M92,285 L92,300" stroke="var(--text-muted)" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+          <!-- emptyDir -->
+          <rect x="20" y="300" width="145" height="25" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="1"/>
+          <text x="92" y="316" text-anchor="middle" font-size="8" fill="var(--text-muted)" font-family="var(--font-mono)">/secrets-env/secrets-env.sh</text>
+
+          <!-- Arrow emptyDir -> Main -->
+          <path d="M92,325 L92,342" stroke="var(--text-muted)" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+          <!-- Main container -->
+          <rect x="20" y="342" width="145" height="55" rx="6" fill="var(--accent-green-bg)" stroke="var(--accent-green)" stroke-width="1.5"/>
+          <text x="92" y="360" text-anchor="middle" font-size="9" font-weight="700" fill="var(--accent-green)">Main Container</text>
+          <text x="92" y="374" text-anchor="middle" font-size="7.5" fill="var(--text-muted)">source secrets-env.sh</text>
+          <text x="92" y="387" text-anchor="middle" font-size="7.5" fill="var(--text-muted)">exec /cnb/process/web</text>
+
+          <!-- Crossed out etcd -->
+          <rect x="210" y="190" width="110" height="50" rx="8" fill="var(--bg)" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 3" opacity="0.5"/>
+          <text x="265" y="212" text-anchor="middle" font-size="9" fill="var(--text-muted)" opacity="0.5">etcd</text>
+          <text x="265" y="228" text-anchor="middle" font-size="8" fill="var(--accent-green)" font-weight="700">NO SECRETS</text>
+          <line x1="215" y1="195" x2="315" y2="235" stroke="var(--accent-green)" stroke-width="2" opacity="0.6"/>
+          <line x1="315" y1="195" x2="215" y2="235" stroke="var(--accent-green)" stroke-width="2" opacity="0.6"/>
+
+          <defs>
+            <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6" fill="var(--accent-green)"/>
+            </marker>
+          </defs>
+        </svg>
+
+        <div class="callout success" style="margin-top:1rem;">
+          <span class="callout-icon">&#10003;</span>
+          <div style="font-size:0.82rem;"><strong>Zero secrets in etcd.</strong> Adding a new SM key requires only a pod restart &mdash; no manifest changes, no script runs.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- ===================== 3. TIMELINE ===================== -->
+  <div class="section" id="timeline">
+    <div class="section-label purple">03 &mdash; Sequence</div>
+    <h2>Pod Startup Timeline</h2>
+
+    <div class="card">
+      <div class="timeline">
+        <div class="timeline-step">
+          <div class="timeline-dot blue">1</div>
+          <div class="timeline-title">Pod Scheduled</div>
+          <div class="timeline-desc">Kubernetes scheduler places the pod on a node. The CSI Driver intercepts the volume mount request for <code>secrets-store</code>.</div>
+        </div>
+
+        <div class="timeline-step">
+          <div class="timeline-dot orange">2</div>
+          <div class="timeline-title">CSI Driver Fetches Secrets via IRSA</div>
+          <div class="timeline-desc">The ASCP (AWS provider) uses the pod's <strong>ServiceAccount</strong> (<code>point-app-sa</code>) with IRSA to call <code>secretsmanager:GetSecretValue</code> for all 5 secret groups.</div>
+          <div class="timeline-detail">
+            point/base<br>
+            point/SPRING_DATA_REDIS<br>
+            point/SPRING_DATASOURCE_MASTER<br>
+            point/SPRING_DATASOURCE_HISTORICAL<br>
+            point/exc
+          </div>
+        </div>
+
+        <div class="timeline-step">
+          <div class="timeline-dot orange">3</div>
+          <div class="timeline-title">JSON Files Mounted at /mnt/secrets-store/</div>
+          <div class="timeline-desc">Each SM secret becomes a JSON file on the volume. The CSI volume is <strong>read-only</strong> and ephemeral (exists only while the pod lives).</div>
+          <div class="timeline-detail">
+            /mnt/secrets-store/point_base &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# {"ADMIN_PASSWORD":"...", ...}<br>
+            /mnt/secrets-store/point_SPRING_DATA_REDIS &nbsp;&nbsp;# {"host":"...", "port":"6379"}<br>
+            /mnt/secrets-store/point_SPRING_DATASOURCE_MASTER<br>
+            /mnt/secrets-store/point_SPRING_DATASOURCE_HISTORICAL<br>
+            /mnt/secrets-store/point_exc
+          </div>
+        </div>
+
+        <div class="timeline-step">
+          <div class="timeline-dot purple">4</div>
+          <div class="timeline-title">Init Container: Parse JSON to Shell Exports</div>
+          <div class="timeline-desc">An <code>alpine:3</code> container with <code>jq</code> reads every JSON file and writes <code>export KEY='value'</code> lines to a shared <code>emptyDir</code> volume.</div>
+          <div class="timeline-detail">
+            for f in /mnt/secrets-store/*; do<br>
+            &nbsp;&nbsp;jq -r 'to_entries[] | "export " + .key + "=" + (.value | tostring | @sh)' "$f"<br>
+            done >> /secrets-env/secrets-env.sh
+          </div>
+        </div>
+
+        <div class="timeline-step">
+          <div class="timeline-dot green">5</div>
+          <div class="timeline-title">Main Container: Source Env + Exec Java</div>
+          <div class="timeline-desc">The main container sources the env file, then <code>exec</code>s the Paketo buildpack launcher which starts the Spring Boot application. Environment variables are available as normal.</div>
+          <div class="timeline-detail">
+            . /secrets-env/secrets-env.sh<br>
+            exec /cnb/process/web &nbsp;&nbsp;# Paketo launcher -> java -jar app.jar
+          </div>
+        </div>
+
+        <div class="timeline-step">
+          <div class="timeline-dot green">&#10003;</div>
+          <div class="timeline-title">Spring Boot Reads Environment Variables</div>
+          <div class="timeline-desc">The application calls <code>System.getenv("SPRING_DATASOURCE_MASTER_URL")</code> etc. <strong>No code changes needed</strong> &mdash; the env var names are identical to the old <code>point-secrets</code> keys.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="highlight-box">
+      <div class="big-text">0 secrets in etcd</div>
+      <div class="sub-text">Secrets exist only in-memory (mounted volume + env vars) within the running pod</div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- ===================== 4. COMPARISON ===================== -->
+  <div class="section" id="comparison">
+    <div class="section-label orange">04 &mdash; Comparison</div>
+    <h2>Before vs After BB-1574</h2>
+
+    <div style="overflow-x:auto;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th style="width:30%;">Aspect</th>
+            <th style="width:35%;">Before BB-1574<br><span style="font-weight:400; font-size:0.72rem;">script-based, K8s Secret in etcd</span></th>
+            <th style="width:35%;">After BB-1574<br><span style="font-weight:400; font-size:0.72rem;">CSI whole mount + init container</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>CSI Driver</strong></td>
+            <td><span class="badge no">Not installed</span></td>
+            <td class="winner"><span class="badge yes">Installed + active</span></td>
+          </tr>
+          <tr>
+            <td><strong>Secrets in etcd</strong></td>
+            <td><span class="badge no">Yes (plaintext base64)</span></td>
+            <td class="winner"><span class="badge yes">NO</span></td>
+          </tr>
+          <tr>
+            <td><strong>CyberZeal Result</strong></td>
+            <td><span class="badge no">FAIL</span></td>
+            <td class="winner"><span class="badge yes">PASS</span></td>
+          </tr>
+          <tr>
+            <td><strong>SPC maintenance</strong><br><span style="font-size:0.78rem; color:var(--text-muted);">on SM key change</span></td>
+            <td>N/A</td>
+            <td class="winner"><span class="badge yes">No (5 entries)</span><br><span style="font-size:0.75rem; color:var(--text-muted);">whole-mount by secret name</span></td>
+          </tr>
+          <tr>
+            <td><strong>Manual script</strong></td>
+            <td><span class="badge no">Always required</span><br><span style="font-size:0.75rem; color:var(--text-muted);">rehearsal_secrets.sh</span></td>
+            <td class="winner"><span class="badge yes">Never</span><br><span style="font-size:0.75rem; color:var(--text-muted);">emergency fallback only</span></td>
+          </tr>
+          <tr>
+            <td><strong>Add new SM key</strong><br><span style="font-size:0.78rem; color:var(--text-muted);">workflow</span></td>
+            <td>Run script + kubectl apply + restart pods</td>
+            <td class="winner">Just restart pods</td>
+          </tr>
+          <tr>
+            <td><strong>Security posture</strong></td>
+            <td style="color:var(--accent-red); font-weight:600;">Weakest<br><span style="font-size:0.75rem; font-weight:400; color:var(--text-muted);">base64 in etcd, no encryption</span></td>
+            <td class="winner" style="color:var(--accent-green); font-weight:600;">Strongest<br><span style="font-size:0.75rem; font-weight:400; color:var(--text-muted);">zero secrets in etcd + KMS + IRSA</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- ===================== 5. SECURITY ===================== -->
+  <div class="section" id="security">
+    <div class="section-label green">05 &mdash; Security</div>
+    <h2>Security Improvements</h2>
+
+    <div class="security-grid">
+      <div class="sec-item">
+        <div class="sec-icon">&#128274;</div>
+        <h4>KMS Encryption for etcd</h4>
+        <p>The current implementation stores no secrets in etcd, but KMS encryption is enabled as defense-in-depth. All K8s Secret objects (including ServiceAccount tokens) are encrypted at rest with a Customer Managed Key.</p>
+      </div>
+
+      <div class="sec-item">
+        <div class="sec-icon">&#128272;</div>
+        <h4>IRSA with Least Privilege</h4>
+        <p>Pod ServiceAccount <code>point-app-sa</code> gets scoped IAM permissions: <code>secretsmanager:GetSecretValue</code> and <code>kms:Decrypt</code> only for <code>point/*</code> secrets. No cluster-wide access.</p>
+      </div>
+
+      <div class="sec-item">
+        <div class="sec-icon">&#9989;</div>
+        <h4>CSI Driver Proves SM Integration</h4>
+        <p>The Secrets Store CSI Driver is installed and actively used to mount secrets. This is exactly what CyberZeal checks for &mdash; guaranteed <strong>PASS</strong>.</p>
+      </div>
+
+      <div class="sec-item">
+        <div class="sec-icon">&#128065;</div>
+        <h4>CloudTrail Audit Logging</h4>
+        <p>Every <code>GetSecretValue</code> call from every pod startup is logged in CloudTrail. Full visibility into who accessed which secret, when, and from which pod.</p>
+      </div>
+
+      <div class="sec-item">
+        <div class="sec-icon">&#128683;</div>
+        <h4>Zero Secrets in etcd</h4>
+        <p>The <code>point-secrets</code> K8s Secret object is completely removed. No <code>envFrom: secretRef</code>, no base64-encoded values sitting in the cluster's datastore.</p>
+      </div>
+
+      <div class="sec-item">
+        <div class="sec-icon">&#128737;</div>
+        <h4>Ephemeral Secret Lifecycle</h4>
+        <p>Secrets exist only while the pod is running &mdash; as tmpfs-mounted files and in-process environment variables. When the pod terminates, secrets are gone.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- ===================== 6. FILE CHANGES ===================== -->
+  <div class="section" id="files">
+    <div class="section-label blue">06 &mdash; File Changes</div>
+    <h2>What Changed and Why</h2>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="color:var(--accent-blue);">Kubernetes Manifests</h3>
+        <div class="file-tree">
+          <div><span class="dir">k8s-manifests/point/</span></div>
+          <div class="file-indent">
+            <div><span class="dir">base/</span></div>
+            <div class="file-indent">
+              <div><span class="file mod">deployment.yaml</span> <span class="desc">&mdash; Add CSI volume, init container (secrets-init), replace envFrom with source+exec pattern</span></div>
+            </div>
+          </div>
+          <div class="file-indent">
+            <div><span class="dir">base/</span></div>
+            <div class="file-indent">
+              <div><span class="file new">secret-provider-class.yaml</span> <span class="desc">&mdash; NEW: SecretProviderClass listing 5 SM secret names (whole-mount, no jmesPath)</span></div>
+            </div>
+          </div>
+          <div class="file-indent">
+            <div><span class="dir">dev-ex/ &amp; stg-ex/</span></div>
+            <div class="file-indent">
+              <div><span class="file new">networkpolicy-allow-egress-vpc.yaml</span> <span class="desc">&mdash; NEW: Allow pod egress to VPC endpoints (SM, KMS, STS)</span></div>
+            </div>
+          </div>
+          <div class="file-indent">
+            <div><span class="dir">bin/</span></div>
+            <div class="file-indent">
+              <div><span class="file mod">k8s_apply.sh</span> <span class="desc">&mdash; Add SPC to apply order (before deployments)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="color:var(--accent-orange);">Terraform (Infrastructure)</h3>
+        <div class="file-tree">
+          <div><span class="dir">terraform/components/eks/</span></div>
+          <div class="file-indent">
+            <div><span class="file mod">main.tf</span> <span class="desc">&mdash; KMS key for etcd encryption + CSI Driver addon toggle + encryption_config block</span></div>
+            <div><span class="file mod">variables.tf</span> <span class="desc">&mdash; New variables: addon_create_secrets_csi, addon_secrets_csi_version</span></div>
+            <div><span class="file mod">terraform.tfvars</span> <span class="desc">&mdash; Enable CSI addon, set version</span></div>
+            <div><span class="file mod">point-app-irsa-role.tf</span> <span class="desc">&mdash; Add SecretsManager + KMS permissions to IRSA policy</span></div>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem; font-size:0.82rem; color:var(--text-muted);">
+          Other infrastructure files (aurora, elasticache, vpc, security_group, redshift) are part of related BB-1574 Phase 1 changes (KMS keys, network policies) but not specific to the CSI secret storage implementation.
+        </div>
+      </div>
+    </div>
+
+    <!-- Key file detail -->
+    <div class="card" style="margin-top:1.25rem;">
+      <h3>Key File: secret-provider-class.yaml</h3>
+      <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:1rem;">This is the heart of the implementation. Notice how simple it is &mdash; only 5 entries, one per SM secret group. No jmesPath mapping of individual keys.</p>
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:1rem; font-family:var(--font-mono); font-size:0.78rem; line-height:1.8; overflow-x:auto; white-space:pre;">apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: point-secrets-provider
+spec:
+  provider: aws
+  parameters:
+    objects: |
+      - objectName: "point/base"
+        objectType: "secretsmanager"
+        objectAlias: "point_base"
+      - objectName: "point/SPRING_DATA_REDIS"
+        objectType: "secretsmanager"
+        objectAlias: "point_SPRING_DATA_REDIS"
+      - objectName: "point/SPRING_DATASOURCE_MASTER"
+        objectType: "secretsmanager"
+        objectAlias: "point_SPRING_DATASOURCE_MASTER"
+      - objectName: "point/SPRING_DATASOURCE_HISTORICAL"
+        objectType: "secretsmanager"
+        objectAlias: "point_SPRING_DATASOURCE_HISTORICAL"
+      - objectName: "point/exc"
+        objectType: "secretsmanager"
+        objectAlias: "point_exc"</div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem;">
+      <h3>Key Change: deployment.yaml</h3>
+      <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:1rem;">The deployment uses two volumes, an init container, and a custom entrypoint command.</p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+        <div>
+          <div class="ba-label before">Before</div>
+          <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.75rem; font-family:var(--font-mono); font-size:0.75rem; line-height:1.7; overflow-x:auto; white-space:pre;">containers:
+  - name: service
+    image: point-image
+    <span style="color:var(--accent-red); font-weight:600;">envFrom:
+      - secretRef:
+          name: point-secrets</span>
+    ports:
+      - containerPort: 8080</div>
+        </div>
+        <div>
+          <div class="ba-label after">After BB-1574</div>
+          <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.75rem; font-family:var(--font-mono); font-size:0.75rem; line-height:1.7; overflow-x:auto; white-space:pre;"><span style="color:var(--accent-green); font-weight:600;">volumes:
+  - name: secrets-store
+    csi:
+      driver: secrets-store.csi.k8s.io
+  - name: secrets-env
+    emptyDir: {}
+initContainers:
+  - name: secrets-init
+    image: alpine:3
+    command: ["sh", "-c"]
+    args: [jq -r '... | @sh' -> env]</span>
+containers:
+  - name: service
+    image: point-image
+    <span style="color:var(--accent-green); font-weight:600;">command: ["/bin/sh", "-c"]
+    args:
+      - |
+        . /secrets-env/secrets-env.sh
+        exec /cnb/process/web</span>
+    ports:
+      - containerPort: 8080</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- FOOTER -->
+  <div style="text-align:center; color:var(--text-muted); font-size:0.82rem; padding-top:1rem;">
+    <p>BB-1574 | Visual Explainer | Generated 2026-04-06</p>
+    <p style="margin-top:0.3rem;">
+      <a href="https://coinbook.atlassian.net/browse/BB-1574" style="color:var(--accent-blue); text-decoration:none;">Jira BB-1574</a>
+      &nbsp;&middot;&nbsp;
+      <a href="https://docs.aws.amazon.com/secretsmanager/latest/userguide/integrate_eks.html" style="color:var(--accent-blue); text-decoration:none;">AWS Docs</a>
+    </p>
+  </div>
+
+</div>
+
+<script>
+function toggleTheme() {
+  const html = document.documentElement;
+  const icon = document.getElementById('theme-icon');
+  if (html.getAttribute('data-theme') === 'dark') {
+    html.removeAttribute('data-theme');
+    icon.innerHTML = '&#9790;';
+  } else {
+    html.setAttribute('data-theme', 'dark');
+    icon.innerHTML = '&#9728;';
+  }
+}
+
+// Respect system preference
+if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+  document.documentElement.setAttribute('data-theme', 'dark');
+  document.getElementById('theme-icon').innerHTML = '&#9728;';
+}
+
+// Intersection Observer for scroll animations
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.style.opacity = '1';
+      entry.target.style.transform = 'translateY(0)';
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.section, .card').forEach(el => {
+  observer.observe(el);
+});
+</script>
+
+</body>
+</html>

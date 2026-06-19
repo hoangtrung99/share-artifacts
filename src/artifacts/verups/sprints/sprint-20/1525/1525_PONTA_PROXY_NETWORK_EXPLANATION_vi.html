@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB-1525 - Giải thích đường mạng PONTA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --bg: #faf7f5;
+    --surface: #ffffff;
+    --surface2: #f6f0ec;
+    --surface-elevated: #fffaf7;
+    --border: rgba(0,0,0,.08);
+    --border-bright: rgba(0,0,0,.15);
+    --text: #2a211b;
+    --text-dim: #7d7268;
+    --accent: #b45309;
+    --accent-dim: rgba(180,83,9,.08);
+    --green: #4d7c0f;
+    --green-dim: rgba(77,124,15,.08);
+    --teal: #0f766e;
+    --teal-dim: rgba(15,118,110,.08);
+    --red: #be123c;
+    --red-dim: rgba(190,18,60,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #181311;
+      --surface: #231c19;
+      --surface2: #2e2622;
+      --surface-elevated: #332a25;
+      --border: rgba(255,255,255,.07);
+      --border-bright: rgba(255,255,255,.14);
+      --text: #eee5dc;
+      --text-dim: #b1a292;
+      --accent: #f59e0b;
+      --accent-dim: rgba(245,158,11,.12);
+      --green: #a3e635;
+      --green-dim: rgba(163,230,53,.12);
+      --teal: #5eead4;
+      --teal-dim: rgba(94,234,212,.12);
+      --red: #fb7185;
+      --red-dim: rgba(251,113,133,.12);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--font-body);
+    background:
+      radial-gradient(circle at 15% 0%, var(--accent-dim), transparent 35%),
+      radial-gradient(circle at 85% 100%, var(--green-dim), transparent 35%),
+      var(--bg);
+    color: var(--text);
+    padding: 32px;
+  }
+  .wrap { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: 190px 1fr; gap: 0 40px; }
+  .main { min-width: 0; }
+  .toc {
+    position: sticky; top: 24px; align-self: start; max-height: calc(100dvh - 48px); overflow-y: auto;
+    padding: 14px 0; grid-row: 1 / -1;
+  }
+  .toc-title {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--text-dim); padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .toc a {
+    display: block; text-decoration: none; color: var(--text-dim); font-size: 11px; padding: 5px 8px;
+    border-left: 2px solid transparent; border-radius: 6px; margin-bottom: 2px;
+  }
+  .toc a:hover, .toc a.active { color: var(--text); background: var(--surface2); border-left-color: var(--accent); }
+  h1 { font-size: 42px; letter-spacing: -1.2px; margin: 0 0 8px; }
+  .subtitle { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); margin-bottom: 24px; }
+  .lead {
+    background: var(--surface-elevated); border: 1px solid color-mix(in srgb, var(--border) 55%, var(--accent) 45%);
+    border-radius: 18px; padding: 24px 26px; box-shadow: 0 10px 28px rgba(0,0,0,.06); margin-bottom: 24px;
+  }
+  .lead strong { color: var(--accent); }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+  .kpi {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 14px; text-align: center;
+  }
+  .kpi .value { font-size: 28px; font-weight: 700; letter-spacing: -.8px; }
+  .kpi .label { margin-top: 4px; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+  .sec-head {
+    margin: 28px 0 14px; font-size: 12px; font-family: var(--font-mono); letter-spacing: 1.6px; text-transform: uppercase;
+    color: var(--text-dim); display: flex; align-items: center; gap: 10px; scroll-margin-top: 52px;
+  }
+  .sec-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px 22px; margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 10px; font-size: 20px; }
+  .card p, .card li { line-height: 1.7; }
+  .card code, td code, .chip {
+    font-family: var(--font-mono); font-size: 11px; background: var(--accent-dim); color: var(--accent);
+    padding: 2px 6px; border-radius: 6px;
+  }
+  pre {
+    margin: 12px 0 0;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: #201916;
+    color: #f8efe8;
+    overflow-x: auto;
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
+    font-size: 10.5px;
+    line-height: 1.65;
+    display: block;
+    white-space: pre;
+  }
+  .answer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .answer {
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--surface2);
+  }
+  .answer.good { border-left: 4px solid var(--green); }
+  .answer.warn { border-left: 4px solid var(--red); }
+  .answer .tag {
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 8px;
+  }
+  .answer.good .tag { color: var(--green); }
+  .answer.warn .tag { color: var(--red); }
+  .flow-grid { display: grid; grid-template-columns: 1fr 56px 1fr; gap: 12px; align-items: stretch; }
+  .flow-box {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+  }
+  .flow-box h4 { margin: 0 0 10px; font-size: 16px; }
+  .flow-box ul { margin: 0; padding-left: 18px; }
+  .arrow-col {
+    display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-family: var(--font-mono); font-size: 20px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+  th {
+    text-align: left; padding: 12px 14px; background: var(--surface2); border-bottom: 2px solid var(--border-bright);
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-dim);
+  }
+  td { padding: 13px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: color-mix(in srgb, var(--surface2) 80%, transparent 20%); }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1px; padding: 4px 8px; border-radius: 999px;
+  }
+  .status.ok { color: var(--green); background: var(--green-dim); }
+  .status.mid { color: var(--accent); background: var(--accent-dim); }
+  .status.warn { color: var(--red); background: var(--red-dim); }
+  .status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .evidence-list { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .evidence {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+  }
+  .evidence h4 { margin: 0 0 10px; font-size: 16px; }
+  .evidence ul { margin: 0; padding-left: 18px; }
+  .callout {
+    background: color-mix(in srgb, var(--surface2) 80%, var(--teal-dim) 20%); border: 1px solid var(--border);
+    border-left: 4px solid var(--teal); border-radius: 0 14px 14px 0; padding: 16px 18px; margin-top: 16px;
+  }
+  .callout strong { color: var(--teal); }
+  details {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; margin-top: 14px;
+  }
+  summary { cursor: pointer; font-weight: 600; }
+  .footer-note { margin-top: 18px; font-size: 13px; color: var(--text-dim); }
+  @media (max-width: 1000px) {
+    body { padding: 20px; }
+    .wrap { grid-template-columns: 1fr; }
+    .toc {
+      position: sticky; top: 0; z-index: 30; display: flex; gap: 4px; overflow-x: auto; white-space: nowrap;
+      background: var(--bg); border-bottom: 1px solid var(--border); margin: 0 -20px 18px; padding: 10px 20px;
+      max-height: none;
+    }
+    .toc-title { display: none; }
+    .toc a { border-left: none; border-bottom: 2px solid transparent; }
+    .toc a.active { border-left: none; border-bottom-color: var(--accent); }
+    .kpis, .answer-grid, .flow-grid, .evidence-list { grid-template-columns: 1fr; }
+    .arrow-col { min-height: 36px; transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc" id="toc">
+    <div class="toc-title">Mục lục</div>
+    <a href="#s1">1. Kết luận</a>
+    <a href="#s2">2. Ma trận env</a>
+    <a href="#s3">3. Luồng mạng</a>
+    <a href="#s4">4. Bằng chứng code</a>
+    <a href="#s5">5. Hàm ý policy</a>
+    <a href="#s6">6. Ghi chú PRD</a>
+  </nav>
+
+  <main class="main">
+    <h1>BB-1525 - Giải thích đường mạng PONTA</h1>
+    <div class="subtitle">PONTA direct path vs proxy path | cập nhật 2026-03-06</div>
+
+    <section class="lead">
+      <strong>Câu trả lời ngắn:</strong> nếu <code>stg</code> runtime thực sự đi qua proxy, pod không bắt buộc phải có <code>28443</code> và <code>8443</code> cho app path. Khi đó pod chỉ cần đi được tới <code>10.51.187.96:3128</code>. Hai port <code>28443/8443</code> chỉ còn ý nghĩa nếu muốn giữ direct-path diagnostics hoặc fallback direct path.
+    </section>
+
+    <div class="kpis">
+      <div class="kpi"><div class="value">DEV</div><div class="label">Direct 8080</div></div>
+      <div class="kpi"><div class="value">STG</div><div class="label">Proxy 3128</div></div>
+      <div class="kpi"><div class="value">PRD</div><div class="label">Current code: direct</div></div>
+      <div class="kpi"><div class="value">Proxy</div><div class="label">Code active only on stg</div></div>
+    </div>
+
+    <div id="s1" class="sec-head"><span class="dot"></span>1. Kết luận trực tiếp</div>
+    <section class="card">
+      <div class="answer-grid">
+        <div class="answer good">
+          <div class="tag">Trả lời câu hỏi STG</div>
+          <p><strong>Không cần bắt buộc mở <code>28443</code> và <code>8443</code></strong> nếu <code>stg</code> runtime đi proxy. Ở mức pod, network path đi tới <code>10.51.187.96:3128</code>.</p>
+        </div>
+        <div class="answer warn">
+          <div class="tag">Điểm dễ nhầm</div>
+          <p><code>login-url</code> chỉ là URL redirect cho browser. Đừng dùng riêng nó để kết luận pod cần egress. Cái quyết định egress thật là <code>if1507</code>, <code>if1511</code>, <code>webIf</code>.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>Lưu ý:</strong> giữ <code>8443/28443</code> trên <code>stg</code> vẫn có thể hợp lý nếu team muốn direct-path diagnostics hoặc fallback direct path. Nhưng theo đúng runtime path hiện tại thì <code>3128</code> là rule bắt buộc.
+      </div>
+    </section>
+
+    <div id="s2" class="sec-head"><span class="dot"></span>2. Ma trận theo môi trường</div>
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Môi trường</th>
+            <th>Proxy active trong code?</th>
+            <th>Browser redirect</th>
+            <th>Server-side target</th>
+            <th>Pod thực sự đi đâu?</th>
+            <th>Policy runtime</th>
+            <th>8443/28443 có bắt buộc?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>DEV</strong></td>
+            <td><span class="status warn">Không</span></td>
+            <td><code>18.179.24.206:8080/login</code></td>
+            <td><code>if1507/if1511 -> 18.179.24.206:8080</code></td>
+            <td>Direct tới <code>18.179.24.206:8080</code></td>
+            <td><code>8080</code></td>
+            <td>Có, vì callback flow gọi thật</td>
+          </tr>
+          <tr>
+            <td><strong>STG</strong></td>
+            <td><span class="status ok">Có</span></td>
+            <td><code>st.ponta.jp</code></td>
+            <td><code>if1507/if1511 -> 28443</code><br><code>webIf -> 8443</code></td>
+            <td>Proxy tới <code>10.51.187.96:3128</code></td>
+            <td><code>3128</code></td>
+            <td>Không bắt buộc cho runtime</td>
+          </tr>
+          <tr>
+            <td><strong>PRD</strong></td>
+            <td><span class="status warn">Hiện tại: Không</span></td>
+            <td><code>www.ponta.jp</code></td>
+            <td><code>if1507/if1511 -> 28443</code><br><code>webIf -> 8443</code></td>
+            <td>Current code state = direct path</td>
+            <td><code>28443</code> + <code>8443</code></td>
+            <td>Có, nếu chưa sửa code sang proxy</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div id="s3" class="sec-head"><span class="dot"></span>3. Luồng mạng hoạt động như thế nào</div>
+    <section class="card">
+      <div class="flow-grid">
+        <div class="flow-box">
+          <h4>Direct path</h4>
+          <ul>
+            <li>App giữ target URL là <code>:28443</code> hoặc <code>:8443</code></li>
+            <li>HTTP client mở TCP trực tiếp tới host đích</li>
+            <li>Pod NetworkPolicy phải allow đúng port đích</li>
+            <li>Áp dụng cho <code>dev</code> hiện tại và <code>prd</code> current code state</li>
+          </ul>
+        </div>
+        <div class="arrow-col">→</div>
+        <div class="flow-box">
+          <h4>Proxy path</h4>
+          <ul>
+            <li>App vẫn giữ logical URL là <code>:28443</code> / <code>:8443</code></li>
+            <li>Nhưng client được set <code>proxy</code></li>
+            <li>Pod mở TCP tới <code>proxy:3128</code></li>
+            <li>Proxy mới là bên đi tiếp tới PONTA</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>Ý nghĩa thực tế cho STG:</strong> nếu app vào nhánh proxy thì pod chỉ cần đi được tới <code>10.51.187.96:3128</code>. NetworkPolicy ở mức pod không cần nhìn thấy <code>28443/8443</code> để app runtime hoạt động.
+      </div>
+    </section>
+
+    <div id="s4" class="sec-head"><span class="dot"></span>4. Bằng chứng code</div>
+    <section class="card">
+      <div class="evidence-list">
+        <div class="evidence">
+          <h4>`login-url` chỉ là redirect</h4>
+          <p class="footer-note">Ví dụ từ controller:</p>
+<pre><code>String redirectUrl =
+        UriComponentsBuilder.fromUriString(pontaConfig.getLoginUrl())
+                .queryParams(queryParams)
+                .build()
+                .toUriString();
+log.info("redirect to ponta login screen, url: {}", redirectUrl);
+response.sendRedirect(redirectUrl);</code></pre>
+          <p class="footer-note">Đây là redirect cho browser/client; không có outbound HTTP từ pod tới <code>login-url</code>.</p>
+        </div>
+        <div class="evidence">
+          <h4>`if1507` / `if1511` là outbound thật</h4>
+          <p class="footer-note">Service gọi thật và request util POST thật:</p>
+<pre><code>String accessToken = pontaRequestUtil.if1507(secretCode);
+String memberId = pontaRequestUtil.if1511(accessToken);
+
+response =
+        restTemplate.postForObject(
+                pontaConfig.getIf1507Url(), requestEntity, String.class);</code></pre>
+          <p class="footer-note">Các request này dùng <code>RestTemplate.postForObject(...)</code>, vì vậy đây là egress thật từ server.</p>
+        </div>
+        <div class="evidence">
+          <h4>`webIf-Url` cũng là outbound thật</h4>
+          <p class="footer-note">Ví dụ từ `PontaBizInVokerApi`:</p>
+<pre><code>response =
+        restTemplate.postForObject(
+                pontaConfig.getWebIfUrl(), requestEntity, String.class);
+log.info("if001 response:{}", response);</code></pre>
+          <p class="footer-note">Nếu không dùng proxy, <code>webIf</code> yêu cầu direct <code>8443</code>. Nếu dùng proxy, pod chỉ cần đi được tới proxy.</p>
+        </div>
+        <div class="evidence">
+          <h4>Proxy chỉ active cho `stg`</h4>
+          <p class="footer-note">Nhánh bật proxy trong code:</p>
+<pre><code>CloseableHttpClient httpClient;
+if (point.common.constant.Environment.stg.name().equals(activeProfile)) {
+    HttpHost proxy = new HttpHost(stgProxyHost, stgProxyPort);
+    RequestConfig config = RequestConfig.custom().setProxy(proxy).build();
+    httpClient =
+            HttpClients.custom()
+                    .setSSLSocketFactory(sslConnectionSocketFactory)
+                    .setDefaultRequestConfig(config)
+                    .build();
+}</code></pre>
+          <p class="footer-note">Đây là lý do vì sao <code>stg</code> đi proxy, còn <code>dev</code> và <code>prd</code> hiện tại vẫn là direct path dù config có thể có field proxy.</p>
+        </div>
+      </div>
+      <details>
+        <summary>Config evidence theo env</summary>
+<pre><code># DEV
+ponta:
+  login-url: http://18.179.24.206:8080/login
+  if1507-Url: http://18.179.24.206:8080/ifs/LWIF1507
+  if1511-Url: http://18.179.24.206:8080/ifs/LWIF1511
+  proxy-host: 10.51.187.96
+  proxy-port: 3128
+
+# STG
+ponta:
+  if1507-Url: https://onlineit102.lw.loyalty.co.jp:28443/ifs/LWIF1507
+  if1511-Url: https://onlineit102.lw.loyalty.co.jp:28443/ifs/LWIF1511
+  webIf-Url: https://onlinest01.lp.loyalty.co.jp:8443/webif/bizinvoker
+  proxy-host: 10.51.187.96
+  proxy-port: 3128
+
+# PRD
+ponta:
+  login-url: https://www.ponta.jp/front/LWAS900/SLWAS900110.htm
+  if1507-Url: https://onlinesx02.lw.loyalty.co.jp:28443/ifs/LWIF1507
+  if1511-Url: https://onlinesx02.lw.loyalty.co.jp:28443/ifs/LWIF1511
+  webIf-Url: https://onlinesx01.lp.loyalty.co.jp:8443/webif/bizinvoker
+
+# Worker PRD
+ponta:
+  webIf-Url: #TBD</code></pre>
+      </details>
+    </section>
+
+    <div id="s5" class="sec-head"><span class="dot"></span>5. Hàm ý cho NetworkPolicy</div>
+    <section class="card">
+      <div class="answer-grid">
+        <div class="answer good">
+          <div class="tag">Rule bắt buộc</div>
+          <p><strong>STG current runtime:</strong> allow <code>10.51.187.96/32:3128</code></p>
+          <p><strong>DEV current runtime:</strong> allow <code>8080</code></p>
+          <p><strong>PRD current code:</strong> allow direct <code>28443</code> và <code>8443</code></p>
+        </div>
+        <div class="answer warn">
+          <div class="tag">Rule phụ</div>
+          <p><code>8443/28443</code> trên <code>stg</code> chỉ là rule phụ nếu team muốn:</p>
+          <ul>
+            <li>direct-path probe</li>
+            <li>fallback direct path</li>
+            <li>giữ room cho thay đổi đối tác mà chưa muốn đổi policy ngay</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <div id="s6" class="sec-head"><span class="dot"></span>6. Ghi chú khi triển khai PRD</div>
+    <section class="card">
+      <h3>Deployment note</h3>
+      <ul>
+        <li>Không copy rule <code>dev 8080</code> sang <code>prd</code>.</li>
+        <li>Với current code state, <code>prd</code> vẫn là direct path nên policy runtime cần <code>28443</code> và <code>8443</code>.</li>
+        <li>Nếu muốn <code>prd</code> đi proxy, phải sửa cả <strong>code/profile handling</strong>, không chỉ sửa policy.</li>
+        <li>Precheck thêm: <code>point-worker</code> `application-prd.yaml` còn <code>webIf-Url: #TBD</code>.</li>
+      </ul>
+      <div class="callout">
+        <strong>Điểm chốt:</strong> ở mức pod NetworkPolicy, ta luôn mở theo <em>đường kết nối TCP thực tế của pod</em>, không mở theo mọi URL logic có trong config.
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+(function() {
+  const toc = document.getElementById('toc');
+  const links = toc.querySelectorAll('a');
+  const sections = [];
+  links.forEach(link => {
+    const id = link.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (el) sections.push({ link, el });
+  });
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const match = sections.find(s => s.el === entry.target);
+        if (match) match.link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  sections.forEach(s => observer.observe(s.el));
+})();
+</script>
+</body>
+</html>

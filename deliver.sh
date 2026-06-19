@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
-# Deliver MỘT artifact HTML lên artifacts.hoangtrung.dev chỉ bằng 1 lệnh.
+# Deliver MỘT artifact (HTML hoặc Markdown) lên artifacts.hoangtrung.dev chỉ bằng 1 lệnh.
 # Dùng được từ BẤT KỲ thư mục nào (gọi bằng đường dẫn tuyệt đối tới script này).
 #
-#   deliver.sh <file.html> [project] [--name <newname>.html] [--protect [password]] [--open]
+#   deliver.sh <file.html|file.md> [project] [--name <newname>.(html|md)] [--protect [password]] [--open]
 #
-#   <file.html>        file nguồn (bắt buộc), nên là HTML self-contained
+#   <file>             file nguồn (bắt buộc): HTML self-contained, hoặc Markdown (.md)
 #   [project]          tên project/thư mục đích (mặc định: "shared")
-#   --name <x>.html    đổi tên file khi publish
-#   --protect [pw]     đặt Basic Auth cho project (nếu không kèm pw, wrangler sẽ hỏi)
+#   --name <x>         đổi tên file khi publish (phải giữ đuôi .html hoặc .md)
+#   --protect [pw]     bảo vệ project bằng login + signed cookie (nếu không kèm pw, wrangler sẽ hỏi)
 #   --open             mở URL bằng trình duyệt sau khi xong
 #
 # Ví dụ:
 #   ~/Local/Work/solashi/share-artifacts/deliver.sh ./report.html cost-review
-#   → https://artifacts.hoangtrung.dev/cost-review/report.html
+#   → viewer: https://artifacts.hoangtrung.dev/cost-review/report
+#   → raw:    https://artifacts.hoangtrung.dev/cost-review/report.html
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 SRC="${1:-}"
-[ -n "$SRC" ] || { sed -n '2,17p' "$0"; exit 1; }
+[ -n "$SRC" ] || { sed -n '2,16p' "$0"; exit 1; }
 shift
 
 PROJECT="shared"; NAME=""; PROTECT=0; PROTECT_PW=""; OPEN=0
@@ -35,12 +36,18 @@ while [ "${1:-}" ]; do
 done
 
 [ -f "$SRC" ] || { echo "❌ Không thấy file: $SRC" >&2; exit 1; }
-case "$SRC" in *.html|*.htm) ;; *) echo "❌ Không phải file HTML: $SRC" >&2; exit 1;; esac
 
 BASENAME="${NAME:-$(basename "$SRC")}"
-mkdir -p "public/$PROJECT"
-cp "$SRC" "public/$PROJECT/$BASENAME"
-echo "📥 $SRC  ->  public/$PROJECT/$BASENAME"
+# prepare-static.mjs chỉ copy .html và .md sang public/. File đuôi khác (vd .htm) sẽ KHÔNG
+# được phục vụ verbatim → 404. Validate đuôi của TÊN CUỐI (sau --name), không phải file nguồn.
+case "$BASENAME" in
+  *.html|*.md) ;;
+  *) echo "❌ Chỉ hỗ trợ .html hoặc .md (nhận: $BASENAME). Lưu ý: .htm không được hỗ trợ." >&2; exit 1;;
+esac
+
+mkdir -p "src/artifacts/$PROJECT"
+cp "$SRC" "src/artifacts/$PROJECT/$BASENAME"
+echo "📥 $SRC  ->  src/artifacts/$PROJECT/$BASENAME"
 
 if [ "$PROTECT" = 1 ]; then
   if [ -n "$PROTECT_PW" ]; then ./protect.sh "$PROJECT" "$PROTECT_PW"; else ./protect.sh "$PROJECT"; fi
@@ -48,10 +55,11 @@ fi
 
 ./deploy.sh
 
-CLEAN="${BASENAME%.html}"; CLEAN="${CLEAN%.htm}"
-URL="https://artifacts.hoangtrung.dev/$PROJECT/$BASENAME"
+CLEAN="${BASENAME%.*}"   # bỏ đuôi cuối (an toàn cho tên nhiều dấu chấm: a.b.v2.md -> a.b.v2)
+RAW_URL="https://artifacts.hoangtrung.dev/$PROJECT/$BASENAME"
+VIEW_URL="https://artifacts.hoangtrung.dev/$PROJECT/$CLEAN"
 echo
 echo "✅ Delivered:"
-echo "   $URL"
-echo "   https://artifacts.hoangtrung.dev/$PROJECT/$CLEAN   (clean URL, bỏ .html)"
-[ "$OPEN" = 1 ] && command -v open >/dev/null && open "$URL" || true
+echo "   $VIEW_URL        (viewer — toolbar + nội dung)"
+echo "   $RAW_URL         (raw — file gốc)"
+[ "$OPEN" = 1 ] && command -v open >/dev/null && open "$VIEW_URL" || true
