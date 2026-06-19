@@ -53,6 +53,10 @@ const isMd = isArtifact && props.type === 'md';
 const isProtected = isArtifact ? props.protected : props.locked;
 const ogUrl = isArtifact ? new URL(Astro.url.pathname, Astro.site).href : '';
 const toc = isMd ? (props.headings ?? []).filter((h) => h.depth === 2 || h.depth === 3) : [];
+// Wrap wide tables so they scroll inside their own box (never overflow the page / under the TOC).
+const mdHtml = isMd
+  ? props.html.replace(/<table>/g, '<div class="x-scroll"><table>').replace(/<\/table>/g, '</table></div>')
+  : '';
 const pagefindBody = isArtifact && !isProtected ? true : undefined;
 
 const pageTitle = kind === 'project' ? props.project : props.title;
@@ -143,7 +147,8 @@ if (kind === 'project') {
 )}
 
 {isMd && (
-  <Base title={pageTitle} description={pageDesc}>
+  <Base title={pageTitle} description={pageDesc} fullBleed>
+    <div class="md-shell">
     <article class="md-view" data-pagefind-body={pagefindBody} data-pagefind-meta={pagefindBody ? `title:${props.title}` : undefined}>
       <header class="viewer-head">
         <p class="type-line">
@@ -167,9 +172,10 @@ if (kind === 'project') {
             </ul>
           </aside>
         )}
-        <div class="md-body"><Fragment set:html={props.html} /></div>
+        <div class="md-body"><Fragment set:html={mdHtml} /></div>
       </div>
     </article>
+    </div>
     <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="md" isProtected={isProtected} />
     <meta slot="head" property="og:title" content={props.title} />
     {props.description && <meta slot="head" property="og:description" content={props.description} />}

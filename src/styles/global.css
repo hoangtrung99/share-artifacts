@@ -246,13 +246,13 @@ h1, h2, h3, h4 { line-height: 1.25; }
   grid-template-columns: 1fr;
   gap: 2rem;
 }
-@media (min-width: 860px) {
-  /* body (wide, left) + TOC (narrow sidebar, right). The columns must match the order:
-     col1 = 1fr for the body, col2 = fixed for the TOC — otherwise the body lands in the
-     narrow column and renders as a cramped strip. */
-  .md-layout[data-has-toc='true'] { grid-template-columns: 1fr 220px; }
-  .toc { order: 2; position: sticky; top: 1.5rem; align-self: start; }
-  .md-layout[data-has-toc='true'] .md-body { order: 1; }
+@media (min-width: 1000px) {
+  /* body (wide, left) + TOC (narrow sticky sidebar, right). minmax(0,1fr) lets the body
+     column SHRINK so wide tables/code scroll inside their own box instead of overflowing the
+     page and sliding under the sticky TOC. */
+  .md-layout[data-has-toc='true'] { grid-template-columns: minmax(0, 1fr) 240px; }
+  .toc { order: 2; position: sticky; top: 1.5rem; align-self: start; max-height: calc(100vh - 3rem); overflow: auto; }
+  .md-layout[data-has-toc='true'] .md-body { order: 1; min-width: 0; }
 }
 .toc {
   font-size: 0.85rem;
@@ -322,6 +322,12 @@ h1, h2, h3, h4 { line-height: 1.25; }
 }
 .md-body th { background: var(--bg-subtle); font-weight: 600; }
 .md-body hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+/* Wide-doc handling: full-width reading shell + tables scroll inside their own box
+   (so they never overflow the page or slide under the sticky TOC). */
+.md-shell { max-width: min(1320px, 94vw); margin: 0 auto; padding: 2rem 1.25rem 5rem; }
+.md-body .x-scroll { overflow-x: auto; max-width: 100%; margin: 1rem 0; border: 1px solid var(--border); border-radius: 8px; }
+.md-body .x-scroll table { width: max-content; min-width: 100%; margin: 0; border: 0; }
 
 /* ---- HTML iframe ---- */
 .html-wrap { margin-top: 0.5rem; }
@@ -483,12 +489,15 @@ body.bleed { margin: 0; }
 /* ---- Floating action overlay (download etc.) on top of the artifact ---- */
 .fab {
   position: fixed;
-  top: 0.7rem;
-  right: 0.7rem;
+  top: 0.85rem;
+  right: 0.85rem;
   z-index: 2147483000;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.2rem;
+  max-width: calc(100vw - 1.7rem);
   padding: 0.28rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 80%, transparent);
