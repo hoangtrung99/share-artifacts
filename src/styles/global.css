@@ -247,7 +247,10 @@ h1, h2, h3, h4 { line-height: 1.25; }
   gap: 2rem;
 }
 @media (min-width: 860px) {
-  .md-layout[data-has-toc='true'] { grid-template-columns: 200px 1fr; }
+  /* body (wide, left) + TOC (narrow sidebar, right). The columns must match the order:
+     col1 = 1fr for the body, col2 = fixed for the TOC — otherwise the body lands in the
+     narrow column and renders as a cramped strip. */
+  .md-layout[data-has-toc='true'] { grid-template-columns: 1fr 220px; }
   .toc { order: 2; position: sticky; top: 1.5rem; align-self: start; }
   .md-layout[data-has-toc='true'] .md-body { order: 1; }
 }
