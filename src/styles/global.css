@@ -541,6 +541,11 @@ details.proj-group[data-depth="0"] > .proj-group-title { color: var(--text); fon
 .grp-chevron { color: var(--text-muted); transition: transform 0.15s ease; font-size: 0.8rem; }
 details[open] > .proj-group-title .grp-chevron { transform: rotate(90deg); }
 .grp-name { text-transform: capitalize; font-weight: 600; }
+/* iOS Safari bug: a closed <details> keeps reserving the layout box of its content (the
+   display:grid file list + nested groups), leaving a tall empty gap after collapse. Forcing the
+   non-summary children to display:none when closed makes WebKit drop them from layout. No-op on
+   engines that already collapse correctly (Chromium/Firefox). */
+details.proj-group:not([open]) > :not(summary) { display: none; }
 .grp-count { font-size: 0.72rem; color: var(--text-muted); background: var(--bg-subtle); border-radius: 999px; padding: 0 0.45rem; }
 
 
