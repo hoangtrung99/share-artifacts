@@ -50,19 +50,28 @@ const fromGlobKey = (key) => fromRel(key.replace(/^\.\.\/artifacts\//, ''));
  * it into the PUBLIC viewer's indexed region (see [...path].astro). Protected artifacts never
  * get this text rendered, so it never reaches the public Pagefind index — fail-closed.
  */
-function htmlToSearchText(raw) {
-  return raw
-    .replace(/<head[\s\S]*?<\/head>/i, ' ') // drop head (title/desc already captured separately)
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<[^>]+>/g, ' ') // strip remaining tags
+/** Decode the handful of HTML entities that show up in <title>/<meta> text. Without this, a
+ *  title like "Design &amp; Implementation" renders the literal "&amp;" (Astro re-escapes the
+ *  ampersand on output). Keep &amp; LAST so we don't double-decode (e.g. "&amp;lt;" → "&lt;"). */
+function decodeEntities(s) {
+  return s
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&');
+}
+
+function htmlToSearchText(raw) {
+  return decodeEntities(
+    raw
+      .replace(/<head[\s\S]*?<\/head>/i, ' ') // drop head (title/desc already captured separately)
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<[^>]+>/g, ' ') // strip remaining tags
+  )
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -160,6 +169,12 @@ export async function loadArtifacts(mdModules) {
     const titleMatch = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const descMatch = raw.match(/<meta[^>]+name=["']description["'][^>]*>/i);
     const descContent = descMatch ? descMatch[0].match(/content=["']([\s\S]*?)["']/i) : null;
+    // Explicit author date — HTML's equivalent of MD frontmatter `date`. Highest priority for
+    // sorting/display so a freshly-added doc can be pinned to a date even when its body carries
+    // none. Add `<meta name="date" content="YYYY-MM-DD">` to the artifact's <head>.
+    const dateMatch = raw.match(/<meta[^>]+name=["']date["'][^>]*>/i);
+    const dateContent = dateMatch ? dateMatch[0].match(/content=["']([\s\S]*?)["']/i) : null;
+    const metaDate = dateContent ? isoDate(dateContent[1].trim()) : undefined;
     const isLocked = locked.has(meta.project);
     records.push({
       type: 'html',
@@ -168,11 +183,11 @@ export async function loadArtifacts(mdModules) {
       routePath: meta.routePath,
       rawUrl: meta.rawUrl,
       downloadName: meta.downloadName,
-      title: (titleMatch ? titleMatch[1] : '').trim() || meta.downloadName.replace(/\.html$/, ''),
-      description: descContent ? descContent[1].trim() : '',
+      title: decodeEntities((titleMatch ? titleMatch[1] : '').trim()) || meta.downloadName.replace(/\.html$/, ''),
+      description: descContent ? decodeEntities(descContent[1].trim()) : '',
       tags: [],
-      date: undefined,
-      sortDate: extractDateFromContent(raw) || extractDateFromPath(meta.routePath),
+      date: metaDate,
+      sortDate: metaDate || extractDateFromContent(raw) || extractDateFromPath(meta.routePath),
       html: null,
       // The iframed body text is invisible to Pagefind. For PUBLIC artifacts we extract it so
       // the viewer can embed it in the indexed region. For PROTECTED artifacts we leave it empty
