@@ -1,7 +1,7 @@
 ---
 // Fixed top toolbar for an artifact viewer. A full-width bar (not a floating overlay) so it
 // never covers the artifact and never collides with the iframe's scrollbar. Content sits below it.
-// Every button has title (hover tooltip) + aria-label.
+// Every button uses data-tip for an instant custom tooltip (no browser delay) + aria-label.
 interface Props {
   rawUrl: string;
   downloadName: string;
@@ -9,13 +9,15 @@ interface Props {
   type: 'md' | 'html';
   isProtected: boolean;
   label?: string;
+  routePath?: string;
 }
-const { rawUrl, downloadName, project, type, isProtected, label = '' } = Astro.props;
+const { rawUrl, downloadName, project, type, isProtected, label = '', routePath = '' } = Astro.props;
 const proj = encodeURIComponent(project);
+const sharePath = routePath ? '/' + routePath : '/' + proj;
 ---
 <header class="viewer-bar">
   <div class="vb-left">
-    <a class="vb-btn" href={`/${proj}`} title="Back to project" aria-label="Back to project"><span aria-hidden="true">←</span></a>
+    <a class="vb-btn" href={`/${proj}`} data-tip="Back to project" aria-label="Back to project"><span aria-hidden="true">←</span></a>
     <span class="vb-crumb">
       <span class="vb-proj">{project}</span>
       {label && <span class="vb-sep" aria-hidden="true">/</span>}
@@ -23,25 +25,30 @@ const proj = encodeURIComponent(project);
     </span>
   </div>
   <div class="vb-right">
-    <a class="vb-btn vb-primary" href={rawUrl} download={downloadName} title={`Download ${downloadName}`} aria-label={`Download ${downloadName}`}>
+    <a class="vb-btn vb-primary" href={rawUrl} download={downloadName} data-tip={`Download ${downloadName}`} aria-label={`Download ${downloadName}`}>
       <span aria-hidden="true">⬇</span><span class="vb-label">Download</span>
     </a>
-    <button class="vb-btn" type="button" data-copy-link title="Copy link to this artifact" aria-label="Copy link to this artifact">
+    <button class="vb-btn" type="button" data-copy-link data-tip="Copy link to this artifact" aria-label="Copy link to this artifact">
       <span aria-hidden="true">🔗</span>
     </button>
-    <a class="vb-btn" href={rawUrl} target="_blank" rel="noopener" title="Open raw file in a new tab" aria-label="Open raw file in a new tab">
+    {isProtected && (
+      <button class="vb-btn" type="button" data-share data-share-path={sharePath} data-share-project={project} data-tip="Create share link" aria-label="Create share link">
+        <span aria-hidden="true">📤</span>
+      </button>
+    )}
+    <a class="vb-btn" href={rawUrl} target="_blank" rel="noopener" data-tip="Open raw file in a new tab" aria-label="Open raw file in a new tab">
       <span aria-hidden="true">⤢</span>
     </a>
     {type === 'md' && (
-      <button class="vb-btn" type="button" data-print title="Print or save as PDF" aria-label="Print or save as PDF">
+      <button class="vb-btn" type="button" data-print data-tip="Print or save as PDF" aria-label="Print or save as PDF">
         <span aria-hidden="true">🖨</span>
       </button>
     )}
-    <a class="vb-btn" href="/" title="Home — all projects" aria-label="Home — all projects">
+    <a class="vb-btn" href="/" data-tip="Home — all projects" aria-label="Home — all projects">
       <span aria-hidden="true">🏠</span>
     </a>
     {isProtected && (
-      <a class="vb-btn" href={`/logout?project=${proj}`} title="Sign out of this project" aria-label="Sign out of this project">
+      <a class="vb-btn" href={`/logout?project=${proj}`} data-tip="Sign out of this project" aria-label="Sign out of this project">
         <span aria-hidden="true">⎋</span>
       </a>
     )}

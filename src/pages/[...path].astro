@@ -11,6 +11,8 @@
 // project listings and protected viewers carry none, so nothing protected enters the public index.
 import Base from '../layouts/Base.astro';
 import Fab from '../components/Fab.astro';
+import ShareModal from '../components/ShareModal.astro';
+import FileTree from '../components/FileTree.astro';
 import { loadArtifacts, protectedProjects } from '../lib/artifacts.mjs';
 
 export async function getStaticPaths() {
@@ -23,15 +25,14 @@ export async function getStaticPaths() {
   for (const a of artifacts) {
     if (!byProject.has(a.project)) byProject.set(a.project, []);
     const rest = a.routePath.split('/').slice(1); // segments after the project
-    const group = rest.length > 1 ? rest[0] : ''; // top-level sub-folder ('' = project root)
-    const subpath = rest.slice(1, -1).join('/'); // path between sub-folder and file (disambiguates same-named files)
+    const folder = rest.slice(0, -1).join('/'); // full folder path (all segments except filename)
     byProject.get(a.project).push({
       title: a.title,
       routePath: a.routePath,
       type: a.type,
       date: a.date ?? null,
-      group,
-      subpath,
+      sortDate: a.sortDate ?? '',
+      folder,
     });
   }
   const projectPaths = [...byProject.entries()].map(([project, items]) => ({
@@ -65,23 +66,33 @@ const pagefindBody = isArtifact && !isProtected ? true : undefined;
 const pageTitle = kind === 'project' ? props.project : props.title;
 const pageDesc = kind === 'project' ? `Files in ${props.project}` : props.description;
 
-// Group a project's files by sub-folder for the listing.
-let groups = [];
-if (kind === 'project') {
-  const m = new Map();
-  for (const it of props.items) {
-    if (!m.has(it.group)) m.set(it.group, []);
-    m.get(it.group).push(it);
+// Build a nested folder tree from flat items for the project listing.
+// Each node: { name, path, files[], children[], count }.
+function buildTree(items) {
+  const root = { name: '', path: '', files: [], children: new Map(), count: 0 };
+  for (const it of items) {
+    const parts = it.folder ? it.folder.split('/') : [];
+    let node = root;
+    let curPath = '';
+    for (const part of parts) {
+      curPath = curPath ? `${curPath}/${part}` : part;
+      if (!node.children.has(part)) {
+        node.children.set(part, { name: part, path: curPath, files: [], children: new Map(), count: 0 });
+      }
+      node = node.children.get(part);
+    }
+    node.files.push(it);
   }
-  groups = [...m.entries()]
-    .map(([group, items]) => ({
-      group,
-      items: items.sort((x, y) =>
-        x.date && y.date && x.date !== y.date ? y.date.localeCompare(x.date) : x.title.localeCompare(y.title)
-      ),
-    }))
-    .sort((a, b) => a.group.localeCompare(b.group));
+  // Convert Maps to sorted arrays and compute descendant counts.
+  const finalize = (node) => {
+    node.children = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name)).map(finalize);
+    node.count = node.files.length + node.children.reduce((s, c) => s + c.count, 0);
+    return node;
+  };
+  return finalize(root);
 }
+let tree = null;
+if (kind === 'project') tree = buildTree(props.items);
 ---
 
 {kind === 'project' && (
@@ -93,6 +104,9 @@ if (kind === 'project') {
         <span class="proj-name">{props.project}</span>
         {props.locked && <span class="lock"><span aria-hidden="true">🔒</span> Protected</span>}
         {props.locked && (
+          <button class="share-link" type="button" data-share data-share-project={props.project} data-share-path={`/${encodeURIComponent(props.project)}/`} data-tip="Create share link for this project">📤 Share</button>
+        )}
+        {props.locked && (
           <a class="signout" href={`/logout?project=${encodeURIComponent(props.project)}`}>⎋ Sign out</a>
         )}
       </nav>
@@ -102,7 +116,7 @@ if (kind === 'project') {
           type="search"
           class="proj-filter"
           data-proj-filter
-          placeholder="Fuzzy filter files…"
+          placeholder="Fuzzy filter files (title or folder path)…"
           aria-label="Filter files in this project"
           autocomplete="off"
           spellcheck="false"
@@ -112,47 +126,48 @@ if (kind === 'project') {
           <button type="button" class="chip" data-type="md">MD</button>
           <button type="button" class="chip" data-type="html">HTML</button>
         </div>
+        <div class="sort-chips" role="group" aria-label="Sort by" data-sort-filter>
+          <button type="button" class="chip is-active" data-sort="recent">Recent</button>
+          <button type="button" class="chip" data-sort="name">Name</button>
+          <button type="button" class="chip" data-sort="type">Type</button>
+        </div>
         <div class="expand-controls">
           <button type="button" class="chip" data-expand-all>Expand all</button>
           <button type="button" class="chip" data-collapse-all>Collapse all</button>
         </div>
       </div>
-      {groups.some((g) => g.group) && (
-        <div class="folder-checks" data-folder-checks aria-label="Filter by sub-folder">
-          {groups.filter((g) => g.group).map((g) => (
-            <label class="fcheck">
-              <input type="checkbox" checked value={g.group} />
-              <span class="fc-name">{g.group}</span>
-              <span class="fc-count">{g.items.length}</span>
-            </label>
-          ))}
-        </div>
-      )}
       <p class="count" data-filter-count>{props.items.length} file{props.items.length === 1 ? '' : 's'}</p>
     </header>
 
-    {groups.map((g) => (
-      <details class="proj-group" data-group={g.group} open>
+    {tree.children.length > 0 && <FileTree nodes={tree.children} />}
+    {tree.files.length > 0 && (
+      <details class="proj-group" data-folder="" style="--depth: 0" open>
         <summary class="proj-group-title">
           <span class="grp-chevron" aria-hidden="true">▸</span>
-          <span class="grp-name">{g.group || '(root)'}</span>
-          <span class="grp-count">{g.items.length}</span>
+          <span class="grp-name">(root)</span>
+          <span class="grp-count">{tree.files.length}</span>
         </summary>
         <ul class="file-list">
-          {g.items.map((it) => (
-            <li data-search={`${it.title} ${it.routePath}`.toLowerCase()} data-type={it.type}>
+          {tree.files.map((it) => (
+            <li
+              data-search={`${it.title} ${it.routePath}`.toLowerCase()}
+              data-type={it.type}
+              data-folder={it.folder}
+              data-date={it.sortDate || ''}
+              data-title={it.title.toLowerCase()}
+            >
               <a class="file-link" href={`/${it.routePath}`}>
                 <span class={`badge badge-${it.type}`}>{it.type.toUpperCase()}</span>
                 <span class="file-title">{it.title}</span>
-                {it.subpath && <span class="file-sub">{it.subpath}/</span>}
                 {it.date && <span class="file-date">{it.date}</span>}
               </a>
             </li>
           ))}
         </ul>
       </details>
-    ))}
+    )}
     <p class="no-results" data-no-results hidden>No files match your filter.</p>
+    {props.locked && <ShareModal />}
   </Base>
 )}
 
@@ -161,7 +176,7 @@ if (kind === 'project') {
     <div class="viewer-bleed">
       <iframe class="bleed-frame" src={props.rawUrl} title={props.title}></iframe>
     </div>
-    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="html" isProtected={isProtected} label={props.title} />
+    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="html" isProtected={isProtected} label={props.title} routePath={props.routePath} />
     {/* Public-only: mirror iframed body text into an indexed, screen-reader-only region so
         full-text search works. Protected pages emit nothing -> never in the public index. */}
     {pagefindBody && props.searchText && (
@@ -171,6 +186,7 @@ if (kind === 'project') {
     {props.description && <meta slot="head" property="og:description" content={props.description} />}
     <meta slot="head" property="og:type" content="article" />
     <meta slot="head" property="og:url" content={ogUrl} />
+    {isProtected && <ShareModal />}
   </Base>
 )}
 
@@ -204,11 +220,12 @@ if (kind === 'project') {
       </div>
     </article>
     </div>
-    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="md" isProtected={isProtected} label={props.title} />
+    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="md" isProtected={isProtected} label={props.title} routePath={props.routePath} />
     <meta slot="head" property="og:title" content={props.title} />
     {props.description && <meta slot="head" property="og:description" content={props.description} />}
     <meta slot="head" property="og:type" content="article" />
     <meta slot="head" property="og:url" content={ogUrl} />
+    {isProtected && <ShareModal />}
   </Base>
 )}
 
@@ -229,7 +246,9 @@ if (kind === 'project') {
   const printBtn = document.querySelector('[data-print]');
   if (printBtn) printBtn.addEventListener('click', () => window.print());
 
-  // Per-project controls: fuzzy text + type chips + sub-folder checkboxes + collapse/expand.
+  // Per-project controls: fuzzy text + type chips + sort + collapse/expand.
+  // Filter state (q, type, sort) syncs to the URL via history.replaceState so filtered
+  // views are shareable — the copy-link button already grabs window.location.href.
   const pf = document.querySelector('[data-proj-filter]');
   const groupEls = Array.from(document.querySelectorAll('.proj-group'));
   if (groupEls.length) {
@@ -237,9 +256,16 @@ if (kind === 'project') {
     const countEl = document.querySelector('[data-filter-count]');
     const noRes = document.querySelector('[data-no-results]');
     const typeBtns = Array.from(document.querySelectorAll('[data-type-filter] [data-type]'));
-    const checks = Array.from(document.querySelectorAll('[data-folder-checks] input[type="checkbox"]'));
+    const sortBtns = Array.from(document.querySelectorAll('[data-sort-filter] [data-sort]'));
     const total = items.length;
-    let activeType = 'all';
+
+    // --- Restore filter state from URL on load ---
+    const params = new URLSearchParams(window.location.search);
+    let activeType = params.get('type') || 'all';
+    let activeSort = params.get('sort') || 'recent';
+    if (pf) pf.value = params.get('q') || '';
+    typeBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.type === activeType));
+    sortBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.sort === activeSort));
 
     const fuzzy = (q, s) => {
       let h = 0, score = 0, streak = 0;
@@ -253,36 +279,62 @@ if (kind === 'project') {
       return score;
     };
 
+    // --- URL sync: write current filter state to the address bar ---
+    const syncUrl = () => {
+      const p = new URLSearchParams();
+      if (pf?.value.trim()) p.set('q', pf.value.trim());
+      if (activeType !== 'all') p.set('type', activeType);
+      if (activeSort !== 'recent') p.set('sort', activeSort);
+      const qs = p.toString();
+      history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+    };
+
+    // --- Sort: reorder <li> within each <ul> based on active sort mode ---
+    const sortList = (ul) => {
+      const lis = Array.from(ul.children).filter((el) => el.tagName === 'LI');
+      lis.sort((a, b) => {
+        if (activeSort === 'recent') {
+          const da = a.dataset.date || '', db = b.dataset.date || '';
+          if (da && db && da !== db) return db.localeCompare(da);
+          if (da && !db) return -1;
+          if (db && !da) return 1;
+        } else if (activeSort === 'type') {
+          if (a.dataset.type !== b.dataset.type) return a.dataset.type.localeCompare(b.dataset.type);
+        }
+        return (a.dataset.title || '').localeCompare(b.dataset.title || '');
+      });
+      lis.forEach((li) => ul.appendChild(li));
+    };
+
     const apply = () => {
       const q = (pf?.value || '').trim().toLowerCase();
-      const enabled = new Set(checks.filter((c) => c.checked).map((c) => c.value));
-      const useChecks = checks.length > 0;
-      const filtering = !!q || activeType !== 'all' || (useChecks && enabled.size !== checks.length);
+      const filtering = !!q || activeType !== 'all';
       let shown = 0;
       for (const li of items) {
-        const grp = li.closest('.proj-group')?.dataset.group ?? '';
-        const folderOk = !useChecks || grp === '' || enabled.has(grp);
         const typeOk = activeType === 'all' || li.dataset.type === activeType;
         let textOk = true, score = 0;
         if (q) { score = fuzzy(q, li.dataset.search || ''); textOk = score >= 0; }
-        const vis = folderOk && typeOk && textOk;
+        const vis = typeOk && textOk;
         li.hidden = !vis;
         li.style.order = vis && q ? String(-Math.round(score * 100)) : '';
         if (vis) shown++;
       }
-      for (const g of groupEls) {
-        const grp = g.dataset.group;
-        const folderHidden = useChecks && grp !== '' && !enabled.has(grp);
-        const anyVisible = !!g.querySelector('.file-list li:not([hidden])');
-        g.hidden = folderHidden || !anyVisible;
-        if (filtering && anyVisible) g.open = true; // auto-expand groups with matches
+      // Sort each file list in place.
+      document.querySelectorAll('.file-list').forEach(sortList);
+      // Group visibility: bottom-up (deepest first) so parent checks see settled child state.
+      for (const g of [...groupEls].reverse()) {
+        const anyVisible =
+          !!g.querySelector(':scope > .file-list > li:not([hidden])') ||
+          !!g.querySelector(':scope > .proj-group:not([hidden])');
+        g.hidden = !anyVisible;
+        if (filtering && anyVisible) g.open = true;
       }
       if (countEl) countEl.textContent = filtering ? `${shown} / ${total}` : `${total} file${total === 1 ? '' : 's'}`;
       if (noRes) noRes.hidden = shown !== 0;
+      syncUrl();
     };
 
     pf?.addEventListener('input', apply);
-    checks.forEach((c) => c.addEventListener('change', apply));
     typeBtns.forEach((b) =>
       b.addEventListener('click', () => {
         activeType = b.dataset.type;
@@ -290,9 +342,114 @@ if (kind === 'project') {
         apply();
       })
     );
+    sortBtns.forEach((b) =>
+      b.addEventListener('click', () => {
+        activeSort = b.dataset.sort;
+        sortBtns.forEach((x) => x.classList.toggle('is-active', x === b));
+        apply();
+      })
+    );
     document.querySelector('[data-expand-all]')?.addEventListener('click', () =>
       groupEls.forEach((g) => { if (!g.hidden) g.open = true; }));
     document.querySelector('[data-collapse-all]')?.addEventListener('click', () =>
       groupEls.forEach((g) => { g.open = false; }));
+
+    // Initial apply: restore filter state from URL + apply default sort.
+    apply();
+  }
+</script>
+
+<script>
+  // --- Custom instant tooltips (data-tip) ---
+  // Replaces native title tooltips (which have a ~1s delay) with an instant CSS-driven one.
+  const tipEl = document.createElement('div');
+  tipEl.className = 'tip';
+  tipEl.hidden = true;
+  document.body.appendChild(tipEl);
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('[data-tip]');
+    if (!target) return;
+    tipEl.textContent = target.dataset.tip;
+    tipEl.hidden = false;
+    const r = target.getBoundingClientRect();
+    tipEl.style.left = (r.left + r.width / 2 - tipEl.offsetWidth / 2) + 'px';
+    tipEl.style.top = (r.bottom + 6) + 'px';
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest('[data-tip]')) tipEl.hidden = true;
+  });
+
+  // --- Share link modal ---
+  const shareBtns = document.querySelectorAll('[data-share]');
+  const shareModal = document.getElementById('share-modal');
+  if (shareBtns.length && shareModal) {
+    let currentProject = '', currentPath = '';
+
+    shareBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        currentProject = btn.dataset.shareProject || '';
+        currentPath = btn.dataset.sharePath || '';
+        // Reset modal state
+        shareModal.hidden = false;
+        shareModal.querySelector('[data-share-result]').hidden = true;
+        shareModal.querySelector('[data-share-error]').hidden = true;
+        shareModal.querySelector('[data-share-generate]').hidden = false;
+        shareModal.querySelector('[data-share-generate]').textContent = 'Generate link';
+        shareModal.querySelector('[data-share-ttl]').value = '30d';
+      });
+    });
+
+    shareModal.querySelector('[data-share-close]').addEventListener('click', () => {
+      shareModal.hidden = true;
+    });
+    shareModal.addEventListener('click', (e) => {
+      if (e.target === shareModal) shareModal.hidden = true;
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !shareModal.hidden) shareModal.hidden = true;
+    });
+
+    const generateBtn = shareModal.querySelector('[data-share-generate]');
+    const resultRow = shareModal.querySelector('[data-share-result]');
+    const urlInput = shareModal.querySelector('#share-url');
+    const errorEl = shareModal.querySelector('[data-share-error]');
+
+    generateBtn.addEventListener('click', async () => {
+      generateBtn.disabled = true;
+      generateBtn.textContent = 'Generating…';
+      errorEl.hidden = true;
+      const ttl = shareModal.querySelector('[data-share-ttl]').value;
+      try {
+        const resp = await fetch('/share', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ project: currentProject, path: currentPath, ttl }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to create share link');
+        urlInput.value = data.url;
+        resultRow.hidden = false;
+        generateBtn.hidden = true;
+      } catch (err) {
+        errorEl.textContent = err.message || 'Something went wrong.';
+        errorEl.hidden = false;
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate link';
+      }
+    });
+
+    shareModal.querySelector('[data-share-copy]').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(urlInput.value);
+        const copyBtn = shareModal.querySelector('[data-share-copy]');
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1300);
+      } catch {
+        urlInput.select();
+        document.execCommand('copy');
+      }
+    });
   }
 </script>

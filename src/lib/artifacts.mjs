@@ -73,6 +73,39 @@ export function isoDate(v) {
   const d = v instanceof Date ? v : new Date(v);
   return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
 }
+/** Extract a YYYY-MM-DD date from a relative path (filename or folder segment).
+ *  Matches "2026-05-21" (hyphenated) or "20260618" (compact, validated month/day). */
+function extractDateFromPath(rel) {
+  let m = rel.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = rel.match(/(?:^|[^0-9])(\d{4})(\d{2})(\d{2})(?:[^0-9]|$)/);
+  if (m) {
+    const mo = parseInt(m[2], 10), d = parseInt(m[3], 10);
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  return undefined;
+}
+
+/** Extract a YYYY-MM-DD date from raw file content (HTML or MD source).
+ *  Strategy (first hit wins): keyword-anchored dates (Generated/Build date/Updated/Created/Date
+ *  followed within a few chars by a date), then any YYYY-MM-DD.
+ *  Bounds: 2025-01-01 ≤ date ≤ today. Pre-2025 dates are source-document timestamps (AWS policy
+ *  effective dates, IAM role creation dates); future dates are cert-expiry or roadmap dates. */
+function extractDateFromContent(raw) {
+  if (!raw) return undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const inRange = (d) => d >= '2025-01-01' && d <= today;
+  // Keyword-anchored: "Generated 2026-05-21", "Build date: 2026-03-13", "Updated: 2026-03-26"
+  const kw = raw.match(/\b(?:generated|build\s*date|updated|created|date)\b[^0-9\n]{0,10}(20\d{2}-\d{2}-\d{2})/i);
+  if (kw && inRange(kw[1])) return kw[1];
+  // Fallback: first plausible date in content
+  const dates = raw.match(/20\d{2}-\d{2}-\d{2}/g);
+  if (dates) {
+    const valid = dates.filter(inRange);
+    if (valid.length) return valid[0];
+  }
+  return undefined;
+}
 
 /** Set of protected project names, read directly from protected.list (fail-closed registry). */
 export function protectedProjects() {
@@ -95,7 +128,6 @@ export function protectedProjects() {
 export async function loadArtifacts(mdModules) {
   const records = [];
   const locked = protectedProjects();
-
   // --- Markdown artifacts (frontmatter + compiled HTML + headings from Astro's compiler) ---
   for (const [key, mod] of Object.entries(mdModules)) {
     const meta = fromGlobKey(key);
@@ -113,6 +145,7 @@ export async function loadArtifacts(mdModules) {
       description: fm.description || '',
       tags: Array.isArray(fm.tags) ? fm.tags : [],
       date: isoDate(fm.date),
+      sortDate: isoDate(fm.date) || extractDateFromContent(fs.readFileSync(meta.absFile, 'utf8')) || extractDateFromPath(meta.routePath),
       html,
       // MD body is inlined into the viewer DOM, so Pagefind already sees it; no extra text.
       searchText: '',
@@ -139,6 +172,7 @@ export async function loadArtifacts(mdModules) {
       description: descContent ? descContent[1].trim() : '',
       tags: [],
       date: undefined,
+      sortDate: extractDateFromContent(raw) || extractDateFromPath(meta.routePath),
       html: null,
       // The iframed body text is invisible to Pagefind. For PUBLIC artifacts we extract it so
       // the viewer can embed it in the indexed region. For PROTECTED artifacts we leave it empty

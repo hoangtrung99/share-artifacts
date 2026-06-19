@@ -13,7 +13,21 @@
 // mismatched -> reject. No COOKIE_SECRET -> cannot verify -> reject (fail-closed at call site).
 
 export const COOKIE_PREFIX = 'cf_auth_';
-export const TOKEN_TTL_SECONDS = 12 * 60 * 60; // 12h
+export const TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60; // 180 days
+
+// Share-link TTL options (seconds). The chosen TTL controls BOTH how long the share link
+// stays valid AND how long the recipient's session cookie lasts after redemption — so "24h"
+// means 24h of access, not 24h to open the link then 180d of access.
+export const SHARE_TTL_OPTIONS = {
+  '24h': 24 * 60 * 60,
+  '7d': 7 * 24 * 60 * 60,
+  '30d': 30 * 24 * 60 * 60,   // default
+  '180d': 180 * 24 * 60 * 60,
+};
+export const SHARE_TTL_DEFAULT = '30d';
+export function shareTtl(key) {
+  return SHARE_TTL_OPTIONS[key] ?? SHARE_TTL_OPTIONS[SHARE_TTL_DEFAULT];
+}
 
 // Env-var key for a project's password. MUST match protect.sh:
 //   tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g'  ->  uppercase, non-[A-Z0-9] -> '_'.
@@ -75,6 +89,62 @@ export async function signToken(secret, project, ttl = TOKEN_TTL_SECONDS) {
   const key = await importKey(secret);
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(payloadB64)));
   return payloadB64 + '.' + bytesToB64url(sig);
+}
+
+/**
+ * Sign a share link token binding `project` → `next` path for `ttl` seconds.
+ * Payload adds `n` (next redirect target) and `t` (session TTL to grant on redemption) so the
+ * redeem endpoint can mint a session cookie whose duration matches the chosen share duration —
+ * a 24h share link gives 24h of access, not the full login TTL.
+ * Reuses the same HMAC-SHA256 + base64url format as signToken, so no new crypto path.
+ */
+export async function signShareToken(secret, project, next, ttl) {
+  const payload = JSON.stringify({
+    p: project,
+    exp: Math.floor(Date.now() / 1000) + ttl,
+    n: next,
+    t: ttl,
+  });
+  const payloadB64 = bytesToB64url(enc.encode(payload));
+  const key = await importKey(secret);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(payloadB64)));
+  return payloadB64 + '.' + bytesToB64url(sig);
+}
+
+/**
+ * Verify a share link token. Returns { project, next, ttl } on success, null otherwise.
+ * Checks: signature valid, not expired. Does NOT check project match (the redeem endpoint
+ * doesn't have an "expected project" — it derives everything from the token).
+ */
+export async function verifyShareToken(secret, token) {
+  if (!secret || !token) return null;
+  const dot = token.indexOf('.');
+  if (dot <= 0) return null;
+  const payloadB64 = token.slice(0, dot);
+  const sigB64 = token.slice(dot + 1);
+  let sigBytes;
+  try {
+    sigBytes = b64urlToBytes(sigB64);
+  } catch {
+    return null;
+  }
+  const key = await importKey(secret);
+  const ok = await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(payloadB64));
+  if (!ok) return null;
+  let payload;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(payloadB64)));
+  } catch {
+    return null;
+  }
+  if (typeof payload?.exp !== 'number' || payload.exp <= Math.floor(Date.now() / 1000)) return null;
+  if (typeof payload?.p !== 'string' || !payload.p) return null;
+  if (typeof payload?.t !== 'number' || payload.t <= 0) return null;
+  return {
+    project: payload.p,
+    next: typeof payload.n === 'string' ? payload.n : '/' + payload.p + '/',
+    ttl: payload.t,
+  };
 }
 
 /**

@@ -1,0 +1,60 @@
+---
+// Recursive component rendering a nested folder tree of project files.
+// Each folder is a <details> (collapsible); files are <li> leaves inside <ul>.
+// data-* attributes on <li> drive client-side filter/sort; data-folder on <details>
+// enables bottom-up visibility checks during filtering.
+import FileTree from './FileTree.astro';
+
+interface FileItem {
+  title: string;
+  routePath: string;
+  type: string;
+  date: string | null;
+  sortDate: string;
+  folder: string;
+}
+
+interface TreeNode {
+  name: string;
+  path: string;
+  files: FileItem[];
+  children: TreeNode[];
+  count: number;
+}
+
+interface Props {
+  nodes: TreeNode[];
+  depth?: number;
+}
+
+const { nodes, depth = 0 } = Astro.props;
+---
+{nodes.map((node) => (
+  <details class="proj-group" data-folder={node.path} data-depth={depth} style={`--depth: ${depth}`} open>
+    <summary class="proj-group-title">
+      <span class="grp-chevron" aria-hidden="true">▸</span>
+      <span class="grp-name">{node.name}</span>
+      <span class="grp-count">{node.count}</span>
+    </summary>
+    {node.files.length > 0 && (
+      <ul class="file-list">
+        {node.files.map((it) => (
+          <li
+            data-search={`${it.title} ${it.routePath}`.toLowerCase()}
+            data-type={it.type}
+            data-folder={it.folder}
+            data-date={it.sortDate || ''}
+            data-title={it.title.toLowerCase()}
+          >
+            <a class="file-link" href={`/${it.routePath}`}>
+              <span class={`badge badge-${it.type}`}>{it.type.toUpperCase()}</span>
+              <span class="file-title">{it.title}</span>
+              {it.date && <span class="file-date">{it.date}</span>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+    {node.children.length > 0 && <FileTree nodes={node.children} depth={depth + 1} />}
+  </details>
+))}

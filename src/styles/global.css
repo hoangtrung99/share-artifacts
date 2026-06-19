@@ -449,7 +449,7 @@ h1, h2, h3, h4 { line-height: 1.25; }
   padding-bottom: 0.4rem;
   margin: 0 0 0.7rem;
 }
-.file-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.file-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; padding-left: calc(var(--depth, 0) * 1.2rem); }
 .file-list li { margin: 0; }
 .file-link {
   display: flex;
@@ -464,10 +464,9 @@ h1, h2, h3, h4 { line-height: 1.25; }
 .file-link:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); text-decoration: none; }
 .file-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-sub { font-size: 0.72rem; color: var(--text-muted); background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 5px; padding: 0.02rem 0.4rem; white-space: nowrap; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; flex: none; }
 .file-date { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; flex: none; }
 
-/* Per-project controls: fuzzy text + type chips + expand/collapse + sub-folder checkboxes */
+/* Per-project controls: fuzzy text + type/sort chips + expand/collapse */
 .proj-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0.9rem 0 0.4rem; }
 .proj-filter {
   flex: 1 1 15rem;
@@ -481,7 +480,7 @@ h1, h2, h3, h4 { line-height: 1.25; }
   color: var(--text);
 }
 .proj-filter:focus-visible { outline: none; border-color: var(--accent); }
-.type-chips, .expand-controls { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.type-chips, .sort-chips, .expand-controls { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .chip {
   font: inherit; font-size: 0.78rem; line-height: 1;
   padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 999px;
@@ -490,27 +489,18 @@ h1, h2, h3, h4 { line-height: 1.25; }
 .chip:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .chip.is-active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
-.folder-checks { display: flex; flex-wrap: wrap; gap: 0.4rem 0.55rem; margin: 0.1rem 0 0.4rem; }
-.fcheck {
-  display: inline-flex; align-items: center; gap: 0.4rem;
-  font-size: 0.8rem; color: var(--text-muted); cursor: pointer;
-  border: 1px solid var(--border); border-radius: 8px; padding: 0.25rem 0.55rem;
-}
-.fcheck:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
-.fcheck input { accent-color: var(--accent); margin: 0; }
-.fc-name { text-transform: capitalize; }
-.fc-count { font-size: 0.7rem; background: var(--bg-subtle); border-radius: 999px; padding: 0 0.4rem; }
-.filter-count { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin: 0; }
 .no-results { color: var(--text-muted); padding: 1.5rem 0; }
 
-/* Collapsible group (native <details>) */
-details.proj-group { margin-top: 1.6rem; }
+/* Collapsible group (native <details>) — supports recursive nesting via --depth */
+details.proj-group { margin-top: 1.6rem; margin-left: calc(var(--depth, 0) * 1.2rem); }
+details.proj-group[data-depth="0"] { margin-top: 1.6rem; }
 .proj-group-title { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
 .proj-group-title::-webkit-details-marker { display: none; }
 .grp-chevron { color: var(--text-muted); transition: transform 0.15s ease; font-size: 0.8rem; }
 details[open] > .proj-group-title .grp-chevron { transform: rotate(90deg); }
 .grp-name { text-transform: capitalize; }
 .grp-count { font-size: 0.72rem; color: var(--text-muted); background: var(--bg-subtle); border-radius: 999px; padding: 0 0.45rem; }
+
 
 /* ---- Mobile (phones) ---- */
 @media (max-width: 640px) {
@@ -563,3 +553,121 @@ body.bleed { margin: 0; }
 .vb-primary { background: var(--accent); color: var(--accent-contrast); padding: 0.42rem 0.75rem; }
 .vb-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
 @media (max-width: 600px) { .vb-crumb { display: none; } .vb-label { display: none; } }
+
+/* ---- Custom instant tooltips (data-tip) ---- */
+.tip {
+  position: fixed;
+  z-index: 9999;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 5px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+/* ---- Share link (project listing header) ---- */
+.share-link {
+  font-size: 0.8rem;
+  margin-left: auto;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--accent);
+}
+/* When both share-link and signout exist, share-link takes auto and signout sits next to it */
+.crumbs .share-link + .signout { margin-left: 0; }
+.crumbs .share-link:not(:first-child) { margin-left: 0.5rem; }
+
+/* ---- Share modal ---- */
+.share-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+/* [hidden] must win over display:flex — otherwise the overlay covers the whole viewport
+   and intercepts all clicks even when "hidden". This is the classic CSS gotcha where an
+   explicit display value overrides the UA stylesheet's [hidden] { display: none }. */
+.share-overlay[hidden] { display: none; }
+.share-card {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+.share-card h2 { font-size: 1.25rem; margin: 0 0 0.35rem; }
+.share-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.8rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.2rem;
+}
+.share-close:hover { color: var(--text); }
+.share-lede { color: var(--text-muted); font-size: 0.9rem; margin: 0 0 1.25rem; }
+.share-ttl-row { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 1rem; }
+.share-label { font-size: 0.82rem; font-weight: 600; }
+.share-select {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.share-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.share-url-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.share-url-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  font-family: var(--mono);
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.share-copy-btn { flex: none; padding: 0.5rem 0.9rem; font-size: 0.85rem; }
+.share-generate-btn { width: 100%; font-size: 0.95rem; padding: 0.7rem 1rem; }
+.share-generate-btn:disabled { opacity: 0.6; cursor: wait; }
+.share-error {
+  font-size: 0.85rem;
+  color: #b42318;
+  background: color-mix(in srgb, #b42318 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, #b42318 35%, var(--border));
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  margin: 0 0 1rem;
+}
+@media (prefers-color-scheme: dark) {
+  .share-error { color: #ff9b8f; }
+}
+.share-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0.75rem 0 0;
+  line-height: 1.5;
+}

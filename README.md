@@ -17,14 +17,17 @@ bằng **trang login + signed cookie**.
 │   ├── artifacts/<project>/*.(md|html)   # SOURCE OF TRUTH — tất cả artifact nằm ở đây
 │   ├── pages/                            # index.astro (gallery), [...path].astro (viewer), login.astro
 │   ├── layouts/Base.astro
+│   ├── components/                       # Fab.astro (viewer toolbar), ShareModal.astro (share dialog)
 │   ├── lib/artifacts.mjs                 # enumerate + metadata (dùng chung gallery & viewer)
 │   └── styles/global.css
 ├── scripts/prepare-static.mjs            # prebuild: copy raw artifact -> public/, sinh protected-folders.js
 ├── functions/                            # Pages Functions (chạy mọi request, ở repo ROOT — KHÔNG trong dist)
 │   ├── _middleware.js                    # chặn project được bảo vệ -> /login nếu chưa có cookie hợp lệ
-│   ├── _auth.js                          # helper dùng chung: SNAKE key, HMAC token, constant-time compare
+│   ├── _auth.js                          # helper dùng chung: SNAKE key, HMAC token, share token, constant-time compare
 │   ├── login.js                          # POST /login: verify mật khẩu, set signed cookie
 │   ├── logout.js                         # xoá cookie
+│   ├── share.js                          # POST /share: verify cookie, mint share link token
+│   ├── s/[token].js                      # GET /s/<token>: redeem share token, set cookie, redirect
 │   └── protected-folders.js              # AUTO-SINH từ protected.list (đừng sửa tay)
 ├── public/                               # DERIVED — prepare-static wipe & sinh lại mỗi build (đừng commit)
 ├── dist/                                 # BUILD OUTPUT — astro build + pagefind (đừng commit)
@@ -86,7 +89,7 @@ Xoá file khỏi `src/artifacts/` → lần deploy sau page sẽ biến mất.
 Auth **không còn dùng popup Basic Auth**. Thay vào đó: khi truy cập một project được bảo vệ mà chưa có
 cookie hợp lệ, middleware (`functions/_middleware.js`) chuyển hướng sang **trang `/login` có style**
 (hiện tên project + ô mật khẩu). Đăng nhập đúng → `functions/login.js` đặt signed cookie
-`cf_auth_<project>` (HMAC-SHA256 trên `COOKIE_SECRET`, HttpOnly/Secure/SameSite=Lax, hết hạn 12h) → quay
+`cf_auth_<project>` (HMAC-SHA256 trên `COOKIE_SECRET`, HttpOnly/Secure/SameSite=Lax, hết hạn 180 ngày) → quay
 lại trang gốc. Có nút **Logout** để xoá cookie.
 
 Một project được bảo vệ khi tồn tại secret `PW_<PROJECT>` (tên project viết hoa, ký tự ngoài `[A-Z0-9]`
@@ -106,6 +109,30 @@ fail-closed (qua `protected-folders.js` sinh khi build).
 ```
 
 Khi truy cập project được bảo vệ, trình duyệt mở **trang login** — nhập mật khẩu vào form, không có popup.
+
+## Share link (chia sẻ truy cập không cần mật khẩu)
+
+Khi đã đăng nhập vào một project được bảo vệ, bạn có thể tạo **share link** để người khác truy cập
+không cần mật khẩu. Nhấn nút **📤 Share** trên toolbar (viewer) hoặc header (project listing) → chọn
+thời hạn → **Generate link** → copy link chia sẻ.
+
+**Cách hoạt động:**
+
+- `POST /share` (`functions/share.js`) — verify cookie `cf_auth_<project>` của người tạo, mint share
+  token (HMAC-SHA256 trên `COOKIE_SECRET`, payload `{p, exp, n, t}` — project, expiry, next path, session TTL).
+- `GET /s/<token>` (`functions/s/[token].js`) — redeem: verify token, mint session cookie với TTL
+  từ token (`t`), set cookie, 302 redirect tới URL sạch. Token **không** xuất hiện trong URL cuối,
+  history, Referer, hay edge logs.
+- TTL options: **24h, 7d, 30d (mặc định), 180d**. TTL kiểm soát **cả** thời hạn link **và** thời gian
+  session của người nhận — chọn 24h = người nhận có 24h truy cập, không phải 24h để mở link rồi 180d.
+
+**Bảo mật:**
+
+- Chỉ người đã đăng nhập vào project mới tạo được share link (verify cookie trước khi mint).
+- Token stateless (ký bằng `COOKIE_SECRET`, không có KV/D1) → **không thể revoke từng link** — chỉ
+  rotate `COOKIE_SECRET` để revoke tất cả share links + sessions đang hoạt động.
+- Cookie `SameSite=Lax` → CSRF tự mitigated cho `POST /share`.
+- Token URL-safe (base64url, không có `+`, `/`, `=`).
 
 ### Dành cho agent (Claude) cập nhật mật khẩu
 
