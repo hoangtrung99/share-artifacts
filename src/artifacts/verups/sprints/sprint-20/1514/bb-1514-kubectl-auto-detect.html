@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB-1514 — EKS Private Endpoint Migration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+    --bg: #f4f6f9;
+    --surface: #ffffff;
+    --surface2: #edf0f5;
+    --surface-elevated: #ffffff;
+    --border: rgba(0, 0, 0, 0.07);
+    --border-bright: rgba(0, 0, 0, 0.14);
+    --text: #1a2332;
+    --text-dim: #64748b;
+    --navy: #1e3a5f;
+    --navy-dim: rgba(30, 58, 95, 0.08);
+    --gold: #b8860b;
+    --gold-dim: rgba(184, 134, 11, 0.08);
+    --teal: #0e7490;
+    --teal-dim: rgba(14, 116, 144, 0.08);
+    --red: #b91c1c;
+    --red-dim: rgba(185, 28, 28, 0.08);
+    --green: #15803d;
+    --green-dim: rgba(21, 128, 61, 0.08);
+    --orange: #c2410c;
+    --orange-dim: rgba(194, 65, 12, 0.08);
+    --purple: #7e22ce;
+    --purple-dim: rgba(126, 34, 206, 0.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1729;
+      --surface: #182035;
+      --surface2: #1e2a42;
+      --surface-elevated: #243352;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-bright: rgba(255, 255, 255, 0.14);
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --navy: #60a5fa;
+      --navy-dim: rgba(96, 165, 250, 0.12);
+      --gold: #fbbf24;
+      --gold-dim: rgba(251, 191, 36, 0.1);
+      --teal: #22d3ee;
+      --teal-dim: rgba(34, 211, 238, 0.1);
+      --red: #f87171;
+      --red-dim: rgba(248, 113, 113, 0.1);
+      --green: #4ade80;
+      --green-dim: rgba(74, 222, 128, 0.1);
+      --orange: #fb923c;
+      --orange-dim: rgba(251, 146, 60, 0.1);
+      --purple: #c084fc;
+      --purple-dim: rgba(192, 132, 252, 0.1);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 15% 10%, var(--navy-dim) 0%, transparent 40%),
+      radial-gradient(circle at 85% 90%, var(--gold-dim) 0%, transparent 35%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .anim {
+    animation: fadeUp 0.45s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .mermaid-wrap .mermaid { transition: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  h1 { font-size: 38px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; text-wrap: balance; }
+  .subtitle { color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; margin-bottom: 10px; }
+  .lead { font-size: 16px; line-height: 1.7; color: var(--text-dim); max-width: 780px; margin-bottom: 40px; }
+  .lead strong { color: var(--text); }
+  .lead code, .inline-code {
+    font-family: var(--font-mono); font-size: 12px;
+    background: var(--navy-dim); color: var(--navy);
+    padding: 1px 6px; border-radius: 3px;
+  }
+
+  /* Section labels */
+  .section-label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-label .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  /* Cards */
+  .ve-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px 26px; margin-bottom: 20px;
+  }
+  .ve-card--hero {
+    background: var(--surface-elevated);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06); padding: 28px 32px;
+  }
+  .ve-card--recessed {
+    background: var(--surface2); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Comparison grid */
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 24px; }
+  .comp-box { border-radius: 10px; padding: 18px 22px; border: 1px solid var(--border); }
+  .comp-box--problem { background: var(--red-dim); border-color: color-mix(in srgb, var(--border) 50%, var(--red) 30%); }
+  .comp-box--solution { background: var(--green-dim); border-color: color-mix(in srgb, var(--border) 50%, var(--green) 30%); }
+  .comp-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .comp-box--problem h3 { color: var(--red); }
+  .comp-box--solution h3 { color: var(--green); }
+  .comp-box ul { list-style: none; font-size: 13px; line-height: 1.8; color: var(--text-dim); }
+  .comp-box ul li { padding-left: 16px; position: relative; }
+  .comp-box--problem ul li::before { content: '\00d7'; color: var(--red); font-weight: 700; position: absolute; left: 0; }
+  .comp-box--solution ul li::before { content: '\2713'; color: var(--green); font-weight: 700; position: absolute; left: 0; }
+  .comp-box code { font-family: var(--font-mono); font-size: 11px; background: var(--surface); padding: 1px 5px; border-radius: 3px; }
+
+  /* Component grid */
+  .comp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .comp-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px; position: relative; overflow: hidden;
+  }
+  .comp-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; }
+  .comp-card--navy::before { background: var(--navy); }
+  .comp-card--gold::before { background: var(--gold); }
+  .comp-card--teal::before { background: var(--teal); }
+  .comp-card--green::before { background: var(--green); }
+  .comp-card--orange::before { background: var(--orange); }
+  .comp-card--purple::before { background: var(--purple); }
+  .comp-card .tag {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px;
+  }
+  .comp-card--navy .tag { color: var(--navy); }
+  .comp-card--gold .tag { color: var(--gold); }
+  .comp-card--teal .tag { color: var(--teal); }
+  .comp-card--green .tag { color: var(--green); }
+  .comp-card--orange .tag { color: var(--orange); }
+  .comp-card--purple .tag { color: var(--purple); }
+  .comp-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .comp-card p { font-size: 12px; line-height: 1.6; color: var(--text-dim); }
+  .comp-card code { font-family: var(--font-mono); font-size: 11px; background: var(--surface2); padding: 1px 5px; border-radius: 3px; }
+  .comp-card .detail-list { list-style: none; font-size: 12px; line-height: 1.9; margin-top: 8px; }
+  .comp-card .detail-list li { padding-left: 14px; position: relative; color: var(--text-dim); }
+  .comp-card .detail-list li::before { content: '\203A'; color: var(--text-dim); font-weight: 600; position: absolute; left: 0; }
+
+  /* Config table */
+  .config-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  .config-table th {
+    text-align: left; font-weight: 600; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-dim); padding: 6px 10px;
+    border-bottom: 2px solid var(--border-bright);
+  }
+  .config-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .config-table tr:last-child td { border-bottom: none; }
+  .config-table code { font-family: var(--font-mono); font-size: 11px; background: var(--surface2); padding: 1px 5px; border-radius: 3px; }
+  .config-table .yes { color: var(--green); font-weight: 600; }
+  .config-table .no { color: var(--red); font-weight: 600; }
+
+  /* Flow arrow */
+  .flow-arrow {
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    color: var(--text-dim); font-family: var(--font-mono); font-size: 12px;
+    padding: 4px 0; margin-bottom: 20px;
+  }
+  .flow-arrow svg {
+    width: 20px; height: 20px; fill: none; stroke: var(--border-bright);
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  /* Mermaid */
+  .mermaid-wrap {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px 24px; overflow: auto; margin-bottom: 24px;
+  }
+  .mermaid-wrap .mermaid {
+    display: flex; justify-content: center; transition: transform 0.2s ease;
+    transform-origin: top center;
+  }
+  .zoom-controls {
+    position: absolute; top: 8px; right: 8px; display: flex; gap: 2px;
+    z-index: 10; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px;
+  }
+  .zoom-controls button {
+    width: 28px; height: 28px; border: none; background: transparent;
+    color: var(--text-dim); font-family: var(--font-mono); font-size: 14px;
+    cursor: pointer; border-radius: 4px; display: flex; align-items: center;
+    justify-content: center; transition: background 0.15s ease, color 0.15s ease;
+  }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .mermaid-wrap { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap.is-zoomed { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 14px !important; color: var(--text) !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 11px !important; color: var(--text-dim) !important; background-color: var(--bg) !important; }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+  .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px !important; }
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* Code block */
+  .code-block { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+  .code-block .code-header {
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    padding: 8px 16px; font-family: var(--font-mono); font-size: 11px;
+    font-weight: 600; color: var(--text-dim); letter-spacing: 0.5px;
+  }
+  .code-block pre {
+    padding: 16px 20px; font-family: var(--font-mono); font-size: 12px;
+    line-height: 1.7; overflow-x: auto; white-space: pre-wrap;
+    overflow-wrap: break-word; color: var(--text);
+  }
+  .code-block .comment { color: var(--text-dim); }
+  .code-block .highlight { color: var(--gold); font-weight: 500; }
+  .code-block .jq-var { color: var(--teal); font-weight: 500; }
+  .code-block .shell-var { color: var(--navy); font-weight: 500; }
+
+  /* Callout */
+  .callout {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-left: 3px solid var(--gold); border-radius: 0 10px 10px 0;
+    padding: 16px 20px; font-size: 13px; line-height: 1.6;
+    color: var(--text-dim); margin-bottom: 24px;
+  }
+  .callout strong { color: var(--text); }
+  .callout code { font-family: var(--font-mono); font-size: 11px; background: var(--navy-dim); color: var(--navy); padding: 1px 5px; border-radius: 3px; }
+
+  /* Legend */
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* Three column */
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+
+  /* Endpoint table */
+  .endpoint-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .endpoint-table th {
+    text-align: left; font-weight: 600; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-dim); padding: 6px 10px;
+    border-bottom: 2px solid var(--border-bright);
+  }
+  .endpoint-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; }
+  .endpoint-table tr:last-child td { border-bottom: none; }
+  .endpoint-table .type-iface { color: var(--teal); }
+  .endpoint-table .type-gw { color: var(--gold); }
+
+  /* Interp table */
+  .interp-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 14px; }
+  .interp-table th { text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); padding: 8px 14px; border-bottom: 2px solid var(--border-bright); }
+  .interp-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .interp-table tr:last-child td { border-bottom: none; }
+  .interp-table code { font-family: var(--font-mono); font-size: 12px; padding: 1px 6px; border-radius: 3px; }
+  .interp-table .jq { background: var(--teal-dim); color: var(--teal); }
+  .interp-table .sh { background: var(--navy-dim); color: var(--navy); }
+
+  /* Files table */
+  .files-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .files-table th { text-align: left; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); padding: 8px 12px; border-bottom: 2px solid var(--border-bright); }
+  .files-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .files-table tr:last-child td { border-bottom: none; }
+  .files-table code { font-family: var(--font-mono); font-size: 11px; background: var(--surface2); padding: 1px 5px; border-radius: 3px; }
+  .files-table .repo-tag { font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .files-table .repo-infra { background: var(--navy-dim); color: var(--navy); }
+  .files-table .repo-server { background: var(--gold-dim); color: var(--gold); }
+
+  /* Collapsible */
+  details { margin-bottom: 20px; }
+  details summary {
+    cursor: pointer; font-family: var(--font-mono); font-size: 12px;
+    font-weight: 600; color: var(--text-dim); padding: 10px 0;
+    list-style: none; display: flex; align-items: center; gap: 8px;
+  }
+  details summary::before { content: '\25B6'; font-size: 10px; transition: transform 0.2s ease; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details summary::-webkit-details-marker { display: none; }
+
+  @media (max-width: 768px) {
+    body { padding: 16px; }
+    h1 { font-size: 24px; }
+    .comparison, .comp-grid { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+    .mermaid-wrap { padding: 16px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ===== HERO ===== -->
+  <h1 class="anim" style="--i:0">EKS Private Endpoint Migration</h1>
+  <p class="subtitle anim" style="--i:1">BB-1514 &middot; bs-exchange-infra + bs-integration-server</p>
+
+  <p class="lead anim" style="--i:2">
+    Migrate EKS API endpoint from <strong>public</strong> to <strong>private-only</strong>, eliminating
+    internet exposure of the Kubernetes control plane. CI/CD deploys are rerouted through an internal
+    <strong>CD runner EC2</strong> via <strong>AWS Systems Manager</strong>, keeping kubectl commands
+    entirely within the VPC.
+  </p>
+
+  <!-- ===== BEFORE vs AFTER ===== -->
+  <div class="section-label anim" style="--i:3">
+    <span class="dot" style="background: var(--red)"></span>
+    Before vs After
+  </div>
+
+  <div class="comparison anim" style="--i:4">
+    <div class="comp-box comp-box--problem">
+      <h3>Before: Public Endpoint</h3>
+      <ul>
+        <li>EKS API server exposed to internet</li>
+        <li>GitHub Actions calls <code>kubectl</code> directly</li>
+        <li>Relies on IP allowlisting for security</li>
+        <li>Hardcoded <code>kubectl_version = "1.30.6"</code></li>
+        <li>EKS auth via <code>aws-auth</code> ConfigMap</li>
+      </ul>
+    </div>
+    <div class="comp-box comp-box--solution">
+      <h3>After: Private Endpoint</h3>
+      <ul>
+        <li>EKS API only reachable within VPC</li>
+        <li>SSM delegates kubectl to internal EC2</li>
+        <li>Zero internet exposure of control plane</li>
+        <li>kubectl auto-detects EKS version</li>
+        <li>EKS native API auth (access entries)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ===== ARCHITECTURE DIAGRAM ===== -->
+  <div class="section-label anim" style="--i:5">
+    <span class="dot" style="background: var(--navy)"></span>
+    Architecture &amp; Network Flow
+  </div>
+
+  <div class="mermaid-wrap anim" style="--i:6">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+    </div>
+    <pre class="mermaid">
+      graph TD
+        GH["GitHub Actions<br/>ubuntu-latest"] -->|"AssumeRole"| CICD["custodian-CICDRole<br/>sts, ec2, ssm, ecr"]
+
+        subgraph AWS["AWS Account"]
+          CICD -->|"1 Build and Push"| ECR["ECR<br/>Container Registry"]
+          CICD -->|"2 ec2:DescribeInstances<br/>find by Name tag"| FIND["Discover CD Runner"]
+          FIND -->|"3 ssm:SendCommand"| SSM["AWS Systems Manager"]
+
+          subgraph VPC["VPC - Private Subnets"]
+            SSM -->|"via VPC Endpoint"| CDR["CD Runner EC2<br/>t3.micro, AL2023<br/>SSM Agent"]
+            CDR -->|"4 aws eks update-kubeconfig"| EKS["EKS Cluster<br/>Private Endpoint :443"]
+            CDR -->|"5 kubectl rollout restart"| EKS
+            EKS --> NODES["EKS Node Groups<br/>admin, api, app, worker, mmh"]
+
+            VPCE["VPC Endpoints<br/>ssm, ec2, sts, ecr, s3, logs"]
+          end
+        end
+
+        CICD -->|"4 ssm:GetCommandInvocation<br/>poll every 10s"| SSM
+    </pre>
+  </div>
+
+  <div class="legend anim" style="--i:7">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--navy-dim);border:1px solid var(--navy)"></div> CI/CD control</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--teal-dim);border:1px solid var(--teal)"></div> VPC internal</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--gold-dim);border:1px solid var(--gold)"></div> AWS services</div>
+  </div>
+
+  <div class="callout anim" style="--i:8">
+    <strong>Key insight.</strong> GitHub Actions never touches the EKS API directly. It sends a shell script
+    to the CD runner via SSM, and the CD runner executes <code>kubectl</code> over the private endpoint
+    within the VPC. SSM communication itself goes through VPC Endpoints &mdash; no internet required.
+  </div>
+
+  <!-- ===== COMPONENTS ===== -->
+  <div class="section-label anim" style="--i:9">
+    <span class="dot" style="background: var(--gold)"></span>
+    Infrastructure Components
+  </div>
+
+  <div class="comp-grid anim" style="--i:10">
+    <!-- EKS Configuration -->
+    <div class="comp-card comp-card--navy">
+      <div class="tag">EKS Cluster</div>
+      <h3>Endpoint Configuration</h3>
+      <table class="config-table">
+        <tr><th>Setting</th><th>DEV</th><th>STG</th></tr>
+        <tr><td>Private endpoint</td><td class="yes">true</td><td class="yes">true</td></tr>
+        <tr><td>Public endpoint</td><td class="yes">true</td><td class="no">false</td></tr>
+        <tr><td>Auth mode</td><td><code>API</code></td><td><code>API</code></td></tr>
+      </table>
+      <p style="margin-top:8px">DEV keeps public for testing. STG is private-only (production-ready).</p>
+    </div>
+
+    <!-- CD Runner -->
+    <div class="comp-card comp-card--teal">
+      <div class="tag">CD Runner EC2</div>
+      <h3>point-cd-runner</h3>
+      <ul class="detail-list">
+        <li><code>t3.micro</code> &mdash; 2 vCPU burst, sufficient for kubectl</li>
+        <li>AL2023 minimal &mdash; pre-installed aws-cli v2 + SSM agent</li>
+        <li>Private subnet only &mdash; no public IP</li>
+        <li>IMDSv2 required (SSRF protection)</li>
+        <li>8GB gp3 encrypted root volume</li>
+        <li>Conditional: <code>cd_runner_enabled</code> toggle</li>
+      </ul>
+    </div>
+
+    <!-- IAM Roles -->
+    <div class="comp-card comp-card--gold">
+      <div class="tag">IAM</div>
+      <h3>Roles &amp; Access</h3>
+      <ul class="detail-list">
+        <li><strong>CICDRole</strong>: added <code>ec2:DescribeInstances</code>, <code>ssm:SendCommand</code>, <code>ssm:GetCommandInvocation</code></li>
+        <li><strong>CD runner role</strong>: <code>AmazonSSMManagedInstanceCore</code> + custom <code>eks:DescribeCluster</code> (scoped to cluster ARN)</li>
+        <li><strong>EKS access entry</strong>: CD runner role mapped to <code>kubernetes_groups: ["cicd"]</code></li>
+      </ul>
+    </div>
+
+    <!-- Security Groups -->
+    <div class="comp-card comp-card--green">
+      <div class="tag">Security Groups</div>
+      <h3>Network Access Control</h3>
+      <ul class="detail-list">
+        <li><strong>cd-runner-sg</strong>: No ingress rules (SSM agent initiates outbound only)</li>
+        <li><strong>EKS cluster SG</strong>: New ingress rule &mdash; CD runner &rarr; port 443 (HTTPS)</li>
+        <li><strong>endpoints-sg</strong>: Allows 443 from VPC CIDR</li>
+        <li>Egress: all traffic to 0.0.0.0/0</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- VPC Endpoints (collapsible) -->
+  <details class="anim" style="--i:11">
+    <summary>VPC Endpoints (11 services)</summary>
+    <div class="ve-card" style="margin-top:8px">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">
+        Required for CD runner to communicate with AWS services without internet access.
+      </p>
+      <table class="endpoint-table">
+        <tr><th>Service</th><th>Type</th><th>Private DNS</th><th>Purpose</th></tr>
+        <tr><td>ssm</td><td class="type-iface">Interface</td><td>Yes</td><td>SSM API calls</td></tr>
+        <tr><td>ssmmessages</td><td class="type-iface">Interface</td><td>Yes</td><td>SSM agent channel</td></tr>
+        <tr><td>ec2</td><td class="type-iface">Interface</td><td>Yes</td><td>Instance metadata</td></tr>
+        <tr><td>ec2messages</td><td class="type-iface">Interface</td><td>Yes</td><td>SSM message delivery</td></tr>
+        <tr><td>sts</td><td class="type-iface">Interface</td><td>Yes</td><td>AssumeRole for EKS auth</td></tr>
+        <tr><td>ecr.api</td><td class="type-iface">Interface</td><td>Yes</td><td>ECR API</td></tr>
+        <tr><td>ecr.dkr</td><td class="type-iface">Interface</td><td>Yes</td><td>Docker pull/push</td></tr>
+        <tr><td>logs</td><td class="type-iface">Interface</td><td>Yes</td><td>CloudWatch Logs</td></tr>
+        <tr><td>monitoring</td><td class="type-iface">Interface</td><td>Yes</td><td>CloudWatch Metrics</td></tr>
+        <tr><td>kms</td><td class="type-iface">Interface</td><td>Yes</td><td>Encryption keys</td></tr>
+        <tr><td>s3</td><td class="type-gw">Gateway</td><td>&mdash;</td><td>S3 access (route table)</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <!-- ===== CI/CD PIPELINE ===== -->
+  <div class="section-label anim" style="--i:12">
+    <span class="dot" style="background: var(--teal)"></span>
+    CI/CD Deploy Pipeline
+  </div>
+
+  <div class="mermaid-wrap anim" style="--i:13">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+    </div>
+    <pre class="mermaid">
+      sequenceDiagram
+        participant GH as GitHub Actions
+        participant AWS as AWS API
+        participant SSM as Systems Manager
+        participant CD as CD Runner EC2
+        participant EKS as EKS Private API
+
+        GH->>AWS: AssumeRole custodian-CICDRole
+        GH->>AWS: ECR Login + Docker Push
+        GH->>AWS: ec2:DescribeInstances by Name tag
+        AWS-->>GH: Instance ID
+
+        GH->>SSM: SendCommand with kubectl script
+        SSM->>CD: Execute via SSM Agent
+
+        Note over CD: Auto-detect kubectl version
+        CD->>AWS: eks:DescribeCluster
+        AWS-->>CD: K8s version 1.30
+        Note over CD: Check .kubectl-version marker
+        Note over CD: Update kubectl if needed
+
+        CD->>EKS: aws eks update-kubeconfig
+        CD->>EKS: kubectl rollout restart
+        CD->>EKS: kubectl rollout status
+        EKS-->>CD: Deployment complete
+
+        CD-->>SSM: Exit code 0
+        SSM-->>AWS: Command Success
+
+        loop Poll every 10s
+          GH->>AWS: ssm:GetCommandInvocation
+          AWS-->>GH: Status: InProgress / Success
+        end
+
+        Note over GH: Print stdout/stderr and exit
+    </pre>
+  </div>
+
+  <!-- ===== KUBECTL AUTO-DETECT ===== -->
+  <div class="section-label anim" style="--i:14">
+    <span class="dot" style="background: var(--orange)"></span>
+    kubectl Version Auto-detect
+  </div>
+
+  <div class="comp-grid anim" style="--i:15">
+    <div class="comp-card comp-card--navy">
+      <div class="tag">Layer 1 &mdash; Boot Time</div>
+      <h3>user_data.sh</h3>
+      <p>Runs once when EC2 is created. Queries EKS for K8s version, downloads matching kubectl
+      with SHA256 verification, writes marker file <code>/usr/local/bin/.kubectl-version</code>.</p>
+    </div>
+    <div class="comp-card comp-card--gold">
+      <div class="tag">Layer 2 &mdash; Deploy Time</div>
+      <h3>SSM Command Payload</h3>
+      <p>Every CI/CD deploy compares marker file with current EKS version.
+      If EKS was upgraded but EC2 not replaced, kubectl is updated on-the-fly before running commands.</p>
+    </div>
+  </div>
+
+  <!-- ===== JQ INTERPOLATION ===== -->
+  <div class="section-label anim" style="--i:16">
+    <span class="dot" style="background: var(--purple)"></span>
+    Two-layer jq Interpolation
+  </div>
+
+  <div class="ve-card anim" style="--i:17">
+    <p style="font-size:13px;color:var(--text-dim);line-height:1.6;margin-bottom:14px;">
+      The SSM payload is built with <code class="inline-code">jq -n</code> inside a single-quoted bash filter.
+      This creates two interpolation layers &mdash; jq resolves CI-side values at build time, while shell
+      variables remain as literal text for the CD runner to expand at runtime.
+    </p>
+    <table class="interp-table">
+      <thead><tr><th>Syntax</th><th>Layer</th><th>Where</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code class="jq">\($cluster)</code></td>
+          <td>jq interpolation</td>
+          <td>CI runner (build)</td>
+          <td>&rarr; <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;">point</code></td>
+        </tr>
+        <tr>
+          <td><code class="jq">\($region)</code></td>
+          <td>jq interpolation</td>
+          <td>CI runner (build)</td>
+          <td>&rarr; <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;">ap-northeast-1</code></td>
+        </tr>
+        <tr>
+          <td><code class="sh">${EKS_MINOR}</code></td>
+          <td>Shell variable</td>
+          <td>CD runner (runtime)</td>
+          <td>Literal in JSON, expanded by bash</td>
+        </tr>
+        <tr>
+          <td><code class="sh">${WANT#v}</code></td>
+          <td>Shell param expansion</td>
+          <td>CD runner (runtime)</td>
+          <td><code class="sh">v1.30.8</code> &rarr; <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;">1.30.8</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== FILES CHANGED ===== -->
+  <div class="section-label anim" style="--i:18">
+    <span class="dot" style="background: var(--text-dim)"></span>
+    Files Changed
+  </div>
+
+  <div class="ve-card anim" style="--i:19">
+    <table class="files-table">
+      <thead><tr><th>Repo</th><th>File</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="repo-tag repo-infra">INFRA</span></td>
+          <td><code>eks/main.tf</code></td>
+          <td>EKS access entry for CD runner role, API auth mode</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-infra">INFRA</span></td>
+          <td><code>eks/tfvars/*.tfvars</code></td>
+          <td>Private endpoint enabled, public disabled (STG)</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-infra">INFRA</span></td>
+          <td><code>ec2-cd-runner/*.tf</code></td>
+          <td>New component: EC2, IAM role, instance profile</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-infra">INFRA</span></td>
+          <td><code>ec2-cd-runner/user_data.sh</code></td>
+          <td>Auto-detect kubectl + SHA256 verify + marker file</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-infra">INFRA</span></td>
+          <td><code>security_group/ec2_cd_runner.tf</code></td>
+          <td>CD runner SG + EKS ingress rule (443)</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-infra">INFRA</span></td>
+          <td><code>endpoints/main.tf</code></td>
+          <td>VPC endpoints for SSM, EC2, STS, ECR, etc.</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-infra">INFRA</span></td>
+          <td><code>iam/role-CICDRole.tf</code></td>
+          <td>Added SSM deploy permissions</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-server">SERVER</span></td>
+          <td><code>scripts/k8s_restart_via_ssm.sh</code></td>
+          <td>New: SSM-based deploy script with kubectl version check</td>
+        </tr>
+        <tr>
+          <td><span class="repo-tag repo-server">SERVER</span></td>
+          <td><code>.github/workflows/internal_cicd.yml</code></td>
+          <td>Replace direct kubectl with SSM script call</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== DESIGN DECISIONS ===== -->
+  <details class="anim" style="--i:20">
+    <summary>Design Decisions &amp; Edge Cases</summary>
+    <div class="ve-card" style="margin-top:8px">
+      <table class="config-table">
+        <tr><th>Decision</th><th>Choice</th><th>Rationale</th></tr>
+        <tr><td>Instance type</td><td><code>t3.micro</code></td><td>Minimal cost; kubectl is not CPU-intensive</td></tr>
+        <tr><td>AMI</td><td>AL2023 minimal</td><td>Pre-installed aws-cli v2 + SSM agent, small footprint</td></tr>
+        <tr><td>IMDSv2</td><td>Required</td><td>Prevents SSRF-based credential theft</td></tr>
+        <tr><td>EKS auth</td><td>API mode</td><td>Native access entries, no ConfigMap management</td></tr>
+        <tr><td>kubectl caching</td><td>Marker file</td><td>Avoids 60MB re-download on every deploy</td></tr>
+        <tr><td>SSM timeout</td><td>600s</td><td>Buffer over kubectl rollout timeout (300s)</td></tr>
+        <tr><td>DEV public endpoint</td><td>Kept enabled</td><td>Hybrid mode for migration testing</td></tr>
+      </table>
+      <div class="callout" style="margin-top:16px;margin-bottom:0">
+        <strong>Edge case:</strong> If EKS doesn't exist when EC2 boots, <code>aws eks describe-cluster</code> fails
+        and <code>set -euo pipefail</code> aborts user_data. Mitigation: deploy EKS before CD runner (existing dependency order).
+        The <code>user_data</code> change is a force-replacement attribute &mdash; next <code>terraform apply</code> will
+        destroy + recreate EC2. Acceptable for DEV/STG.
+      </div>
+    </div>
+  </details>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#1e2a42' : '#e8f0fe',
+      primaryBorderColor: isDark ? '#60a5fa' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e2e8f0' : '#1a2332',
+      secondaryColor: isDark ? '#2e2618' : '#fef9e7',
+      secondaryBorderColor: isDark ? '#fbbf24' : '#b8860b',
+      secondaryTextColor: isDark ? '#e2e8f0' : '#1a2332',
+      tertiaryColor: isDark ? '#0e2a2e' : '#e0f7f6',
+      tertiaryBorderColor: isDark ? '#22d3ee' : '#0e7490',
+      tertiaryTextColor: isDark ? '#e2e8f0' : '#1a2332',
+      lineColor: isDark ? '#94a3b8' : '#64748b',
+      fontSize: '14px',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#1e2a42' : '#fefce8',
+      noteTextColor: isDark ? '#e2e8f0' : '#1a2332',
+      noteBorderColor: isDark ? '#fbbf24' : '#b8860b',
+      actorTextColor: isDark ? '#e2e8f0' : '#1a2332',
+      actorBkg: isDark ? '#1e2a42' : '#e8f0fe',
+      actorBorder: isDark ? '#60a5fa' : '#1e3a5f',
+      activationBkgColor: isDark ? '#243352' : '#dbeafe',
+      activationBorderColor: isDark ? '#60a5fa' : '#1e3a5f',
+      signalColor: isDark ? '#94a3b8' : '#64748b',
+      signalTextColor: isDark ? '#e2e8f0' : '#1a2332',
+    }
+  });
+</script>
+<script>
+  function updateZoomState(wrap) {
+    var target = wrap.querySelector('.mermaid');
+    var zoom = parseFloat(target.dataset.zoom || '1');
+    wrap.classList.toggle('is-zoomed', zoom > 1);
+  }
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || '1');
+    var next = Math.min(Math.max(current * factor, 0.3), 5);
+    target.dataset.zoom = next;
+    target.style.transform = 'scale(' + next + ')';
+    updateZoomState(wrap);
+  }
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = '1';
+    target.style.transform = 'scale(1)';
+    updateZoomState(wrap);
+  }
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || '1');
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.3), 5);
+      target.dataset.zoom = next;
+      target.style.transform = 'scale(' + next + ')';
+      updateZoomState(wrap);
+    }, { passive: false });
+    var startX, startY, scrollL, scrollT;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      var target = wrap.querySelector('.mermaid');
+      if (parseFloat(target.dataset.zoom || '1') <= 1) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.scrollLeft = scrollL - (e.clientX - startX);
+      wrap.scrollTop = scrollT - (e.clientY - startY);
+    });
+    window.addEventListener('mouseup', function() {
+      wrap.classList.remove('is-panning');
+    });
+  });
+</script>
+
+</body>
+</html>

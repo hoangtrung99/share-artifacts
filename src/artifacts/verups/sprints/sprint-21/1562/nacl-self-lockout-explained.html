@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB-1562 — NACL Self-Lockout Incident Explained</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Fragment+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — Blueprint: deep slate + gold ============ */
+  :root {
+    --font-body: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-mono: 'Fragment Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #0c1220;
+    --surface: #111827;
+    --surface2: #172033;
+    --surface-elevated: #1a2540;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-bright: rgba(255, 255, 255, 0.14);
+    --text: #e8edf5;
+    --text-dim: #7b8ba5;
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239, 68, 68, 0.12);
+    --red-strong: rgba(239, 68, 68, 0.25);
+    --green: #22c55e;
+    --green-dim: rgba(34, 197, 94, 0.12);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59, 130, 246, 0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.12);
+    --slate: #64748b;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f0f2f8;
+      --surface: #ffffff;
+      --surface2: #eef1f8;
+      --surface-elevated: #f8f9fc;
+      --border: rgba(0, 0, 0, 0.08);
+      --border-bright: rgba(0, 0, 0, 0.16);
+      --text: #1a2240;
+      --text-dim: #6b7a96;
+      --gold: #b8860b;
+      --gold-dim: rgba(184, 134, 11, 0.08);
+      --red: #dc2626;
+      --red-dim: rgba(220, 38, 38, 0.08);
+      --red-strong: rgba(220, 38, 38, 0.18);
+      --green: #16a34a;
+      --green-dim: rgba(22, 163, 74, 0.08);
+      --blue: #2563eb;
+      --blue-dim: rgba(37, 99, 235, 0.08);
+      --amber: #d97706;
+      --amber-dim: rgba(217, 119, 6, 0.08);
+      --slate: #475569;
+    }
+  }
+
+  /* ============ RESET ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 30% 0%, var(--gold-dim) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 100%, var(--blue-dim) 0%, transparent 40%),
+      repeating-linear-gradient(0deg, transparent, transparent 59px, var(--border) 59px, var(--border) 60px),
+      repeating-linear-gradient(90deg, transparent, transparent 59px, var(--border) 59px, var(--border) 60px);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px 24px;
+    min-height: 100vh;
+    overflow-wrap: break-word;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeScale {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes drawLine {
+    from { stroke-dashoffset: 100; }
+    to { stroke-dashoffset: 0; }
+  }
+
+  .anim { animation: fadeUp 0.5s ease-out both; animation-delay: calc(var(--i, 0) * 0.07s); }
+  .anim-scale { animation: fadeScale 0.4s ease-out both; animation-delay: calc(var(--i, 0) * 0.07s); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .page { max-width: 1200px; margin: 0 auto; }
+
+  h1 {
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    margin-bottom: 8px;
+    text-wrap: balance;
+  }
+  h1 .accent { color: var(--red); }
+
+  .subtitle {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 40px;
+    letter-spacing: 0.5px;
+  }
+  .subtitle code {
+    background: var(--gold-dim);
+    color: var(--gold);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2 .num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gold);
+    background: var(--gold-dim);
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+  }
+
+  h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+
+  /* ============ CARDS ============ */
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    min-width: 0;
+  }
+  .ve-card--hero {
+    background: var(--surface-elevated);
+    border-color: var(--gold);
+    border-width: 1px;
+    box-shadow: 0 0 30px var(--gold-dim), 0 4px 20px rgba(0,0,0,0.15);
+  }
+  .ve-card--danger {
+    background: var(--surface-elevated);
+    border-color: var(--red);
+    box-shadow: 0 0 20px var(--red-dim);
+  }
+  .ve-card--success {
+    background: var(--surface-elevated);
+    border-color: var(--green);
+    box-shadow: 0 0 20px var(--green-dim);
+  }
+  .ve-card__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ve-card__label::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* ============ HERO SUMMARY ============ */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .kpi {
+    text-align: center;
+    padding: 20px 16px;
+  }
+  .kpi__value {
+    font-size: 36px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .kpi__label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ============ TOPOLOGY DIAGRAMS ============ */
+  .topo-section {
+    margin-bottom: 48px;
+  }
+
+  .topo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 16px;
+  }
+  @media (max-width: 800px) {
+    .topo-grid { grid-template-columns: 1fr; }
+  }
+
+  .topo-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .topo-box--vpc {
+    border: 2px dashed var(--blue);
+    background: var(--blue-dim);
+  }
+  .topo-box--subnet-pub {
+    border: 1px solid var(--green);
+    background: var(--green-dim);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .topo-box--subnet-priv {
+    border: 1px solid var(--amber);
+    background: var(--amber-dim);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .topo-box__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .resource {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin: 3px;
+    border: 1px solid var(--border-bright);
+    background: var(--surface);
+  }
+  .resource--bastion { border-color: var(--gold); background: var(--gold-dim); color: var(--gold); font-weight: 600; }
+  .resource--nat { border-color: var(--green); color: var(--green); }
+  .resource--pod { border-color: var(--blue); color: var(--blue); }
+  .resource--alb { border-color: var(--green); color: var(--green); }
+
+  .nacl-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+  }
+  .nacl-badge--allow { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .nacl-badge--deny { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+
+  /* ============ TIMELINE ============ */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+    margin-top: 20px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--gold), var(--red), var(--red));
+    border-radius: 1px;
+  }
+  .timeline__item {
+    position: relative;
+    padding-bottom: 28px;
+  }
+  .timeline__item:last-child { padding-bottom: 0; }
+  .timeline__dot {
+    position: absolute;
+    left: -25px;
+    top: 4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--surface);
+  }
+  .timeline__dot--ok { background: var(--gold); }
+  .timeline__dot--warn { background: var(--amber); }
+  .timeline__dot--fail { background: var(--red); box-shadow: 0 0 8px var(--red-dim); }
+  .timeline__time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .timeline__title {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .timeline__desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .timeline__desc code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--text);
+  }
+
+  /* ============ COMPARISON ============ */
+  .comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 16px;
+  }
+  .comparison > * { min-width: 0; }
+  @media (max-width: 800px) {
+    .comparison { grid-template-columns: 1fr; }
+  }
+
+  .flow-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    transition: background 0.2s;
+  }
+  .flow-step--ok {
+    border-color: var(--green);
+    background: var(--green-dim);
+  }
+  .flow-step--fail {
+    border-color: var(--red);
+    background: var(--red-dim);
+  }
+  .flow-step--gap {
+    border: 2px dashed var(--red);
+    background: var(--red-strong);
+    font-weight: 600;
+  }
+  .flow-step__icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    width: 24px;
+    text-align: center;
+  }
+  .flow-step__text { flex: 1; min-width: 0; }
+  .flow-step__text code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .flow-arrow {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 14px;
+    padding: 2px 0;
+  }
+
+  /* ============ PODS TABLE ============ */
+  .pods-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+  .pods-table th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-bright);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+  .pods-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .pods-table tr:nth-child(even) td { background: var(--surface2); }
+  .pods-table .restarts { color: var(--red); font-weight: 600; }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    display: flex;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 20px 0;
+  }
+  .callout--danger {
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+  }
+  .callout--success {
+    background: var(--green-dim);
+    border: 1px solid var(--green);
+  }
+  .callout__icon { font-size: 18px; flex-shrink: 0; }
+
+  /* ============ SECTION SPACING ============ */
+  .section-gap { margin-bottom: 48px; }
+
+  /* ============ FOOTER ============ */
+  .footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ===== HEADER ===== -->
+  <div class="anim" style="--i:0">
+    <h1>NACL <span class="accent">Self-Lockout</span></h1>
+    <p class="subtitle">
+      BB-1562 &mdash; Sự cố STG 2026-03-31 &nbsp;|&nbsp;
+      <code>bs-point-stg</code> &nbsp;|&nbsp;
+      VPC <code>172.19.0.0/16</code>
+    </p>
+  </div>
+
+  <!-- ===== KPI HERO ===== -->
+  <div class="hero-grid">
+    <div class="ve-card ve-card--danger kpi anim-scale" style="--i:1">
+      <div class="kpi__value" style="color:var(--red)">20m</div>
+      <div class="kpi__label">Terraform Stuck</div>
+    </div>
+    <div class="ve-card ve-card--danger kpi anim-scale" style="--i:2">
+      <div class="kpi__value" style="color:var(--red)">8</div>
+      <div class="kpi__label">CW Agent Restarts</div>
+    </div>
+    <div class="ve-card kpi anim-scale" style="--i:3">
+      <div class="kpi__value" style="color:var(--amber)">1h+</div>
+      <div class="kpi__label">Recovery Time</div>
+    </div>
+    <div class="ve-card ve-card--success kpi anim-scale" style="--i:4">
+      <div class="kpi__value" style="color:var(--green)">~1m</div>
+      <div class="kpi__label">Apply từ Local</div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 1: ROOT CAUSE ===== -->
+  <div class="section-gap anim" style="--i:5">
+    <h2><span class="num">01</span> Nguyên Nhân Gốc</h2>
+    <div class="ve-card ve-card--hero">
+      <p style="font-size:16px;line-height:1.6">
+        Terraform tạo ACL mới <strong>(chỉ có default DENY ALL)</strong> và associate vào subnet
+        trong <strong>cùng 1 API call</strong>. Các allow rules chỉ được tạo ở bước sau.
+        Khi chạy từ bastion <strong>nằm trong VPC</strong>, khoảng trống giữa 2 bước cắt đứt
+        mọi kết nối mạng &mdash; Terraform không bao giờ chạy đến bước tạo rules.
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 2: TOPOLOGY BEFORE/AFTER ===== -->
+  <div class="section-gap anim" style="--i:7">
+    <h2><span class="num">02</span> Network Topology &mdash; Trước &amp; Trong Sự Cố</h2>
+
+    <div class="topo-grid">
+      <!-- BEFORE -->
+      <div>
+        <h3 style="color:var(--green)">Trước Apply</h3>
+        <div class="topo-box topo-box--vpc">
+          <div class="topo-box__title" style="color:var(--blue)">VPC 172.19.0.0/16</div>
+
+          <div class="topo-box--subnet-pub">
+            <div class="topo-box__title" style="color:var(--green)">Public Subnets</div>
+            <span class="resource resource--nat">NAT GW</span>
+            <span class="resource resource--alb">ALB</span>
+            <div><span class="nacl-badge nacl-badge--allow">Default NACL: ALLOW ALL</span></div>
+          </div>
+
+          <div class="topo-box--subnet-priv">
+            <div class="topo-box__title" style="color:var(--amber)">Private Subnets</div>
+            <span class="resource resource--bastion">Bastion</span>
+            <span class="resource resource--pod">EKS Pods</span>
+            <span class="resource resource--pod">Aurora</span>
+            <span class="resource resource--pod">Redis</span>
+            <div><span class="nacl-badge nacl-badge--allow">Default NACL: ALLOW ALL</span></div>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:13px;color:var(--text-dim)">
+          <span style="color:var(--green)">&#10004;</span> Bastion &rarr; NAT &rarr; Internet &rarr; AWS API<br>
+          <span style="color:var(--green)">&#10004;</span> Mọi traffic lưu thông bình thường
+        </div>
+      </div>
+
+      <!-- DURING -->
+      <div>
+        <h3 style="color:var(--red)">Trong Sự Cố (sau associate)</h3>
+        <div class="topo-box topo-box--vpc" style="border-color:var(--red)">
+          <div class="topo-box__title" style="color:var(--blue)">VPC 172.19.0.0/16</div>
+
+          <div class="topo-box--subnet-pub" style="border-color:var(--red);background:var(--red-dim)">
+            <div class="topo-box__title" style="color:var(--red)">Public Subnets</div>
+            <span class="resource resource--nat">NAT GW</span>
+            <span class="resource resource--alb">ALB</span>
+            <div><span class="nacl-badge nacl-badge--deny">New NACL: DENY ALL</span></div>
+          </div>
+
+          <div class="topo-box--subnet-priv" style="border-color:var(--red);background:var(--red-dim)">
+            <div class="topo-box__title" style="color:var(--red)">Private Subnets</div>
+            <span class="resource resource--bastion">Bastion</span>
+            <span class="resource resource--pod">EKS Pods</span>
+            <span class="resource resource--pod">Aurora</span>
+            <span class="resource resource--pod">Redis</span>
+            <div><span class="nacl-badge nacl-badge--deny">New NACL: DENY ALL</span></div>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:13px;color:var(--text-dim)">
+          <span style="color:var(--red)">&#10008;</span> Bastion &#8603; NAT (private NACL block)<br>
+          <span style="color:var(--red)">&#10008;</span> NAT &#8603; Internet (public NACL block)<br>
+          <span style="color:var(--red)">&#10008;</span> Toàn bộ VPC bị cô lập
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 3: THE GAP ===== -->
+  <div class="section-gap anim" style="--i:9">
+    <h2><span class="num">03</span> "The Gap" &mdash; Khoảng Trống Chết Chóc</h2>
+    <p style="color:var(--text-dim);margin-bottom:16px;font-size:14px">
+      Terraform thực hiện tuần tự: tạo ACL &rarr; associate &rarr; tạo rules. Giữa bước 2 và 3 là "the gap".
+    </p>
+
+    <div class="ve-card" style="padding:24px">
+      <!-- Step 1 -->
+      <div class="flow-step flow-step--ok">
+        <div class="flow-step__icon">1</div>
+        <div class="flow-step__text">
+          <strong>Tạo ACL mới</strong><br>
+          <code>aws_network_acl.public[0]</code> + <code>private[0]</code><br>
+          <span style="color:var(--text-dim);font-size:12px">ACL chỉ có default rule * = DENY ALL</span>
+        </div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+
+      <!-- Step 2 -->
+      <div class="flow-step flow-step--fail">
+        <div class="flow-step__icon">2</div>
+        <div class="flow-step__text">
+          <strong>Associate ACL &rarr; 6 subnets</strong><br>
+          <code>ReplaceNetworkAclAssociation</code><br>
+          <span style="color:var(--red);font-size:12px;font-weight:600">
+            Thay thế default NACL (allow all) bằng NACL mới (deny all)
+          </span>
+        </div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+
+      <!-- THE GAP -->
+      <div class="flow-step flow-step--gap">
+        <div class="flow-step__icon" style="font-size:20px">&#9888;</div>
+        <div class="flow-step__text" style="color:var(--red)">
+          THE GAP &mdash; Bastion mất mạng tại đây!<br>
+          <span style="font-weight:400;font-size:12px">
+            NACL mới = DENY ALL. Chưa có rule nào cho phép traffic.
+            Bastion không thể gọi AWS API để chạy bước tiếp theo.
+          </span>
+        </div>
+      </div>
+      <div class="flow-arrow" style="color:var(--red)">&#10008; không bao giờ đến &darr;</div>
+
+      <!-- Step 3 -->
+      <div class="flow-step" style="opacity:0.4;border-style:dashed">
+        <div class="flow-step__icon">3</div>
+        <div class="flow-step__text">
+          <strong>Tạo allow rules</strong> (KHÔNG BAO GIỜ ĐƯỢC CHẠY)<br>
+          <span style="font-size:12px;color:var(--text-dim)">
+            Rule 100: HTTPS 443 &nbsp;|&nbsp; Rule 200: VPC CIDR &nbsp;|&nbsp; Rule 300: Ephemeral...
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--danger" style="margin-top:16px">
+      <div class="callout__icon">&#9888;</div>
+      <div>
+        <strong>Vấn đề thiết kế Terraform:</strong>
+        Resource <code style="font-family:var(--font-mono);font-size:12px">aws_network_acl</code> nhận <code style="font-family:var(--font-mono);font-size:12px">subnet_ids</code>
+        trực tiếp &mdash; tạo ACL + associate trong cùng 1 bước.
+        <code style="font-family:var(--font-mono);font-size:12px">aws_network_acl_rule</code> là resource riêng, chỉ chạy sau.
+        Không có cách nào đảo thứ tự mà không sửa module code.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 4: TIMELINE ===== -->
+  <div class="section-gap anim" style="--i:11">
+    <h2><span class="num">04</span> Timeline Sự Cố</h2>
+
+    <div class="ve-card">
+      <div class="timeline">
+        <div class="timeline__item">
+          <div class="timeline__dot timeline__dot--ok"></div>
+          <div class="timeline__time">T+0s &mdash; 07:22 UTC</div>
+          <div class="timeline__title">Terraform apply bắt đầu</div>
+          <div class="timeline__desc">Tạo <code>aws_network_acl.public[0]</code> + <code>private[0]</code> từ bastion</div>
+        </div>
+
+        <div class="timeline__item">
+          <div class="timeline__dot timeline__dot--fail"></div>
+          <div class="timeline__time">T+~1s</div>
+          <div class="timeline__title" style="color:var(--red)">Associate ACL &rarr; Subnets = LOCKOUT</div>
+          <div class="timeline__desc">ACL mới (DENY ALL) thay thế default ACL trên cả 6 subnets. Bastion mất mọi kết nối mạng.</div>
+        </div>
+
+        <div class="timeline__item">
+          <div class="timeline__dot timeline__dot--fail"></div>
+          <div class="timeline__time">T+10s &rarr; T+20m</div>
+          <div class="timeline__title">Terraform stuck "Still creating..."</div>
+          <div class="timeline__desc">ACL đã tạo trên AWS nhưng Terraform không nhận được response. Retry liên tục, tất cả timeout.</div>
+        </div>
+
+        <div class="timeline__item">
+          <div class="timeline__dot timeline__dot--fail"></div>
+          <div class="timeline__time">T+20m</div>
+          <div class="timeline__title">Cascade: S3 + DynamoDB + EC2 API fail</div>
+          <div class="timeline__desc">
+            <code>S3 PutObject</code> fail &rarr; state không save &rarr; <code>errored.tfstate</code> local<br>
+            <code>DynamoDB</code> timeout &rarr; lock stuck (ID: <code>33aa4e8b...</code>)<br>
+            <code>EC2 API</code> &rarr; <code>InvalidAssociationID.NotFound</code>
+          </div>
+        </div>
+
+        <div class="timeline__item">
+          <div class="timeline__dot timeline__dot--warn"></div>
+          <div class="timeline__time">T+20m &rarr; T+60m</div>
+          <div class="timeline__title">Pods restart hàng loạt</div>
+          <div class="timeline__desc">
+            cloudwatch-agent: <strong style="color:var(--red)">8 restarts</strong> (liveness probe fail)<br>
+            fluent-bit: 1-3 restarts &nbsp;|&nbsp; cluster-autoscaler: 2 restarts
+          </div>
+        </div>
+
+        <div class="timeline__item">
+          <div class="timeline__dot timeline__dot--ok"></div>
+          <div class="timeline__time">T+~70m</div>
+          <div class="timeline__title" style="color:var(--green)">Recovery hoàn thành</div>
+          <div class="timeline__desc">
+            Force-unlock &rarr; state push &rarr; xóa rules trùng bằng AWS CLI &rarr; apply lại thành công
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 5: COMPARISON ===== -->
+  <div class="section-gap anim" style="--i:13">
+    <h2><span class="num">05</span> So Sánh: Bastion (Fail) vs Local (Success)</h2>
+
+    <div class="comparison">
+      <!-- BASTION -->
+      <div class="ve-card ve-card--danger">
+        <div class="ve-card__label" style="color:var(--red)">Bastion &mdash; Trong VPC</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+          STG 2026-03-31 &mdash; <strong style="color:var(--red)">FAIL</strong>
+        </div>
+
+        <div class="flow-step flow-step--ok" style="font-size:12px">
+          <div class="flow-step__icon">1</div>
+          <div class="flow-step__text">Tạo ACL (DENY ALL)</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step flow-step--fail" style="font-size:12px">
+          <div class="flow-step__icon">2</div>
+          <div class="flow-step__text">Associate &rarr; subnet<br><span style="color:var(--red)">Mất mạng!</span></div>
+        </div>
+        <div class="flow-arrow" style="color:var(--red)">&#10008;</div>
+        <div class="flow-step" style="font-size:12px;opacity:0.3;border-style:dashed">
+          <div class="flow-step__icon">3</div>
+          <div class="flow-step__text">Tạo allow rules<br><span style="color:var(--red)">Không chạy được</span></div>
+        </div>
+        <div class="flow-arrow" style="color:var(--red)">&#10008;</div>
+        <div class="flow-step" style="font-size:12px;opacity:0.3;border-style:dashed">
+          <div class="flow-step__icon">4</div>
+          <div class="flow-step__text">Save state<br><span style="color:var(--red)">S3 unreachable</span></div>
+        </div>
+
+        <div style="margin-top:14px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
+          Kết quả: stuck 20m &rarr; timeout &rarr; recovery 1h+
+        </div>
+      </div>
+
+      <!-- LOCAL -->
+      <div class="ve-card ve-card--success">
+        <div class="ve-card__label" style="color:var(--green)">Local Machine &mdash; Ngoài VPC</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+          DEV 2026-03-19 &mdash; <strong style="color:var(--green)">SUCCESS</strong>
+        </div>
+
+        <div class="flow-step flow-step--ok" style="font-size:12px">
+          <div class="flow-step__icon">1</div>
+          <div class="flow-step__text">Tạo ACL (DENY ALL)</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step flow-step--ok" style="font-size:12px">
+          <div class="flow-step__icon">2</div>
+          <div class="flow-step__text">Associate &rarr; subnet<br><span style="color:var(--green)">Local không bị ảnh hưởng</span></div>
+        </div>
+        <div class="flow-arrow" style="color:var(--green)">&darr;</div>
+        <div class="flow-step flow-step--ok" style="font-size:12px">
+          <div class="flow-step__icon">3</div>
+          <div class="flow-step__text">Tạo allow rules<br><span style="color:var(--green)">Chạy ngay, ~1s</span></div>
+        </div>
+        <div class="flow-arrow" style="color:var(--green)">&darr;</div>
+        <div class="flow-step flow-step--ok" style="font-size:12px">
+          <div class="flow-step__icon">4</div>
+          <div class="flow-step__text">Save state lên S3<br><span style="color:var(--green)">Thành công</span></div>
+        </div>
+
+        <div style="margin-top:14px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
+          Kết quả: Apply complete! ~1 phút, zero issues
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout--success" style="margin-top:16px">
+      <div class="callout__icon">&#10004;</div>
+      <div>
+        <strong>Nguyên tắc:</strong> Máy chạy Terraform phải nằm <strong>ngoài VPC</strong> đang bị thay đổi NACL.
+        Kết nối qua internet không bị ảnh hưởng bởi NACL thay đổi bên trong VPC.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 6: CORRECT APPROACH ===== -->
+  <div class="section-gap anim" style="--i:15">
+    <h2><span class="num">06</span> Cách Apply Đúng &mdash; Không Bị Lỗi</h2>
+
+    <!-- CORRECT TOPOLOGY -->
+    <div class="ve-card ve-card--success" style="margin-bottom:20px">
+      <div class="ve-card__label" style="color:var(--green)">Kiến trúc đúng: Apply từ ngoài VPC</div>
+      <div class="topo-box topo-box--vpc" style="margin-top:12px">
+        <div class="topo-box__title" style="color:var(--blue)">VPC 172.19.0.0/16 &mdash; NACL đang thay đổi bên trong</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="topo-box--subnet-pub">
+            <div class="topo-box__title" style="color:var(--green)">Public</div>
+            <span class="resource resource--nat">NAT GW</span>
+            <span class="resource resource--alb">ALB</span>
+          </div>
+          <div class="topo-box--subnet-priv">
+            <div class="topo-box__title" style="color:var(--amber)">Private</div>
+            <span class="resource resource--pod">EKS Pods</span>
+            <span class="resource resource--pod">Aurora</span>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;padding:8px 0;font-size:18px;color:var(--text-dim)">&uarr; AWS API &uarr;</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="topo-box" style="border-color:var(--green);background:var(--green-dim);text-align:center">
+          <div class="topo-box__title" style="color:var(--green)">Internet</div>
+          <span style="font-size:13px;color:var(--text-dim)">Kết nối không bị NACL ảnh hưởng</span>
+        </div>
+        <div class="topo-box" style="border-color:var(--gold);background:var(--gold-dim);text-align:center">
+          <span class="resource resource--bastion" style="margin:0">Local Machine</span>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:6px">Terraform chạy từ đây</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP BY STEP -->
+    <h3 style="margin-bottom:12px">Quy trình từng bước</h3>
+    <div class="ve-card" style="padding:24px">
+
+      <div class="flow-step flow-step--ok">
+        <div class="flow-step__icon">0</div>
+        <div class="flow-step__text">
+          <strong>Precheck: Xác nhận đang ở LOCAL</strong><br>
+          <code>hostname</code> &rarr; phải là máy local, KHÔNG phải bastion<br>
+          <code>aws sts get-caller-identity</code> &rarr; xác nhận đúng account
+        </div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+
+      <div class="flow-step flow-step--ok">
+        <div class="flow-step__icon">1</div>
+        <div class="flow-step__text">
+          <strong>Baseline test</strong><br>
+          <span style="font-size:12px;color:var(--text-dim)">Ghi lại pod restarts, error logs trước apply để so sánh sau</span>
+        </div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+
+      <div class="flow-step flow-step--ok">
+        <div class="flow-step__icon">2</div>
+        <div class="flow-step__text">
+          <strong>Terraform plan</strong><br>
+          <code>../../terraform.sh --env stg-ex plan</code><br>
+          <span style="font-size:12px;color:var(--text-dim)">Verify: chỉ NACL resources, 0 destroy, đúng count</span>
+        </div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+
+      <div class="flow-step flow-step--ok">
+        <div class="flow-step__icon">3</div>
+        <div class="flow-step__text">
+          <strong>Terraform apply (từ LOCAL)</strong><br>
+          <code>../../terraform.sh --env stg-ex apply</code><br>
+          <span style="font-size:12px;color:var(--green)">Local &rarr; internet &rarr; AWS API: không bị NACL block</span><br>
+          <span style="font-size:12px;color:var(--text-dim)">Tạo ACL &rarr; associate &rarr; tạo rules liên tục &mdash; ~1 phút</span>
+        </div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+
+      <div class="flow-step flow-step--ok">
+        <div class="flow-step__icon">4</div>
+        <div class="flow-step__text">
+          <strong>Verify gates</strong><br>
+          <span style="font-size:12px;color:var(--text-dim)">
+            Gate 1: 3 NACLs (default 0 subnets, public 3, private 3)<br>
+            Gate 2: Pod restarts không tăng, 0 new errors<br>
+            Gate 3: VPC peering rules OK &nbsp;|&nbsp; Gate 4: WhaleFin OK
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- IF BASTION REQUIRED -->
+    <details style="margin-top:20px">
+      <summary style="cursor:pointer;font-weight:600;font-size:15px;color:var(--amber);padding:12px 0">
+        Nếu bắt buộc phải dùng bastion (không khuyến nghị) &rarr;
+      </summary>
+      <div class="ve-card" style="margin-top:10px;border-color:var(--amber)">
+        <div class="ve-card__label" style="color:var(--amber)">Recovery Procedure &mdash; Khi bị lockout</div>
+        <ol style="font-size:13px;line-height:2;padding-left:2em">
+          <li>Mở <strong>2 SSM session</strong> song song trước khi apply (session dự phòng)</li>
+          <li><code>terraform state pull &gt; backup.tfstate</code> &mdash; backup state</li>
+          <li>Chạy <code>terraform apply</code> &mdash; sẽ bị stuck</li>
+          <li>Từ session dự phòng hoặc AWS Console: thêm rule 50 ALLOW ALL vào ACL mới</li>
+          <li><code>force-unlock</code> state lock</li>
+          <li><code>state push errored.tfstate</code></li>
+          <li>Xóa ACL rules trùng bằng AWS CLI</li>
+          <li><code>terraform apply</code> lại để hoàn thành</li>
+        </ol>
+        <div class="callout callout--danger" style="margin-top:12px">
+          <div class="callout__icon">&#9888;</div>
+          <div style="font-size:13px">
+            Quy trình này mất <strong>1+ giờ</strong> và rủi ro cao.
+            Chỉ dùng khi TUYỆT ĐỐI không thể apply từ local.
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ===== SECTION 7: POD IMPACT ===== -->
+  <div class="section-gap anim" style="--i:17">
+    <h2><span class="num">07</span> Ảnh Hưởng Pods</h2>
+
+    <div class="ve-card" style="overflow-x:auto">
+      <table class="pods-table">
+        <thead>
+          <tr>
+            <th>Pod</th>
+            <th>Namespace</th>
+            <th>Restarts</th>
+            <th>Thời điểm</th>
+            <th>Nguyên nhân</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>cloudwatch-agent-n5tmd</td>
+            <td>amazon-cloudwatch</td>
+            <td class="restarts">8</td>
+            <td>57m ago</td>
+            <td style="color:var(--text-dim)">Liveness probe fail &mdash; không gửi được metrics ra CloudWatch API</td>
+          </tr>
+          <tr>
+            <td>cloudwatch-agent-rmxln</td>
+            <td>amazon-cloudwatch</td>
+            <td class="restarts">7</td>
+            <td>58m ago</td>
+            <td style="color:var(--text-dim)">Liveness probe fail &mdash; CW API unreachable</td>
+          </tr>
+          <tr>
+            <td>cloudwatch-agent-b6qmh</td>
+            <td>amazon-cloudwatch</td>
+            <td class="restarts">2</td>
+            <td>56m ago</td>
+            <td style="color:var(--text-dim)">Liveness probe fail</td>
+          </tr>
+          <tr>
+            <td>cluster-autoscaler</td>
+            <td>kube-system</td>
+            <td class="restarts">2</td>
+            <td>42m ago</td>
+            <td style="color:var(--text-dim)">Không gọi được AWS EC2 API</td>
+          </tr>
+          <tr>
+            <td>nfs-subdir-external-provisioner</td>
+            <td>default</td>
+            <td class="restarts">2</td>
+            <td>42m ago</td>
+            <td style="color:var(--text-dim)">NFS mount fail do mất mạng</td>
+          </tr>
+          <tr>
+            <td>fluent-bit (3 pods)</td>
+            <td>amazon-cloudwatch</td>
+            <td class="restarts">1&ndash;3</td>
+            <td>41&ndash;97m ago</td>
+            <td style="color:var(--text-dim)">Log forwarding fail</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:10px">
+        Application pods (point-api, point-admin, point-app, point-worker, point-mmh) không restart &mdash;
+        chúng được tạo mới trên nodes mới sau khi NACL đã fix (age 20&ndash;23m).
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 8: RULE ===== -->
+  <div class="anim" style="--i:19">
+    <h2><span class="num">08</span> Quy Tắc Cho Mọi Môi Trường</h2>
+
+    <div class="ve-card ve-card--hero" style="text-align:center;padding:30px">
+      <p style="font-size:20px;font-weight:700;margin-bottom:10px">
+        KHÔNG BAO GIỜ apply NACL từ máy nằm trong VPC đang thay đổi
+      </p>
+      <p style="font-size:14px;color:var(--text-dim);max-width:700px;margin:0 auto;line-height:1.6">
+        Áp dụng cho <strong>DEV</strong>, <strong>STG</strong>, <strong>PRD</strong>.
+        Luôn apply từ máy local hoặc CI/CD nằm ngoài VPC.
+        Kết nối AWS API qua internet không bị ảnh hưởng bởi NACL thay đổi bên trong VPC.
+      </p>
+    </div>
+
+    <div class="comparison" style="margin-top:20px">
+      <div class="ve-card">
+        <div class="ve-card__label" style="color:var(--green)">An toàn</div>
+        <ul style="list-style:none;font-size:14px;line-height:2">
+          <li style="padding-left:14px;position:relative"><span style="position:absolute;left:0;color:var(--green)">&#10004;</span> Local machine + AWS credentials</li>
+          <li style="padding-left:14px;position:relative"><span style="position:absolute;left:0;color:var(--green)">&#10004;</span> CI/CD pipeline (GitHub Actions, etc.)</li>
+          <li style="padding-left:14px;position:relative"><span style="position:absolute;left:0;color:var(--green)">&#10004;</span> Máy ở VPC khác hoặc account khác</li>
+        </ul>
+      </div>
+      <div class="ve-card">
+        <div class="ve-card__label" style="color:var(--red)">Nguy hiểm</div>
+        <ul style="list-style:none;font-size:14px;line-height:2">
+          <li style="padding-left:14px;position:relative"><span style="position:absolute;left:0;color:var(--red)">&#10008;</span> Bastion host trong cùng VPC</li>
+          <li style="padding-left:14px;position:relative"><span style="position:absolute;left:0;color:var(--red)">&#10008;</span> EC2 instance trong cùng VPC</li>
+          <li style="padding-left:14px;position:relative"><span style="position:absolute;left:0;color:var(--red)">&#10008;</span> EKS pod trong cùng VPC</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer anim" style="--i:21">
+    BB-1562 &mdash; NACL Self-Lockout Post-Mortem &nbsp;|&nbsp; Sự cố STG 2026-03-31 &nbsp;|&nbsp;
+    Xem thêm: 1562_DEPLOY_STG-EX.md &sect; Phụ lục
+  </div>
+
+</div>
+</body>
+</html>

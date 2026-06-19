@@ -1,0 +1,2111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glue ETL: One-Job-Per-Table vs Batched Jobs — Comparison & Alternatives</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    securityLevel: "loose",
+    fontFamily: "'IBM Plex Mono', monospace",
+    flowchart: {
+      useMaxWidth: false,
+      htmlLabels: true,
+      curve: "basis",
+      nodeSpacing: 50,
+      rankSpacing: 70,
+      padding: 20
+    },
+    themeVariables: {
+      primaryColor: "#1c2638",
+      primaryTextColor: "#dbe4f1",
+      primaryBorderColor: "#0891b2",
+      lineColor: "#5e7691",
+      secondaryColor: "#243042",
+      tertiaryColor: "#16202f",
+      background: "#0f1722",
+      mainBkg: "#1c2638",
+      fontSize: "22px",
+      clusterBkg: "#16202f",
+      clusterBorder: "rgba(180,200,230,0.20)"
+    }
+  });
+</script>
+<style>
+  :root {
+    --bg: #0f1722;
+    --bg-grid: rgba(125, 155, 200, 0.04);
+    --surface: #16202f;
+    --surface-2: #1c2638;
+    --surface-3: #243042;
+    --border: rgba(180, 200, 230, 0.10);
+    --border-strong: rgba(180, 200, 230, 0.22);
+    --text: #dbe4f1;
+    --text-dim: #8ea4be;
+    --text-mute: #5e7691;
+
+    --accent-teal: #0891b2;
+    --accent-teal-dim: rgba(8, 145, 178, 0.14);
+    --accent-sage: #84cc16;
+    --accent-sage-dim: rgba(132, 204, 22, 0.13);
+    --accent-amber: #d97706;
+    --accent-amber-dim: rgba(217, 119, 6, 0.13);
+    --accent-rose: #be123c;
+    --accent-rose-dim: rgba(190, 18, 60, 0.13);
+    --accent-slate: #94a3b8;
+    --accent-slate-dim: rgba(148, 163, 184, 0.10);
+
+    --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f1eb;
+      --bg-grid: rgba(45, 60, 85, 0.05);
+      --surface: #fbf9f4;
+      --surface-2: #f0ece2;
+      --surface-3: #e8e2d4;
+      --border: rgba(30, 40, 60, 0.10);
+      --border-strong: rgba(30, 40, 60, 0.22);
+      --text: #1a2436;
+      --text-dim: #4a5a72;
+      --text-mute: #7a8aa0;
+      --accent-teal-dim: rgba(8, 145, 178, 0.10);
+      --accent-sage-dim: rgba(101, 163, 13, 0.10);
+      --accent-amber-dim: rgba(217, 119, 6, 0.10);
+      --accent-rose-dim: rgba(190, 18, 60, 0.10);
+      --accent-slate-dim: rgba(100, 116, 139, 0.10);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-image:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    min-height: 100vh;
+  }
+
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ---------- Header ---------- */
+  .meta-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 28px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 28px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .meta-strip span strong {
+    color: var(--text);
+    font-weight: 500;
+    margin-left: 6px;
+  }
+  .meta-strip .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-teal);
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  h1 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 42px;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    margin: 0 0 16px 0;
+  }
+  h1 .accent { color: var(--accent-teal); }
+
+  .lead {
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--text-dim);
+    max-width: 900px;
+    margin: 0 0 48px 0;
+  }
+  .lead strong { color: var(--text); font-weight: 500; }
+
+  /* ---------- Section labels ---------- */
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-teal);
+    margin: 56px 0 18px 0;
+  }
+  .section-label::before {
+    content: "";
+    width: 28px;
+    height: 1px;
+    background: var(--accent-teal);
+  }
+
+  h2 {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 12px 0;
+  }
+
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+  }
+
+  p { margin: 0 0 12px 0; }
+
+  /* ---------- Constraints panel (KPI row) ---------- */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-teal);
+    padding: 22px 24px;
+    border-radius: 4px;
+    min-width: 0;
+  }
+  .kpi.warn { border-left-color: var(--accent-amber); }
+  .kpi.good { border-left-color: var(--accent-sage); }
+  .kpi .label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 8px;
+  }
+  .kpi .value {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi .unit {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-left: 4px;
+  }
+  .kpi .desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    line-height: 1.45;
+  }
+
+  /* ---------- Cards ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 28px 30px;
+    margin-bottom: 18px;
+    min-width: 0;
+  }
+  .card.recessed {
+    background: var(--surface-2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  .card.hero {
+    border-left: 3px solid var(--accent-sage);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface) 80%, var(--accent-sage-dim) 100%);
+  }
+
+  /* ---------- Solution badge / header ---------- */
+  .solution-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .solution-head .id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+  }
+  .solution-head .title {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .solution-head .tagline {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 2px;
+    white-space: nowrap;
+    border: 1px solid;
+  }
+  .badge.recommended  { color: var(--accent-sage);  background: var(--accent-sage-dim);  border-color: var(--accent-sage); }
+  .badge.legacy       { color: var(--accent-amber); background: var(--accent-amber-dim); border-color: var(--accent-amber); }
+  .badge.alternative  { color: var(--accent-teal);  background: var(--accent-teal-dim);  border-color: var(--accent-teal); }
+  .badge.rejected     { color: var(--accent-rose);  background: var(--accent-rose-dim);  border-color: var(--accent-rose); }
+
+  /* ---------- Pros / cons split ---------- */
+  .pros-cons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 18px 0;
+  }
+  .pros-cons > div { min-width: 0; }
+  .pc-head {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pc-head.pros { color: var(--accent-sage); }
+  .pc-head.cons { color: var(--accent-rose); }
+  .pc-head .marker {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    line-height: 17px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 11px;
+    color: var(--bg);
+  }
+  .pc-head.pros .marker { background: var(--accent-sage); }
+  .pc-head.cons .marker { background: var(--accent-rose); }
+  ul.pc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  ul.pc-list li {
+    position: relative;
+    padding-left: 18px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    overflow-wrap: break-word;
+  }
+  ul.pc-list li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 8px;
+    height: 1px;
+    background: var(--text-mute);
+  }
+  ul.pc-list li strong { color: var(--text); font-weight: 500; }
+
+  /* ---------- Sub-section (trace/retry/monitor) ---------- */
+  .sub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 18px;
+  }
+  .sub {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 18px 20px;
+    min-width: 0;
+  }
+  .sub-head {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-teal);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sub-head .num {
+    background: var(--accent-teal-dim);
+    border: 1px solid var(--accent-teal);
+    color: var(--accent-teal);
+    padding: 2px 7px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+  .sub p {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+  .sub code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--surface-3);
+    padding: 1px 6px;
+    border-radius: 2px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .sub ul {
+    padding-left: 18px;
+    margin: 6px 0 0 0;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .sub ul li { margin-bottom: 4px; }
+
+  /* ---------- Tables ---------- */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    margin: 16px 0 8px 0;
+  }
+  table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  table.matrix thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-3);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-align: left;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-strong);
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+  table.matrix thead th .sub-h {
+    display: block;
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--text-mute);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-top: 3px;
+  }
+  table.matrix tbody td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  table.matrix tbody tr:nth-child(even) td { background: rgba(255,255,255,0.012); }
+  @media (prefers-color-scheme: light) {
+    table.matrix tbody tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
+  }
+  table.matrix tbody tr:last-child td { border-bottom: none; }
+  table.matrix tbody td:first-child {
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    background: var(--surface-2);
+  }
+  table.matrix td code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--surface-3);
+    padding: 1px 6px;
+    border-radius: 2px;
+    color: var(--text);
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 2px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .status.ok    { color: var(--accent-sage);  background: var(--accent-sage-dim);  border-color: var(--accent-sage); }
+  .status.warn  { color: var(--accent-amber); background: var(--accent-amber-dim); border-color: var(--accent-amber); }
+  .status.fail  { color: var(--accent-rose);  background: var(--accent-rose-dim);  border-color: var(--accent-rose); }
+  .status.info  { color: var(--accent-teal);  background: var(--accent-teal-dim);  border-color: var(--accent-teal); }
+  .status.dim   { color: var(--text-mute);    background: var(--accent-slate-dim); border-color: var(--text-mute); }
+  .status::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* ---------- Code blocks ---------- */
+  pre.code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-teal);
+    padding: 14px 18px;
+    border-radius: 3px;
+    overflow-x: auto;
+    line-height: 1.55;
+    color: var(--text);
+    white-space: pre;
+    margin: 12px 0;
+  }
+  pre.code .comment { color: var(--text-mute); }
+  pre.code .key     { color: var(--accent-teal); }
+  pre.code .num     { color: var(--accent-sage); }
+  pre.code .str     { color: var(--accent-amber); }
+
+  /* ---------- Callout boxes ---------- */
+  .callout {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    padding: 16px 20px;
+    border-radius: 3px;
+    margin: 16px 0;
+    font-size: 13.5px;
+  }
+  .callout.warn {
+    border-left: 3px solid var(--accent-amber);
+    background: linear-gradient(90deg, var(--accent-amber-dim) 0%, var(--surface-2) 50%);
+  }
+  .callout.info {
+    border-left: 3px solid var(--accent-teal);
+    background: linear-gradient(90deg, var(--accent-teal-dim) 0%, var(--surface-2) 50%);
+  }
+  .callout.good {
+    border-left: 3px solid var(--accent-sage);
+    background: linear-gradient(90deg, var(--accent-sage-dim) 0%, var(--surface-2) 50%);
+  }
+  .callout-head {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .callout.warn .callout-head { color: var(--accent-amber); }
+  .callout.info .callout-head { color: var(--accent-teal); }
+  .callout.good .callout-head { color: var(--accent-sage); }
+
+  /* ---------- Mermaid container ---------- */
+  .diagram-shell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    margin: 16px 0;
+  }
+  .mermaid-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: auto;
+    min-height: 720px;
+    width: 100%;
+  }
+  .mermaid {
+    width: 100%;
+    min-width: 900px;
+  }
+  .mermaid svg {
+    width: 100% !important;
+    height: auto !important;
+    max-width: none !important;
+    min-height: 680px;
+    display: block;
+    margin: 0 auto;
+  }
+  .mermaid .cluster rect {
+    rx: 6;
+    ry: 6;
+    stroke-width: 1.5px;
+  }
+  .mermaid .cluster .cluster-label {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .mermaid .nodeLabel,
+  .mermaid .edgeLabel {
+    font-family: "IBM Plex Mono", monospace !important;
+  }
+  .mermaid .edgeLabel {
+    background-color: var(--surface) !important;
+    padding: 2px 8px !important;
+    border-radius: 3px;
+  }
+  .mermaid .flowchart-link {
+    stroke-width: 1.8px !important;
+  }
+
+  /* ---------- TOC / nav ---------- */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 22px;
+    margin-bottom: 32px;
+  }
+  .toc .toc-head {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 10px;
+  }
+  .toc ol {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+    columns: 2;
+    column-gap: 32px;
+  }
+  .toc ol li {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    padding: 4px 0;
+    break-inside: avoid;
+  }
+  .toc ol li a {
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .toc ol li a:hover { color: var(--accent-teal); }
+  .toc ol li .n {
+    color: var(--text-mute);
+    margin-right: 10px;
+  }
+
+  /* ---------- Footer ---------- */
+  .foot {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-mute);
+    letter-spacing: 0.04em;
+  }
+
+  /* ---------- Animations ---------- */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .card, .kpi, .toc, .diagram-shell, .callout, .table-wrap {
+    animation: fadeUp 0.4s ease-out backwards;
+  }
+  .card:nth-child(2) { animation-delay: 0.05s; }
+  .card:nth-child(3) { animation-delay: 0.1s; }
+  .card:nth-child(4) { animation-delay: 0.15s; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 720px) {
+    .wrap { padding: 32px 18px 64px; }
+    h1 { font-size: 30px; }
+    .toc ol { columns: 1; }
+    .pros-cons { grid-template-columns: 1fr; }
+    table.matrix tbody td:first-child { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ======================= Header ======================= -->
+  <div class="meta-strip">
+    <span><span class="dot"></span>Component<strong>terraform/components/glue-etl</strong></span>
+    <span>Pipeline<strong>Aurora → S3 → Redshift</strong></span>
+    <span>Source commit<strong>2f54896</strong></span>
+    <span>Date<strong>2026-05-19</strong></span>
+  </div>
+
+  <h1>One-Job-Per-Table vs <span class="accent">Batched</span> Glue Jobs</h1>
+  <p class="lead">
+    Architectural comparison for syncing <strong>70 Aurora tables</strong> daily into Redshift through a Glue ETL pipeline.
+    The original "one Glue Job per table" model breaks at scale because <strong>a SCHEDULED trigger can fan out to at most 50 actions</strong>.
+    This document walks the four viable redesigns end-to-end, then dissects how each one handles <strong>trace, retry, and monitoring</strong>.
+  </p>
+
+  <!-- ======================= TOC ======================= -->
+  <nav class="toc">
+    <div class="toc-head">Contents</div>
+    <ol>
+      <li><span class="n">01</span><a href="#problem">Problem &amp; constraints</a></li>
+      <li><span class="n">02</span><a href="#matrix">Solution matrix</a></li>
+      <li><span class="n">03</span><a href="#sol-a">Solution A — One Job Per Table</a></li>
+      <li><span class="n">04</span><a href="#sol-b">Solution B — Batched Jobs (current)</a></li>
+      <li><span class="n">05</span><a href="#sol-c">Solution C — Multi-Trigger Split</a></li>
+      <li><span class="n">06</span><a href="#sol-d">Solution D — Glue Workflow Orchestrator</a></li>
+      <li><span class="n">07</span><a href="#trace-grid">Trace / retry / monitor side-by-side</a></li>
+      <li><span class="n">08</span><a href="#deep-trace">Deep-dive · Trace</a></li>
+      <li><span class="n">09</span><a href="#deep-retry">Deep-dive · Retry</a></li>
+      <li><span class="n">10</span><a href="#deep-monitor">Deep-dive · Monitoring</a></li>
+      <li><span class="n">11</span><a href="#architecture">Architecture of the chosen solution</a></li>
+      <li><span class="n">12</span><a href="#decision">Decision rationale</a></li>
+    </ol>
+  </nav>
+
+  <!-- ======================= 01. Problem ======================= -->
+  <div class="section-label" id="problem">01 · Problem &amp; constraints</div>
+  <h2>Why one-job-per-table no longer fits</h2>
+
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="label">Target table count</div>
+      <div class="value">70<span class="unit">tables</span></div>
+      <div class="desc">Aurora source tables across master, transaction, security, fact, and AML domains that must land in Redshift each day.</div>
+    </div>
+    <div class="kpi warn">
+      <div class="label">Glue trigger action limit</div>
+      <div class="value">50<span class="unit">actions / trigger</span></div>
+      <div class="desc">AWS Glue SCHEDULED trigger soft limit on the <code>actions</code> array. 70 tables × 1 job each ≠ wireable into one trigger.</div>
+    </div>
+    <div class="kpi good">
+      <div class="label">Daily cron window</div>
+      <div class="value">02:00<span class="unit">JST</span></div>
+      <div class="desc"><code>cron(0 17 * * ? *)</code> — single fire per day; everything that runs must complete before business hours.</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Hard timeout cap</div>
+      <div class="value">1439<span class="unit">min</span></div>
+      <div class="desc">Effective ceiling under the <code>_temporary/</code> S3 prefix 1-day TTL. Any per-job timeout must stay under it.</div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="callout-head">⚠ The shape of the constraint</div>
+    The 50-action limit is on a <em>single</em> trigger's <code>actions[]</code>, not on the account's total job count.
+    It is possible to have 200 Glue Jobs in the account — but no single SCHEDULED trigger can address more than 50 of them in one fan-out.
+    Every viable solution below must either (a) keep jobs ≤ 50, (b) split fan-out across multiple triggers, or (c) hand orchestration off to something other than a SCHEDULED trigger.
+  </div>
+
+  <!-- ======================= 02. Matrix ======================= -->
+  <div class="section-label" id="matrix">02 · Solution matrix</div>
+  <h2>Four real options, scored end-to-end</h2>
+
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th>A — One Job Per Table <span class="sub-h">legacy / original</span></th>
+          <th>B — Batched Jobs <span class="sub-h">current, commit 2f54896</span></th>
+          <th>C — Multi-Trigger Split <span class="sub-h">alternative</span></th>
+          <th>D — Glue Workflow <span class="sub-h">alternative</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Glue Job count @ 70 tables</td>
+          <td>70</td>
+          <td>5–10 (one per batch)</td>
+          <td>70</td>
+          <td>1 (workflow-managed) or per-table</td>
+        </tr>
+        <tr>
+          <td>Triggers needed</td>
+          <td><span class="status fail">Infeasible</span> (≤ 50 actions)</td>
+          <td>1 SCHEDULED → N actions</td>
+          <td>2 SCHEDULED triggers, ≤ 35 actions each</td>
+          <td>1 Workflow + 1 SCHEDULED trigger entry</td>
+        </tr>
+        <tr>
+          <td>Aurora connection peak</td>
+          <td>70 parallel JDBC</td>
+          <td>= batch count (5–10)</td>
+          <td>70 parallel JDBC</td>
+          <td>Configurable via workflow concurrency</td>
+        </tr>
+        <tr>
+          <td>Per-table trace granularity</td>
+          <td><span class="status ok">Native</span> — JobRun = table</td>
+          <td><span class="status warn">Logged</span> — needs <code>batch_id</code> + table filter</td>
+          <td><span class="status ok">Native</span> — JobRun = table</td>
+          <td><span class="status ok">Native</span> — node = table</td>
+        </tr>
+        <tr>
+          <td>Failure blast radius</td>
+          <td>1 table</td>
+          <td>Remaining tables in same batch (script-controlled)</td>
+          <td>1 table</td>
+          <td>1 node (downstream nodes still run via workflow rules)</td>
+        </tr>
+        <tr>
+          <td>Cold-start cost</td>
+          <td>70 × Glue 5.0 cold-start</td>
+          <td>5–10 × cold-start</td>
+          <td>70 × cold-start</td>
+          <td>~1 (single workflow run)</td>
+        </tr>
+        <tr>
+          <td>Add a new table</td>
+          <td>tfvars + apply</td>
+          <td>Edit <code>jobs.json</code> in S3 (+ tfvars for Redshift COPY)</td>
+          <td>tfvars + apply + maybe rebalance triggers</td>
+          <td>Workflow node edit + apply</td>
+        </tr>
+        <tr>
+          <td>Terraform plan stability</td>
+          <td>Plan churns on every table add/remove</td>
+          <td>Plan stable; content lives outside Terraform</td>
+          <td>Plan churns + rebalance churn</td>
+          <td>Plan churns on workflow graph edits</td>
+        </tr>
+        <tr>
+          <td>Operational complexity</td>
+          <td><span class="status ok">Low</span> (simple model)</td>
+          <td><span class="status info">Medium</span> (config ownership split)</td>
+          <td><span class="status warn">High</span> (rebalance + dual triggers)</td>
+          <td><span class="status warn">High</span> (workflow IaC + DAG mental model)</td>
+        </tr>
+        <tr>
+          <td>Status @ 70 tables</td>
+          <td><span class="status fail">Cannot ship</span></td>
+          <td><span class="status ok">Shipped</span></td>
+          <td><span class="status warn">Feasible</span></td>
+          <td><span class="status info">Feasible</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ======================= 03. Solution A ======================= -->
+  <div class="section-label" id="sol-a">03 · Solution A</div>
+  <div class="card">
+    <div class="solution-head">
+      <div>
+        <div class="id">Option A · legacy model</div>
+        <h3 class="title">One Glue Job per Aurora Table</h3>
+        <div class="tagline">The model the component had before commit <code>2f54896</code>. 1 table = 1 <code>aws_glue_job</code> resource = 1 trigger action.</div>
+      </div>
+      <span class="badge legacy">Legacy · blocked at 70</span>
+    </div>
+
+    <pre class="code"><span class="comment"># glue_jobs.tf — BEFORE</span>
+resource <span class="str">"aws_glue_job"</span> <span class="str">"table"</span> {
+  for_each = var.enabled ? toset(var.tables) : toset([])
+  name     = <span class="str">"aurora-to-s3-${each.key}-${var.environment}"</span>
+  ...
+  default_arguments = {
+    <span class="str">"--table_name"</span>       = each.key
+    <span class="str">"--staging_prefix"</span>   = <span class="str">"data/${each.key}/"</span>
+    <span class="str">"--job-bookmark-option"</span> = var.bookmark_mode_per_table[each.key]
+  }
+}</pre>
+
+    <div class="pros-cons">
+      <div>
+        <div class="pc-head pros"><span class="marker">+</span>Strengths</div>
+        <ul class="pc-list">
+          <li><strong>Native per-table trace.</strong> Every JobRun is one table; CloudWatch Logs Insights queries are trivial.</li>
+          <li><strong>Native per-table retry.</strong> Glue <code>max_retries</code> on a single JobRun retries exactly the failed table.</li>
+          <li><strong>Tightest blast radius.</strong> A schema bug in <code>spot_order_ada_jpy</code> never touches <code>user</code>.</li>
+          <li>Mental model is dead simple: "go look at the job named after the table".</li>
+        </ul>
+      </div>
+      <div>
+        <div class="pc-head cons"><span class="marker">×</span>Weaknesses</div>
+        <ul class="pc-list">
+          <li><strong>Breaks past 50 tables.</strong> A single SCHEDULED trigger can't address 70 actions.</li>
+          <li><strong>Aurora connection storm.</strong> 70 simultaneous JDBC opens hammer the reader instance.</li>
+          <li><strong>70 cold-starts per cron.</strong> Glue 5.0 spin-up cost paid 70× nightly.</li>
+          <li><strong>Terraform plan churns</strong> every time the app team touches the table list.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-grid">
+      <div class="sub">
+        <div class="sub-head"><span class="num">3.1</span>Trace logic</div>
+        <p>JobRun ID maps 1:1 to a table. CloudWatch log stream
+          <code>/aws-glue/jobs/output/&lt;job-name&gt;</code> already partitions the data.
+          A correlation query is just <code>job_name = "aurora-to-s3-user-dev-ex"</code>.</p>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">3.2</span>Retry</div>
+        <p>Use Glue's built-in <code>max_retries</code> (1–2 attempts). Failed table → automatic re-run by the Glue control plane.
+          Manual rerun is <code>aws glue start-job-run --job-name aurora-to-s3-&lt;table&gt;-&lt;env&gt;</code>.</p>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">3.3</span>Monitoring</div>
+        <p>One CloudWatch alarm per job on <code>glue.driver.aggregate.numFailedTasks</code>.
+          70 alarms = 70 lines of dashboard but each one points squarely at a table.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= 04. Solution B ======================= -->
+  <div class="section-label" id="sol-b">04 · Solution B · CURRENT</div>
+  <div class="card hero">
+    <div class="solution-head">
+      <div>
+        <div class="id">Option B · shipped in commit 2f54896</div>
+        <h3 class="title">Batched Glue Jobs — N tables per JobRun</h3>
+        <div class="tagline">Numeric batch IDs (<code>01</code>, <code>02</code>, …). One Glue Job per batch loops sequentially through its tables. Table list moves into an app-team-owned JSON file in S3.</div>
+      </div>
+      <span class="badge recommended">Recommended · shipped</span>
+    </div>
+
+    <pre class="code"><span class="comment"># glue_jobs.tf — AFTER</span>
+resource <span class="str">"aws_glue_job"</span> <span class="str">"batch"</span> {
+  for_each = var.enabled ? toset(var.batches) : toset([])
+  name     = <span class="str">"aurora-to-s3-batch-${each.key}-${var.environment}"</span>
+
+  default_arguments = {
+    <span class="str">"--config_s3_path"</span> = <span class="str">"s3://${...}/${var.config_s3_key}"</span>
+    <span class="str">"--batch_id"</span>       = each.key
+    <span class="comment"># --table_name, --staging_prefix, --job-bookmark-option REMOVED</span>
+  }
+  tags = merge(local.common_tags, { BatchId = each.key })
+}</pre>
+
+    <pre class="code"><span class="comment"># jobs.json (S3) — app team owns content</span>
+{
+  <span class="key">"version"</span>: <span class="str">"1.0"</span>,
+  <span class="key">"batches"</span>: {
+    <span class="str">"01"</span>: { <span class="key">"label"</span>: <span class="str">"master"</span>,      <span class="key">"enabled"</span>: <span class="num">true</span>, <span class="key">"tables"</span>: [ ... 5 tables ... ] },
+    <span class="str">"02"</span>: { <span class="key">"label"</span>: <span class="str">"transaction"</span>, <span class="key">"enabled"</span>: <span class="num">true</span>, <span class="key">"tables"</span>: [ ... 9 tables ... ] },
+    <span class="str">"03"</span>: { <span class="key">"label"</span>: <span class="str">"security"</span>,    <span class="key">"enabled"</span>: <span class="num">true</span>, <span class="key">"tables"</span>: [ ... 5 tables ... ] },
+    <span class="str">"04"</span>: { <span class="key">"label"</span>: <span class="str">"fact"</span>,        <span class="key">"enabled"</span>: <span class="num">true</span>, <span class="key">"tables"</span>: [ ... 3 tables ... ] },
+    <span class="str">"05"</span>: { <span class="key">"label"</span>: <span class="str">"aml"</span>,         <span class="key">"enabled"</span>: <span class="num">true</span>, <span class="key">"tables"</span>: [ ... 10 tables ... ] }
+  }
+}</pre>
+
+    <div class="pros-cons">
+      <div>
+        <div class="pc-head pros"><span class="marker">+</span>Strengths</div>
+        <ul class="pc-list">
+          <li><strong>Scales to 50 batches</strong> = far more than 70 tables can fill, with semantic grouping (domain-based).</li>
+          <li><strong>Aurora load drops 7×.</strong> Connection peak = batch count, not table count.</li>
+          <li><strong>Few cold-starts.</strong> 5–10 starts/cron, not 70.</li>
+          <li><strong>Terraform plan is stable.</strong> App team edits <code>jobs.json</code> in S3; no <code>terraform apply</code> required for content changes.</li>
+          <li><strong>Pause-without-destroy.</strong> Setting <code>batches.&lt;id&gt;.enabled = false</code> stops a batch in place without dropping job state.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="pc-head cons"><span class="marker">×</span>Weaknesses</div>
+        <ul class="pc-list">
+          <li><strong>Sequential within a batch.</strong> Batch runtime ≈ Σ(per-table runtimes); the AML batch (10 tables) is the long pole.</li>
+          <li><strong>Wider blast radius per batch.</strong> A crashing table can break the rest of its batch unless the script wraps per-table errors in try/except.</li>
+          <li><strong>Drift risk.</strong> <code>var.tables</code> (Redshift COPY JOB list) must mirror flattened <code>jobs.json.batches.*.tables</code>; drift = silent data loss.</li>
+          <li><strong>Trace requires a join.</strong> Per-table queries need <code>batch_id</code> + structured log filter, not just job name.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-grid">
+      <div class="sub">
+        <div class="sub-head"><span class="num">4.1</span>Trace logic</div>
+        <p>Script writes structured log lines like <code>[batch=01][table=user] processing 1240 rows</code>.
+          CloudWatch metric filters extract <code>$.batch_id</code> and <code>$.table</code> from JSON-formatted log records.
+          Job <code>BatchId</code> tag + numeric ID provides the high-level grouping; semantic name lives in <code>jobs.json</code>'s <code>label</code>.</p>
+        <ul>
+          <li>Job → batch: by job name suffix (<code>batch-01</code>)</li>
+          <li>Batch → tables: read <code>jobs.json</code> at point in time</li>
+          <li>Table → log lines: filter pattern <code>{ $.batch_id = "01" &amp;&amp; $.table = "user" }</code></li>
+        </ul>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">4.2</span>Retry</div>
+        <p>Two-tier model:</p>
+        <ul>
+          <li><strong>Engine retry:</strong> Glue <code>max_retries = 1</code> on the JobRun. Re-runs the <em>entire batch</em> if the job process crashes outright.</li>
+          <li><strong>Script retry:</strong> The script wraps per-table work in try/except + bounded retry (e.g. 2 attempts) and writes results to its bookmark JSON only on success — partial failure does not poison the watermark.</li>
+        </ul>
+        <p>Manual replay of a single table = ad-hoc JobRun with <code>--table_name</code> override (the script must support the override path).</p>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">4.3</span>Monitoring</div>
+        <p>Per-batch alarms (5–10 of them) on JobRun state + duration.
+          Plus CloudWatch metric filters parsing structured logs to derive per-table metrics — rows processed, write latency, bookmark watermark.</p>
+        <ul>
+          <li>Alarm: <code>JobRunState != "SUCCEEDED"</code> on any batch</li>
+          <li>Alarm: batch duration &gt; SLA (e.g. 90 min for AML batch)</li>
+          <li>Dashboard: per-table rows / duration via metric filter aggregation</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= 05. Solution C ======================= -->
+  <div class="section-label" id="sol-c">05 · Solution C</div>
+  <div class="card">
+    <div class="solution-head">
+      <div>
+        <div class="id">Option C · alternative</div>
+        <h3 class="title">Multi-Trigger Split — Keep One Job Per Table</h3>
+        <div class="tagline">Preserve the 1-table = 1-job model, but spread the 70 jobs across <em>two</em> SCHEDULED triggers (e.g. 35 + 35).</div>
+      </div>
+      <span class="badge alternative">Feasible · not chosen</span>
+    </div>
+
+    <pre class="code"><span class="comment"># pseudo-Terraform — sketch only</span>
+locals {
+  tables_a = slice(var.tables, 0, 35)   <span class="comment"># trigger A</span>
+  tables_b = slice(var.tables, 35, length(var.tables))
+}
+
+resource <span class="str">"aws_glue_trigger"</span> <span class="str">"a"</span> {
+  schedule = <span class="str">"cron(0 17 * * ? *)"</span>     <span class="comment"># 02:00 JST</span>
+  dynamic <span class="str">"actions"</span> { for_each = local.tables_a ... }
+}
+resource <span class="str">"aws_glue_trigger"</span> <span class="str">"b"</span> {
+  schedule = <span class="str">"cron(5 17 * * ? *)"</span>     <span class="comment"># 02:05 JST (stagger)</span>
+  dynamic <span class="str">"actions"</span> { for_each = local.tables_b ... }
+}</pre>
+
+    <div class="pros-cons">
+      <div>
+        <div class="pc-head pros"><span class="marker">+</span>Strengths</div>
+        <ul class="pc-list">
+          <li><strong>Keeps native per-table trace</strong> from Solution A — every JobRun is one table.</li>
+          <li>Glue engine retry on JobRun stays per-table.</li>
+          <li>Smallest mental shift from the legacy model.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="pc-head cons"><span class="marker">×</span>Weaknesses</div>
+        <ul class="pc-list">
+          <li><strong>Still 70 Glue Jobs.</strong> 70× cold-start, 70× Aurora connection peak, 70× IAM trust surface.</li>
+          <li><strong>Rebalance pain.</strong> Adding the 71st table forces re-slicing across triggers — non-trivial Terraform diff.</li>
+          <li><strong>Two cron times to monitor.</strong> Alert correlation has to know "trigger-A fires at 02:00, trigger-B at 02:05".</li>
+          <li><strong>Implicit dependency on order.</strong> If a downstream consumer (Redshift COPY JOB) expects all 70 tables landed before warehousing, you need a separate signal — the triggers don't know about each other.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-grid">
+      <div class="sub">
+        <div class="sub-head"><span class="num">5.1</span>Trace logic</div>
+        <p>Identical to Solution A — JobRun = table. The only added step is asking "which trigger did this come from?" before reading the JobRun, which CloudWatch records as a tag.</p>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">5.2</span>Retry</div>
+        <p>Glue engine <code>max_retries</code> still operates per-table. Trigger-level retry doesn't exist — failed JobRuns inside a trigger fan-out are independent.</p>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">5.3</span>Monitoring</div>
+        <p>Per-job alarm count rises with table count (70). Add a "trigger completion" composite alarm that waits for all 35 JobRuns in trigger-A before sending OK — otherwise an early-failing job alarms before the trigger's fan-out has even finished firing.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= 06. Solution D ======================= -->
+  <div class="section-label" id="sol-d">06 · Solution D</div>
+  <div class="card">
+    <div class="solution-head">
+      <div>
+        <div class="id">Option D · alternative</div>
+        <h3 class="title">Glue Workflow — DAG Orchestrator</h3>
+        <div class="tagline">Replace the SCHEDULED trigger model with an <code>aws_glue_workflow</code> that owns the DAG. The workflow can fan out via <code>conditional</code> triggers without the 50-action ceiling.</div>
+      </div>
+      <span class="badge alternative">Powerful · heavy to operate</span>
+    </div>
+
+    <pre class="code"><span class="comment"># sketch — actual implementation needs more wiring</span>
+resource <span class="str">"aws_glue_workflow"</span> <span class="str">"sync"</span> {
+  name = <span class="str">"aurora-to-redshift-sync"</span>
+}
+resource <span class="str">"aws_glue_trigger"</span> <span class="str">"start"</span> {
+  workflow_name = aws_glue_workflow.sync.name
+  type          = <span class="str">"SCHEDULED"</span>
+  schedule      = <span class="str">"cron(0 17 * * ? *)"</span>
+  actions { job_name = aws_glue_job.driver.name }
+}
+<span class="comment"># conditional triggers fan out from the driver to per-table jobs</span></pre>
+
+    <div class="pros-cons">
+      <div>
+        <div class="pc-head pros"><span class="marker">+</span>Strengths</div>
+        <ul class="pc-list">
+          <li><strong>No 50-action ceiling at the workflow level.</strong> Each conditional trigger has its own limit but they compose.</li>
+          <li><strong>Native DAG semantics.</strong> Aurora extract → S3 land → Redshift load all in one workflow.</li>
+          <li><strong>Built-in run history</strong> with a visual graph in the Glue console.</li>
+          <li>Cross-job dependencies (e.g. AML must run after master) are first-class.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="pc-head cons"><span class="marker">×</span>Weaknesses</div>
+        <ul class="pc-list">
+          <li><strong>Heaviest Terraform footprint.</strong> Workflow + N jobs + M conditional triggers + dependency wiring.</li>
+          <li><strong>DAG IaC is fragile.</strong> Topology changes require careful conditional-trigger rewrites.</li>
+          <li><strong>Workflow run-properties</strong> for state passing is a separate API and easy to forget.</li>
+          <li><strong>Over-engineered</strong> for the current "fire daily, load 70 tables" scope — no real cross-table dependencies exist yet.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-grid">
+      <div class="sub">
+        <div class="sub-head"><span class="num">6.1</span>Trace logic</div>
+        <p>Workflow Run ID is the top-level correlation key. Each node's JobRun rolls up under the workflow run. Console gives a visual graph; CloudWatch can filter on the workflow run ID as a tag.</p>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">6.2</span>Retry</div>
+        <p>Two retry layers exist: per-node Glue <code>max_retries</code> (table-level), and workflow-level "resume from failed node" via the Glue API — but the resume flow is manual and tooling around it is thin compared to Step Functions.</p>
+      </div>
+      <div class="sub">
+        <div class="sub-head"><span class="num">6.3</span>Monitoring</div>
+        <p>Workflow-level CloudWatch events emit at run start/complete/fail. Per-node JobRun events still emit. You end up with two event streams that need correlation (workflow run + per-job run).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= 07. Side-by-side ======================= -->
+  <div class="section-label" id="trace-grid">07 · Trace / retry / monitor side-by-side</div>
+  <h2>Operational surface, dimension by dimension</h2>
+
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>&nbsp;</th>
+          <th>A — One Job/Table</th>
+          <th>B — Batched (current)</th>
+          <th>C — Multi-Trigger</th>
+          <th>D — Workflow</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Trace block -->
+        <tr><td colspan="5" style="background:var(--surface-3); color:var(--accent-teal); font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.10em; text-transform:uppercase;">Trace</td></tr>
+        <tr>
+          <td>Primary correlation key</td>
+          <td>Job name = table</td>
+          <td>Job name = <code>batch-NN</code> + structured log table</td>
+          <td>Job name = table + trigger ARN</td>
+          <td>Workflow run ID + node name</td>
+        </tr>
+        <tr>
+          <td>Per-table log filter</td>
+          <td>1-line CloudWatch query</td>
+          <td>JSON filter: <code>{ $.batch_id &amp;&amp; $.table }</code></td>
+          <td>1-line CloudWatch query</td>
+          <td>Workflow run ID + node filter</td>
+        </tr>
+        <tr>
+          <td>"Did table X sync today?"</td>
+          <td><span class="status ok">Trivial</span></td>
+          <td><span class="status info">Easy w/ structured logs</span></td>
+          <td><span class="status ok">Trivial</span></td>
+          <td><span class="status info">Easy via run graph</span></td>
+        </tr>
+        <!-- Retry block -->
+        <tr><td colspan="5" style="background:var(--surface-3); color:var(--accent-teal); font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.10em; text-transform:uppercase;">Retry</td></tr>
+        <tr>
+          <td>Engine-managed retry</td>
+          <td>Per-table via <code>max_retries</code></td>
+          <td>Per-batch via <code>max_retries</code> (re-runs whole batch)</td>
+          <td>Per-table via <code>max_retries</code></td>
+          <td>Per-node + workflow resume</td>
+        </tr>
+        <tr>
+          <td>Manual replay scope</td>
+          <td>1 table</td>
+          <td>1 batch OR 1 table (script-supported override)</td>
+          <td>1 table</td>
+          <td>1 node OR resume from failure</td>
+        </tr>
+        <tr>
+          <td>Partial failure semantics</td>
+          <td>Failed table = isolated</td>
+          <td>Failed table must be try/except'd or it breaks remaining tables in batch</td>
+          <td>Failed table = isolated</td>
+          <td>Failed node may skip downstream depending on edge rules</td>
+        </tr>
+        <tr>
+          <td>Bookmark integrity on retry</td>
+          <td>Glue built-in or custom</td>
+          <td>Custom S3 JSON; <strong>only written on per-table success</strong></td>
+          <td>Glue built-in or custom</td>
+          <td>Per-node bookmark</td>
+        </tr>
+        <!-- Monitoring block -->
+        <tr><td colspan="5" style="background:var(--surface-3); color:var(--accent-teal); font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.10em; text-transform:uppercase;">Monitoring</td></tr>
+        <tr>
+          <td>Native CloudWatch alarms needed</td>
+          <td>70 (one per job)</td>
+          <td>5–10 (one per batch)</td>
+          <td>70 + per-trigger composite</td>
+          <td>1 workflow + per-node</td>
+        </tr>
+        <tr>
+          <td>Per-table metrics</td>
+          <td>Out of the box (per-job <code>numFailedTasks</code>)</td>
+          <td>Via metric filter on structured logs</td>
+          <td>Out of the box</td>
+          <td>Per-node metrics</td>
+        </tr>
+        <tr>
+          <td>SLA alarm strategy</td>
+          <td>Per-job duration</td>
+          <td>Per-batch duration (long-pole batch = AML)</td>
+          <td>Per-job + per-trigger window</td>
+          <td>Workflow run duration</td>
+        </tr>
+        <tr>
+          <td>Dashboard rows</td>
+          <td>~70</td>
+          <td>~10</td>
+          <td>~70</td>
+          <td>~10 nodes shown as a graph</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ======================= 08. Deep-dive · Trace ======================= -->
+  <div class="section-label" id="deep-trace">08 · Deep-dive · Trace</div>
+  <h2>How do you answer "did table X sync today?"</h2>
+
+  <p style="max-width:900px;color:var(--text-dim);">
+    Trace is the operational ability to walk from a user-facing question
+    ("Why is <code>fact_fiat_deposit</code> stale in Redshift?")
+    back through the pipeline to the exact JobRun, the exact log line, and the exact bookmark watermark that produced (or failed to produce) the row.
+    Each solution exposes a different correlation chain.
+  </p>
+
+  <h3 style="margin-top:28px;">8.1 · Correlation chain — what links to what</h3>
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Hop</th>
+          <th>A — One Job/Table</th>
+          <th>B — Batched (current)</th>
+          <th>C — Multi-Trigger</th>
+          <th>D — Workflow</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Top-level run ID</td>
+          <td><code>JobRunId</code></td>
+          <td><code>JobRunId</code></td>
+          <td><code>JobRunId</code> (+ trigger ARN)</td>
+          <td><code>WorkflowRunId</code></td>
+        </tr>
+        <tr>
+          <td>Run → table</td>
+          <td>Direct (job name = table)</td>
+          <td>JobRun has many tables; resolved by structured log <code>table</code> field</td>
+          <td>Direct</td>
+          <td>Node = table</td>
+        </tr>
+        <tr>
+          <td>Table → log stream</td>
+          <td><code>/aws-glue/jobs/output/&lt;table&gt;</code></td>
+          <td>Single batch stream; filter by <code>$.table</code></td>
+          <td>Same as A</td>
+          <td>Per-node stream</td>
+        </tr>
+        <tr>
+          <td>Run → parquet path</td>
+          <td><code>s3://staging/data/&lt;table&gt;/</code></td>
+          <td>Same — script constructs per-table prefix</td>
+          <td>Same as A</td>
+          <td>Same as A</td>
+        </tr>
+        <tr>
+          <td>Run → bookmark</td>
+          <td><code>_bookmarks/&lt;table&gt;.json</code></td>
+          <td>Same — script writes per-table after success</td>
+          <td>Same as A</td>
+          <td>Same as A</td>
+        </tr>
+        <tr>
+          <td>Parquet → Redshift COPY</td>
+          <td>S3 event ↔ COPY JOB (per-table)</td>
+          <td>Same</td>
+          <td>Same</td>
+          <td>Same</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:32px;">8.2 · Required structured log schema (Solution B)</h3>
+  <p>To preserve per-table trace inside a batched JobRun, the script <strong>must</strong> emit JSON-formatted log lines so CloudWatch metric filters can extract the dimensions:</p>
+
+  <pre class="code"><span class="comment"># aurora_to_s3.py — minimum log contract</span>
+import json, logging, time
+
+log = logging.getLogger(__name__)
+def emit(event, **fields):
+    log.info(json.dumps({
+        <span class="str">"ts"</span>:        time.time(),
+        <span class="str">"event"</span>:     event,             <span class="comment"># table_start | table_done | table_error | batch_done</span>
+        <span class="str">"batch_id"</span>:  args[<span class="str">"batch_id"</span>],
+        <span class="str">"table"</span>:     current_table,
+        <span class="str">"job_run_id"</span>: args[<span class="str">"JOB_RUN_ID"</span>],
+        **fields,
+    }))
+
+emit(<span class="str">"table_start"</span>, watermark_before=last_seen)
+emit(<span class="str">"table_done"</span>,  rows=row_count, duration_s=elapsed, watermark_after=new_max)</pre>
+
+  <p>This contract gives ops three queryable dimensions (<code>batch_id</code>, <code>table</code>, <code>job_run_id</code>) without forcing a metric per table.</p>
+
+  <h3 style="margin-top:32px;">8.3 · Concrete CloudWatch Logs Insights queries</h3>
+
+  <div class="card recessed" style="margin-bottom:14px;">
+    <div class="sub-head" style="margin-bottom:10px;">Solution A · "did <code>user</code> sync today?"</div>
+    <pre class="code">fields @timestamp, @message
+| filter @logStream like /aurora-to-s3-user-stg-ex/
+| filter @timestamp &gt; toMillis(now() - 24h)
+| stats latest(@message) as last_msg by bin(1d)</pre>
+    <p style="font-size:13px;color:var(--text-dim);margin-top:8px;">
+      Job name is the filter — trivial query, no JSON parsing needed.
+    </p>
+  </div>
+
+  <div class="card recessed" style="margin-bottom:14px;">
+    <div class="sub-head" style="margin-bottom:10px;">Solution B · "did <code>user</code> sync today?"</div>
+    <pre class="code">fields @timestamp, @message
+| filter @logStream like /aurora-to-s3-batch-01-stg-ex/
+| parse @message <span class="str">'"table":"*"'</span> as table_name
+| parse @message <span class="str">'"event":"*"'</span> as event
+| filter table_name = <span class="str">"user"</span>
+| filter event in [<span class="str">"table_start"</span>, <span class="str">"table_done"</span>, <span class="str">"table_error"</span>]
+| sort @timestamp desc
+| limit 20</pre>
+    <p style="font-size:13px;color:var(--text-dim);margin-top:8px;">
+      Two extra parse clauses extract the table dimension out of the JSON log line. Still one query, slightly more verbose.
+    </p>
+  </div>
+
+  <div class="card recessed" style="margin-bottom:14px;">
+    <div class="sub-head" style="margin-bottom:10px;">Solution B · "which tables failed in last 7 days?"</div>
+    <pre class="code">fields @timestamp, @message
+| filter @logGroup = <span class="str">"/aws-glue/jobs/output"</span>
+| parse @message <span class="str">'"event":"*"'</span> as event
+| parse @message <span class="str">'"table":"*"'</span> as table_name
+| parse @message <span class="str">'"batch_id":"*"'</span> as batch_id
+| filter event = <span class="str">"table_error"</span>
+| stats count(*) as failures by batch_id, table_name
+| sort failures desc</pre>
+  </div>
+
+  <h3 style="margin-top:32px;">8.4 · Failure-mode coverage matrix</h3>
+  <p>The trace value of each solution depends on which failure modes it can attribute correctly:</p>
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Failure mode</th>
+          <th>A</th>
+          <th>B</th>
+          <th>C</th>
+          <th>D</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Single table schema error</td>
+          <td><span class="status ok">JobRun fails; obvious</span></td>
+          <td><span class="status warn">Script emits <code>table_error</code>; remaining tables continue</span></td>
+          <td><span class="status ok">JobRun fails; obvious</span></td>
+          <td><span class="status ok">Node fails; downstream skipped</span></td>
+        </tr>
+        <tr>
+          <td>Aurora connection timeout</td>
+          <td><span class="status ok">Per-table JobRun fails</span></td>
+          <td><span class="status warn">Whole batch likely fails (shared conn)</span></td>
+          <td><span class="status ok">Per-table JobRun fails</span></td>
+          <td><span class="status warn">Whole driver fails</span></td>
+        </tr>
+        <tr>
+          <td>KMS/IAM perm error on S3 write</td>
+          <td><span class="status ok">JobRun fails; clear trace</span></td>
+          <td><span class="status warn">First table fails; script must classify retriable vs fatal</span></td>
+          <td><span class="status ok">Same as A</span></td>
+          <td><span class="status ok">Node fails</span></td>
+        </tr>
+        <tr>
+          <td>OOM in Spark executor</td>
+          <td><span class="status ok">JobRun fails with executor logs</span></td>
+          <td><span class="status fail">Batch dies at the offending table; later tables never run</span></td>
+          <td><span class="status ok">Same as A</span></td>
+          <td><span class="status ok">Node fails</span></td>
+        </tr>
+        <tr>
+          <td>Bookmark file corruption</td>
+          <td><span class="status info">1 table re-reads full range</span></td>
+          <td><span class="status info">1 table re-reads; others unaffected (per-table file)</span></td>
+          <td><span class="status info">Same as A</span></td>
+          <td><span class="status info">1 node</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-head">→ Operational playbook (Solution B)</div>
+    When a daily run produces a Redshift staleness alert for table <code>X</code>:<br>
+    <strong>1.</strong> Resolve <code>X</code> → batch via <code>jobs.json</code>'s <code>batches.*.tables</code>.<br>
+    <strong>2.</strong> Open the Glue Job <code>aurora-to-s3-batch-NN-&lt;env&gt;</code> latest JobRun.<br>
+    <strong>3.</strong> Run Logs Insights query 8.3 with <code>table_name = "X"</code>.<br>
+    <strong>4.</strong> Look for <code>table_error</code> event with stack trace; if missing, look for batch-wide failure before <code>X</code>'s <code>table_start</code> (means a sibling table killed the run).<br>
+    <strong>5.</strong> Check <code>_bookmarks/X.json</code> on S3 — if the watermark is stale-but-clean, manual replay is safe.
+  </div>
+
+  <!-- ======================= 09. Deep-dive · Retry ======================= -->
+  <div class="section-label" id="deep-retry">09 · Deep-dive · Retry</div>
+  <h2>Three layers — engine, script, manual</h2>
+
+  <p style="max-width:900px;color:var(--text-dim);">
+    "Retry" is not one thing. It's a stack of mechanisms with different blast radii, latencies, and idempotency requirements.
+    Solution B's correctness depends on getting all three layers right; the other solutions inherit Glue's engine-level retry for free
+    but require comparable script-side discipline.
+  </p>
+
+  <h3 style="margin-top:28px;">9.1 · The three layers</h3>
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="label">Layer 1 · Engine retry</div>
+      <div class="value" style="font-size:22px;line-height:1.3;">Glue <code>max_retries</code></div>
+      <div class="desc">Glue control plane re-runs the whole JobRun on infra failure (worker OOM, JDBC timeout). Configured in <code>aws_glue_job.max_retries = 1</code>. Catches transient failures; does <em>not</em> re-run after a successful-with-data-errors exit.</div>
+    </div>
+    <div class="kpi" style="border-left-color: var(--accent-amber);">
+      <div class="label">Layer 2 · Script retry</div>
+      <div class="value" style="font-size:22px;line-height:1.3;">try/except + bounded loop</div>
+      <div class="desc">Inside <code>aurora_to_s3.py</code>: per-table try/except, classified as <em>retriable</em> (e.g. JDBC timeout) vs <em>fatal</em> (schema mismatch). Up to N attempts with exponential backoff. Bookmark only written on success.</div>
+    </div>
+    <div class="kpi" style="border-left-color: var(--accent-teal);">
+      <div class="label">Layer 3 · Manual replay</div>
+      <div class="value" style="font-size:22px;line-height:1.3;"><code>start-job-run</code></div>
+      <div class="desc">Operator invokes <code>aws glue start-job-run</code> ad hoc when the daily run failed or a backfill is needed. May override arguments to scope to a single table.</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:32px;">9.2 · Decision tree — which layer kicks in?</h3>
+  <pre class="code">JobRun starts
+│
+├─ Glue control plane infra failure       → Layer 1 (engine) retries the whole JobRun
+│   • worker provision failed
+│   • JobRun timeout exceeded
+│   • Spark driver crash
+│
+├─ Application exception inside the JobRun
+│   ├─ Retriable (JDBC timeout, transient S3 5xx)
+│   │   └─ Layer 2 (script) catches, sleeps, retries the table 1-2x
+│   │       └─ on still-fail: emit table_error, continue with next table
+│   │
+│   └─ Fatal (schema mismatch, missing column, KMS denied)
+│       └─ Layer 2 catches, emits table_error, continues with next table
+│
+└─ Daily run completes
+    └─ If any table_error events exist
+        └─ Operator picks Layer 3 (manual) replay scoped to that table</pre>
+
+  <h3 style="margin-top:32px;">9.3 · Manual replay commands per solution</h3>
+
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Solution</th>
+          <th>Replay scope</th>
+          <th>Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>A — One Job/Table</td>
+          <td>1 table</td>
+          <td><code>aws glue start-job-run --job-name aurora-to-s3-user-stg-ex</code></td>
+        </tr>
+        <tr>
+          <td>B — Batched · whole batch</td>
+          <td>5–10 tables</td>
+          <td><code>aws glue start-job-run --job-name aurora-to-s3-batch-01-stg-ex</code></td>
+        </tr>
+        <tr>
+          <td>B — Batched · single table (requires script support)</td>
+          <td>1 table</td>
+          <td><code>aws glue start-job-run --job-name aurora-to-s3-batch-01-stg-ex --arguments='--table_override=user'</code></td>
+        </tr>
+        <tr>
+          <td>C — Multi-Trigger</td>
+          <td>1 table</td>
+          <td>Same as A</td>
+        </tr>
+        <tr>
+          <td>D — Workflow · whole DAG</td>
+          <td>All tables</td>
+          <td><code>aws glue start-workflow-run --name aurora-to-redshift-sync</code></td>
+        </tr>
+        <tr>
+          <td>D — Workflow · resume</td>
+          <td>From failed node</td>
+          <td><code>aws glue resume-workflow-run --name ... --run-id ... --node-ids ...</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:32px;">9.4 · Idempotency requirements</h3>
+  <p>Retry only works if a re-run is safe. Each solution has the same downstream contract, so idempotency lives in three places:</p>
+
+  <div class="sub-grid">
+    <div class="sub">
+      <div class="sub-head"><span class="num">a</span>Bookmark write</div>
+      <p>Per-table JSON at <code>_bookmarks/&lt;table&gt;.json</code>. Script writes <strong>after</strong> S3 parquet write succeeds.
+        On retry, the unchanged watermark guarantees the next attempt re-reads the same range.
+        Race-free because each table has its own file.</p>
+    </div>
+    <div class="sub">
+      <div class="sub-head"><span class="num">b</span>Parquet overwrite</div>
+      <p>Script writes to <code>data/&lt;table&gt;/run=&lt;job_run_id&gt;/*.parquet</code> using the JobRun ID as a partition.
+        Replay produces a new partition; old partitions left for audit and aged out by 30-day lifecycle.
+        Redshift COPY JOB is configured to ignore duplicates via primary key match.</p>
+    </div>
+    <div class="sub">
+      <div class="sub-head"><span class="num">c</span>Redshift COPY de-dup</div>
+      <p>S3 event integration fires COPY JOB on any new parquet object. Target Redshift table needs a primary key + <code>MERGE</code>-style upsert in the COPY JOB definition,
+        otherwise replay creates duplicate rows. (Already true for the existing per-table COPY JOB resources — unchanged by this refactor.)</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="callout-head">⚠ Layer 1 + Layer 2 interaction</div>
+    Setting both Glue engine <code>max_retries &gt; 0</code> AND aggressive script-side retry can compound — a script that already retried twice and then exited non-zero will be re-run by the engine for two more <em>full</em> batch passes.
+    For Solution B the safe combination is <code>max_retries = 1</code> (engine catches genuine infra failure) + script retry caps at 2 attempts per table + per-table failures do <em>not</em> exit the script non-zero (they emit <code>table_error</code> and continue).
+  </div>
+
+  <h3 style="margin-top:32px;">9.5 · Mid-batch failure walkthrough — what happens when table #4 of 9 crashes</h3>
+
+  <div class="callout info" style="max-width:900px;">
+    <div class="callout-head">→ Scope of this section</div>
+    This is a <strong>forward-looking design analysis</strong> for the batched script that will be written for Solution B.
+    It is independent of any existing script — the goal is to define the retry contract the new batched script must satisfy.
+    Glue's engine retry alone is necessary but not sufficient; the script must carry most of the resilience logic.
+  </div>
+
+  <p style="max-width:900px;color:var(--text-dim);">
+    The scenario: batch <code>02 transaction</code> has 9 tables, processed sequentially.
+    Tables 1–3 succeed; table 4 (<code>spot_order_ada_jpy</code>) crashes mid-stream.
+    Below we walk the two extreme designs (naive sequential vs. hardened), score four candidate retry strategies, propose a recommended pattern, and enumerate the edge cases the pattern still does not cover.
+  </p>
+
+  <h4 style="margin-top:24px; font-size:15px;">The naive failure path</h4>
+  <div class="diagram-shell">
+    <div class="mermaid-wrap" style="min-height:520px;">
+      <pre class="mermaid">
+sequenceDiagram
+  participant Trig as SCHEDULED trigger
+  participant Eng  as Glue engine
+  participant Scr  as batch-02 script
+  participant S3   as S3 staging
+  participant BM   as bookmarks/
+
+  Trig->>Eng:    02:00 JST fire
+  Eng->>Scr:     spawn JobRun #1 with batch_id=02
+  Scr->>S3:      write parquet table_1
+  Scr->>BM:      bookmark table_1 W0→W1
+  Scr->>S3:      write parquet table_2
+  Scr->>BM:      bookmark table_2 W0→W1
+  Scr->>S3:      write parquet table_3
+  Scr->>BM:      bookmark table_3 W0→W1
+  Note over Scr: table_4 raises OOM (uncaught)
+  Scr-->>Eng:    process exit code 1
+  Note over Eng: max_retries = 1
+  Eng->>Scr:     spawn JobRun #2 (full retry)
+
+  alt naive script (no per-table guard)
+    Scr->>S3:      re-write table_1 (empty diff via bookmark)
+    Scr->>S3:      re-write table_2 (empty diff)
+    Scr->>S3:      re-write table_3 (empty diff)
+    Note over Scr: table_4 OOM again
+    Scr-->>Eng:    exit 1
+    Eng-->>Trig: JobRun = FAILED · tables 5-9 NEVER RAN
+  else hardened script (per-table try + bookmark skip)
+    Scr->>BM:      read table_1 bookmark=W1
+    Note over Scr: filter > W1 → empty, skip
+    Scr->>BM:      read table_2..3 same
+    Note over Scr: table_4 retry → still fails → log table_error, continue
+    Scr->>S3:      write table_5
+    Scr->>S3:      write table_6 ... table_9
+    Scr-->>Eng:    exit 0 (errors logged, not raised)
+    Eng-->>Trig: JobRun = SUCCEEDED with table_errors=1
+  end
+      </pre>
+    </div>
+  </div>
+
+  <h4 style="margin-top:24px; font-size:15px;">Four candidate retry strategies, scored</h4>
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Strategy</th>
+          <th>What it does on mid-batch failure</th>
+          <th>Tables 5–9 status</th>
+          <th>Re-work cost</th>
+          <th>Verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>S1</strong>. Engine retry only<br><small>(no script-side guards)</small></td>
+          <td>Glue re-runs the whole JobRun; same crash repeats</td>
+          <td><span class="status fail">Never run</span></td>
+          <td>Tables 1–3 re-processed → wasted compute + Aurora load</td>
+          <td><span class="status fail">Insufficient</span></td>
+        </tr>
+        <tr>
+          <td><strong>S2</strong>. Engine retry + per-table bookmark<br><small>(skip via empty-diff)</small></td>
+          <td>Engine retry re-runs; bookmark filter makes tables 1–3 a no-op; table 4 still crashes</td>
+          <td><span class="status fail">Never run</span> (script aborts after table 4)</td>
+          <td>Bookmark-read + empty-filter on tables 1–3 (fast)</td>
+          <td><span class="status warn">Partial fix</span></td>
+        </tr>
+        <tr>
+          <td><strong>S3</strong>. Per-table try/except + bookmark + exit-zero<br><small>(emit table_error metric)</small></td>
+          <td>Script catches table-4 exception, logs <code>table_error</code>, continues with tables 5–9</td>
+          <td><span class="status ok">All complete</span></td>
+          <td>Zero re-work on this JobRun; alarm fires for table 4 only</td>
+          <td><span class="status ok">Recommended</span></td>
+        </tr>
+        <tr>
+          <td><strong>S4</strong>. S3 + intra-table bounded retry<br><small>(exponential backoff inside script)</small></td>
+          <td>Script retries table 4 with backoff up to N attempts before giving up; tables 5–9 run after</td>
+          <td><span class="status ok">All complete</span></td>
+          <td>Same as S3 + 2–3× wait for table-4 transient failures</td>
+          <td><span class="status ok">Recommended +</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 style="margin-top:24px; font-size:15px;">Recommended pattern — pseudo-code (design-only)</h4>
+  <pre class="code"><span class="comment"># Design pattern — strategy S4 (per-table guard + intra-table retry)</span>
+<span class="comment"># Not real code; illustrates the retry contract for the future batched script.</span>
+
+config = load_json_from_s3(args[<span class="str">"config_s3_path"</span>])
+batch  = config[<span class="str">"batches"</span>][args[<span class="str">"batch_id"</span>]]
+tables = batch[<span class="str">"tables"</span>]
+
+errors = []           <span class="comment"># collected, not raised</span>
+
+<span class="key">for</span> table <span class="key">in</span> tables:
+    emit(<span class="str">"table_start"</span>, table=table)
+
+    <span class="comment"># --- Idempotent skip via bookmark watermark ---</span>
+    bookmark = load_bookmark(table)    <span class="comment"># empty if never run</span>
+    <span class="comment"># If a previous JobRun in this calendar window already advanced</span>
+    <span class="comment"># the watermark past Aurora's current MAX, the filter below returns 0 rows</span>
+    <span class="comment"># and the write is a no-op. Bookmark stays put.</span>
+
+    <span class="key">for</span> attempt <span class="key">in</span> range(<span class="num">3</span>):       <span class="comment"># S4 layer</span>
+        <span class="key">try</span>:
+            df = read_aurora(table, since=bookmark)
+            <span class="key">if</span> df.is_empty():
+                emit(<span class="str">"table_done"</span>, table=table, rows=<span class="num">0</span>, reason=<span class="str">"already_processed"</span>)
+                <span class="key">break</span>
+
+            <span class="comment"># Per-JobRun partition so replays don't collide</span>
+            write_parquet(table, df, run_id=args[<span class="str">"JOB_RUN_ID"</span>])
+
+            <span class="comment"># Bookmark advance ONLY after successful parquet write</span>
+            save_bookmark(table, new_watermark=df.max_watermark())
+
+            emit(<span class="str">"table_done"</span>, table=table, rows=df.count())
+            <span class="key">break</span>
+
+        <span class="key">except</span> RetriableException <span class="key">as</span> e:
+            emit(<span class="str">"table_retry"</span>, table=table, attempt=attempt, err=str(e))
+            sleep(<span class="num">2</span> ** attempt * <span class="num">5</span>)    <span class="comment"># 5s, 10s, 20s</span>
+            <span class="key">continue</span>
+
+        <span class="key">except</span> FatalException <span class="key">as</span> e:
+            <span class="comment"># schema drift, KMS denied, etc. — no point retrying</span>
+            emit(<span class="str">"table_error"</span>, table=table, err=str(e), fatal=<span class="num">True</span>)
+            errors.append((table, e))
+            <span class="key">break</span>
+
+    <span class="key">else</span>:                          <span class="comment"># all 3 attempts exhausted</span>
+        emit(<span class="str">"table_error"</span>, table=table, err=<span class="str">"max_retries_exhausted"</span>, fatal=<span class="num">False</span>)
+        errors.append((table, RuntimeError(<span class="str">"max retries"</span>)))
+
+<span class="comment"># --- Batch-level commit decision ---</span>
+emit(<span class="str">"batch_done"</span>, batch_id=args[<span class="str">"batch_id"</span>], total=len(tables), errors=len(errors))
+
+<span class="key">if</span> len(errors) == len(tables):
+    <span class="comment"># Whole batch wiped out (e.g. Aurora unreachable) → let engine retry</span>
+    sys.exit(<span class="num">1</span>)
+<span class="comment"># Partial failure → exit 0 so engine does NOT retry; rely on monitoring</span>
+sys.exit(<span class="num">0</span>)</pre>
+
+  <h4 style="margin-top:24px; font-size:15px;">Edge cases — what the recommended pattern does <em>not</em> cover</h4>
+
+  <div class="sub-grid">
+    <div class="sub">
+      <div class="sub-head"><span class="num">e1</span>JobRun timeout (120 min cap)</div>
+      <p>If the batch exceeds <code>glue_job_timeout_minutes</code>, Glue kills the process. Try/except cannot catch a SIGKILL.
+        Tables completed before the kill keep their bookmarks; tables after are skipped on the next run only if the next cron arrives — engine retry on TIMEOUT is configurable but usually disabled to avoid runaway loops.</p>
+      <p style="margin-top:6px;"><strong>Mitigation:</strong> size the batch so worst-case runtime &lt; 50% of timeout; alarm on <code>batch_slow</code> well before timeout.</p>
+    </div>
+
+    <div class="sub">
+      <div class="sub-head"><span class="num">e2</span>OOM kills the Spark session</div>
+      <p>An OOM in an executor can crash the whole driver. The script's try/except never runs because the JVM died.
+        Glue engine sees process exit 137 → re-runs full JobRun.</p>
+      <p style="margin-top:6px;"><strong>Mitigation:</strong> increase <code>number_of_workers</code> or split the offending table into its own batch; the recommended pattern's bookmark-skip ensures tables 1–3 still no-op on re-run.</p>
+    </div>
+
+    <div class="sub">
+      <div class="sub-head"><span class="num">e3</span>Crash between parquet write &amp; bookmark save</div>
+      <p>Parquet landed in S3 but <code>save_bookmark</code> never ran. Next run pulls the same Aurora range again, producing duplicate parquet partitions.</p>
+      <p style="margin-top:6px;"><strong>Mitigation:</strong> Redshift COPY JOB upserts on primary key (already true today); parquet duplicates aged out by 30-day lifecycle. Per-JobRun partition naming (<code>run=&lt;job_run_id&gt;/</code>) prevents partition-key collision.</p>
+    </div>
+
+    <div class="sub">
+      <div class="sub-head"><span class="num">e4</span>Bookmark file corrupted by interrupted write</div>
+      <p>If <code>s3:PutObject</code> is interrupted mid-write, S3 either rolls back to previous version (with bucket versioning) or leaves a truncated JSON.</p>
+      <p style="margin-top:6px;"><strong>Mitigation:</strong> staging bucket has versioning ON; <code>load_bookmark</code> falls back to FULL load if JSON parse fails, which over-reads but does not lose data.</p>
+    </div>
+
+    <div class="sub">
+      <div class="sub-head"><span class="num">e5</span>Engine retry races with next-day cron</div>
+      <p>Failed JobRun at 02:00 JST + 1× engine retry could push completion past 03:00. If the retry takes long enough, the next day's cron fires before retry finishes — Glue's <code>max_concurrent_runs &gt; 1</code> allows them to overlap.</p>
+      <p style="margin-top:6px;"><strong>Mitigation:</strong> <code>glue_job_max_concurrent_runs = 20</code> already provides headroom; bookmark-based skip means concurrent runs converge on the same watermark and don't duplicate work.</p>
+    </div>
+
+    <div class="sub">
+      <div class="sub-head"><span class="num">e6</span>Implementation drift — exit non-zero on partial failure</div>
+      <p>If the implementation forgets <code>sys.exit(0)</code> on partial failure and lets the exception bubble, Glue engine re-runs the whole batch — losing the benefit of strategy S3/S4.</p>
+      <p style="margin-top:6px;"><strong>Mitigation:</strong> code review checklist + smoke test that intentionally fails one table and asserts <code>JobRunState = SUCCEEDED</code> + <code>etl.table_errors &gt; 0</code>.</p>
+    </div>
+  </div>
+
+  <h4 style="margin-top:24px; font-size:15px;">State machine — what the JobRun records</h4>
+  <div class="diagram-shell">
+    <div class="mermaid-wrap" style="min-height:480px;">
+      <pre class="mermaid">
+flowchart LR
+  S([Start]) --> L1[Load jobs.json from S3]
+  L1 --> L2[Iterate tables in batch]
+  L2 --> T1{Read bookmark}
+  T1 -->|empty| F[Full load]
+  T1 -->|present| I[Incremental from watermark]
+  F --> W[Write parquet]
+  I --> W
+  W --> B[Save bookmark]
+  B --> N{More tables?}
+  N -->|yes| L2
+  N -->|no| E1{Any errors?}
+  E1 -->|all failed| EX1[Exit 1<br/>engine will retry]
+  E1 -->|partial / none| EX0[Exit 0<br/>monitoring picks up]
+
+  W -. retriable error .-> R[Bounded retry · 3 attempts]
+  R -->|success| B
+  R -->|exhausted| ERR[Log table_error · continue]
+  ERR --> N
+
+  W -. fatal error .-> ERR
+  T1 -. corrupted JSON .-> F
+
+  classDef start  fill:#16202f,stroke:#0891b2,color:#dbe4f1;
+  classDef ok     fill:#243042,stroke:#84cc16,color:#dbe4f1;
+  classDef retry  fill:#1c2638,stroke:#d97706,color:#dbe4f1;
+  classDef fail   fill:#1c2638,stroke:#be123c,color:#dbe4f1;
+
+  class S,L1,L2 start;
+  class F,I,W,B,EX0 ok;
+  class R retry;
+  class ERR,EX1 fail;
+      </pre>
+    </div>
+  </div>
+
+  <div class="callout good">
+    <div class="callout-head">✓ Net answer to the mid-batch retry question</div>
+    Glue's <code>max_retries</code> alone is the wrong tool — it re-runs from the start of the batch, which is wasteful at best and infinite-loop-on-deterministic-failure at worst.
+    The right model is <strong>"engine retry catches infrastructure failures; the script catches everything else"</strong>:
+    per-table bookmark for natural skip-on-replay, per-table try/except for failure isolation, intra-table bounded retry for transient errors, and <code>exit 0</code> on partial failure so the engine doesn't replay tables that already succeeded.
+    Engine <code>max_retries = 1</code> stays useful for the case where the JobRun dies before reaching the loop (e.g. KMS denied on script download, S3 outage on config load).
+  </div>
+
+  <!-- ======================= 10. Deep-dive · Monitoring ======================= -->
+  <div class="section-label" id="deep-monitor">10 · Deep-dive · Monitoring</div>
+  <h2>Alarms, dashboards, and escalation</h2>
+
+  <p style="max-width:900px;color:var(--text-dim);">
+    Monitoring's job is to convert "a JobRun finished" into "the right person knows the right thing fast enough to act".
+    Solution B trades 70 narrow signals for 5–10 wide signals — each batch alarm carries more semantic weight than a per-table alarm did, and metric filters reconstruct the per-table dimension for dashboards.
+  </p>
+
+  <h3 style="margin-top:28px;">10.1 · The four metric layers</h3>
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Metric type</th>
+          <th>Granularity</th>
+          <th>Use case</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Glue built-in</td>
+          <td><code>glue.driver.aggregate.numCompletedTasks</code><br><code>glue.driver.aggregate.numFailedTasks</code></td>
+          <td>Per JobRun</td>
+          <td>SUCCEEDED / FAILED alarm fired by EventBridge</td>
+        </tr>
+        <tr>
+          <td>Glue built-in</td>
+          <td><code>glue.driver.ExecutorAllocationManager.executors.numberAllExecutors</code></td>
+          <td>Per JobRun (Spark UI)</td>
+          <td>Capacity sizing</td>
+        </tr>
+        <tr>
+          <td>EventBridge rule</td>
+          <td><code>Glue Job State Change</code></td>
+          <td>Per JobRun</td>
+          <td>Alarm trigger source — SUCCEEDED, FAILED, TIMEOUT, STOPPED</td>
+        </tr>
+        <tr>
+          <td>Metric filter on log group</td>
+          <td>Custom: <code>etl.rows_processed</code>, <code>etl.duration_seconds</code>, <code>etl.table_errors</code></td>
+          <td>Per table (parsed from JSON log)</td>
+          <td>Per-table dashboards in Solution B; SLA tracking</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:32px;">10.2 · Alarm definitions (Solution B, concrete)</h3>
+
+  <pre class="code"><span class="comment"># Alarm 1: batch JobRun failed</span>
+resource <span class="str">"aws_cloudwatch_metric_alarm"</span> <span class="str">"batch_failed"</span> {
+  for_each = toset(var.batches)
+  alarm_name          = <span class="str">"glue-etl-batch-${each.key}-failed-${var.environment}"</span>
+  metric_name         = <span class="str">"glue.driver.aggregate.numFailedTasks"</span>
+  namespace           = <span class="str">"AWS/Glue"</span>
+  dimensions = {
+    JobName = <span class="str">"aurora-to-s3-batch-${each.key}-${var.environment}"</span>
+    JobRunId = <span class="str">"ALL"</span>
+    Type     = <span class="str">"gauge"</span>
+  }
+  statistic           = <span class="str">"Sum"</span>
+  period              = <span class="num">300</span>             <span class="comment"># 5 min</span>
+  evaluation_periods  = <span class="num">1</span>
+  threshold           = <span class="num">1</span>
+  comparison_operator = <span class="str">"GreaterThanOrEqualToThreshold"</span>
+  treat_missing_data  = <span class="str">"notBreaching"</span>
+  alarm_actions       = [aws_sns_topic.etl_alerts.arn]
+}
+
+<span class="comment"># Alarm 2: batch JobRun ran but took too long</span>
+resource <span class="str">"aws_cloudwatch_metric_alarm"</span> <span class="str">"batch_slow"</span> {
+  for_each = {
+    <span class="str">"01"</span> = <span class="num">30</span>    <span class="comment"># master SLA 30 min</span>
+    <span class="str">"02"</span> = <span class="num">60</span>    <span class="comment"># transaction SLA 60 min</span>
+    <span class="str">"03"</span> = <span class="num">30</span>    <span class="comment"># security SLA 30 min</span>
+    <span class="str">"04"</span> = <span class="num">15</span>    <span class="comment"># fact SLA 15 min</span>
+    <span class="str">"05"</span> = <span class="num">90</span>    <span class="comment"># aml SLA 90 min (long pole)</span>
+  }
+  alarm_name          = <span class="str">"glue-etl-batch-${each.key}-slow-${var.environment}"</span>
+  metric_name         = <span class="str">"etl.duration_seconds"</span>     <span class="comment"># custom from metric filter</span>
+  namespace           = <span class="str">"GlueETL"</span>
+  dimensions          = { BatchId = each.key, Environment = var.environment }
+  statistic           = <span class="str">"Maximum"</span>
+  period              = <span class="num">3600</span>
+  evaluation_periods  = <span class="num">1</span>
+  threshold           = each.value * <span class="num">60</span>
+  comparison_operator = <span class="str">"GreaterThanThreshold"</span>
+  treat_missing_data  = <span class="str">"breaching"</span>            <span class="comment"># missing duration = job never ran</span>
+  alarm_actions       = [aws_sns_topic.etl_alerts.arn]
+}
+
+<span class="comment"># Alarm 3: any table_error event in last hour</span>
+resource <span class="str">"aws_cloudwatch_metric_alarm"</span> <span class="str">"table_errors"</span> {
+  alarm_name          = <span class="str">"glue-etl-table-errors-${var.environment}"</span>
+  metric_name         = <span class="str">"etl.table_errors"</span>
+  namespace           = <span class="str">"GlueETL"</span>
+  statistic           = <span class="str">"Sum"</span>
+  period              = <span class="num">300</span>
+  evaluation_periods  = <span class="num">1</span>
+  threshold           = <span class="num">1</span>
+  comparison_operator = <span class="str">"GreaterThanOrEqualToThreshold"</span>
+  treat_missing_data  = <span class="str">"notBreaching"</span>
+  alarm_actions       = [aws_sns_topic.etl_alerts.arn]
+}</pre>
+
+  <h3 style="margin-top:32px;">10.3 · Metric filter wiring</h3>
+  <pre class="code">resource <span class="str">"aws_cloudwatch_log_metric_filter"</span> <span class="str">"table_done"</span> {
+  name           = <span class="str">"etl-table-done-${var.environment}"</span>
+  log_group_name = <span class="str">"/aws-glue/jobs/output"</span>
+  pattern        = <span class="str">'{ $.event = "table_done" }'</span>
+
+  metric_transformation {
+    name          = <span class="str">"etl.rows_processed"</span>
+    namespace     = <span class="str">"GlueETL"</span>
+    value         = <span class="str">"$.rows"</span>
+    default_value = <span class="num">0</span>
+    dimensions = {
+      BatchId     = <span class="str">"$.batch_id"</span>
+      Table       = <span class="str">"$.table"</span>
+      Environment = var.environment
+    }
+  }
+}</pre>
+
+  <h3 style="margin-top:32px;">10.4 · Dashboard skeleton (Solution B)</h3>
+  <div class="sub-grid">
+    <div class="sub">
+      <div class="sub-head"><span class="num">row 1</span>Last-run summary</div>
+      <ul>
+        <li>1 KPI tile per batch: state · duration · row total</li>
+        <li>Color: green = SUCCEEDED + within SLA, amber = SLA breach, red = FAILED</li>
+        <li>Refresh on EventBridge "Job State Change" event</li>
+      </ul>
+    </div>
+    <div class="sub">
+      <div class="sub-head"><span class="num">row 2</span>Per-table heatmap (7d)</div>
+      <ul>
+        <li>X-axis: day; Y-axis: table (~70 rows grouped by batch)</li>
+        <li>Cell = max(<code>etl.duration_seconds</code>) for that table that day</li>
+        <li>Reveals slow-growing tables (e.g. AML drift)</li>
+      </ul>
+    </div>
+    <div class="sub">
+      <div class="sub-head"><span class="num">row 3</span>Aurora reader pressure</div>
+      <ul>
+        <li><code>DatabaseConnections</code> + <code>CPUUtilization</code> on reader during cron window (17:00–19:00 UTC)</li>
+        <li>Validates the "batch count = connection peak" assumption</li>
+      </ul>
+    </div>
+    <div class="sub">
+      <div class="sub-head"><span class="num">row 4</span>Redshift load lag</div>
+      <ul>
+        <li><code>sys_load_history</code> top-N query: load_time vs parquet object_create_time</li>
+        <li>Detects S3-event → COPY JOB latency regressions</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="margin-top:32px;">10.5 · Escalation playbook</h3>
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th>Alarm</th>
+          <th>First responder action</th>
+          <th>Escalation</th>
+          <th>SLA</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>batch_failed</code> (any batch)</td>
+          <td>Open JobRun in console; run query 8.3 to find failing table; classify retriable vs fatal</td>
+          <td>If &gt;1 batch failed simultaneously → data platform on-call (Aurora-side issue likely)</td>
+          <td>P1 · 15 min</td>
+        </tr>
+        <tr>
+          <td><code>batch_slow</code> (per-batch SLA)</td>
+          <td>Check Aurora reader CPU; check S3 5xx rate; consider bumping batch concurrency or splitting batch</td>
+          <td>If sustained 3 days → reshard batches in <code>jobs.json</code> + tfvars</td>
+          <td>P2 · 1 hr</td>
+        </tr>
+        <tr>
+          <td><code>table_errors</code> (any table_error)</td>
+          <td>Identify table via metric dimension; check schema drift; coordinate with app team if column renamed</td>
+          <td>If silent (no email/Slack) for &gt;24h → ticket data quality team</td>
+          <td>P2 · 4 hr</td>
+        </tr>
+        <tr>
+          <td>Redshift load lag &gt; 30 min</td>
+          <td>Check COPY JOB status in Redshift; check S3 event subscription health</td>
+          <td>If COPY JOB suspended → DBA team</td>
+          <td>P2 · 1 hr</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout good">
+    <div class="callout-head">✓ Net effect on monitoring surface</div>
+    Compared to Solution A's 70 per-table alarms, Solution B has ~15 alarms total (5–10 <code>batch_failed</code> + per-batch SLA + 1 global table_error). The per-table observability does not disappear — it moves from "one alarm per table" to "one metric dimension per table", which is the same information re-shaped: better dashboards, fewer pages, semantic groupings that match the on-call team's mental model (master / transaction / security / fact / aml).
+  </div>
+
+  <!-- ======================= 11. Architecture ======================= -->
+  <div class="section-label" id="architecture">11 · Architecture of the chosen solution</div>
+  <h2>How Solution B (current) is wired end-to-end</h2>
+
+  <div class="diagram-shell">
+    <div class="mermaid-wrap">
+      <pre class="mermaid">
+flowchart TB
+  subgraph SRC ["Aurora reader - point"]
+    A1["user / user_info / ..."]
+  end
+
+  subgraph TR ["SCHEDULED trigger - cron 02:00 JST"]
+    T1["aws_glue_trigger.scheduled<br/>5 to 10 actions"]
+  end
+
+  subgraph JOBS ["N batched Glue Jobs"]
+    J1["batch-01 master<br/>5 tables - serial"]
+    J2["batch-02 transaction<br/>9 tables - serial"]
+    J3["batch-03 security<br/>5 tables - serial"]
+    J4["batch-04 fact<br/>3 tables - serial"]
+    J5["batch-05 aml<br/>10 tables - serial"]
+  end
+
+  CFG[("s3 staging config jobs.json<br/>app-team owned")]
+  S3[("s3 staging data per-table<br/>parquet")]
+
+  COPY["Redshift S3 event integration<br/>plus COPY JOB per-table"]
+  RS[("Redshift point.glue_table")]
+
+  T1 -->|fires daily| J1
+  T1 --> J2
+  T1 --> J3
+  T1 --> J4
+  T1 --> J5
+
+  CFG -.->|"--config_s3_path<br/>--batch_id"| J1
+  CFG -.-> J2
+  CFG -.-> J3
+  CFG -.-> J4
+  CFG -.-> J5
+
+  A1 -->|JDBC| J1
+  A1 -->|JDBC| J2
+  A1 -->|JDBC| J3
+  A1 -->|JDBC| J4
+  A1 -->|JDBC| J5
+
+  J1 --> S3
+  J2 --> S3
+  J3 --> S3
+  J4 --> S3
+  J5 --> S3
+
+  S3 -->|S3 event AUTO ON| COPY
+  COPY --> RS
+
+  classDef src     fill:#1c2638,stroke:#0891b2,color:#dbe4f1;
+  classDef job     fill:#243042,stroke:#84cc16,color:#dbe4f1;
+  classDef storage fill:#16202f,stroke:#d97706,color:#dbe4f1;
+  classDef sink    fill:#1c2638,stroke:#be123c,color:#dbe4f1;
+
+  class A1 src;
+  class J1,J2,J3,J4,J5 job;
+  class CFG,S3 storage;
+  class COPY,RS sink;
+      </pre>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-head">→ The contract surface</div>
+    Terraform owns: the <em>count and shape</em> of batches (<code>var.batches</code>), the script binary path on S3, the IAM/KMS/security wiring, and the per-table Redshift COPY JOB resources.
+    App team owns: <code>jobs.json</code> content (which tables go in which batch, bookmark mode, sort order) and the <code>aurora_to_s3.py</code> script logic that reads the config.
+    The handshake is exactly two arguments: <code>--config_s3_path</code> and <code>--batch_id</code>.
+  </div>
+
+  <!-- ======================= 12. Decision ======================= -->
+  <div class="section-label" id="decision">12 · Decision rationale</div>
+  <h2>Why Solution B (Batched) is the right cut at this point</h2>
+
+  <div class="card recessed">
+    <p>Solution A is removed by the constraint: 70 actions cannot live inside one trigger, and a SCHEDULED trigger is the natural firing mechanism for a daily batch.</p>
+    <p>Solution C buys nothing structural — it still keeps 70 jobs and adds rebalance pain on every table change. The trace/retry advantage is real but the operational cost is higher than the current state.</p>
+    <p>Solution D is the right shape for a future where the pipeline has real cross-table dependencies (e.g. "AML must read fresh transaction snapshots"), where backfill orchestration matters, or where the table count climbs past ~150. It is not warranted today: the daily DAG is one fan-out layer deep.</p>
+    <p>Solution B carries two acknowledged costs — sequential batch runtime and the <code>var.tables</code> ↔ <code>jobs.json</code> drift risk — that are tractable: the former through batch sizing (worst case AML 10 tables ≈ 60–90 min, well under the 120-min timeout), the latter through PR discipline (both files change together) and an optional script-side startup validation.</p>
+  </div>
+
+  <div class="callout good">
+    <div class="callout-head">✓ Forward-looking signal</div>
+    The decoupled config + 2-argument contract leaves the door open: if and when scale or dependency demands push past Solution B, the migration to Solution D is a script-side change plus a workflow wrap — the table-level contract (S3 parquet path, COPY JOB key) does not move.
+  </div>
+
+  <!-- ======================= Footer ======================= -->
+  <div class="foot">
+    glue-etl-batching-comparison · component: terraform/components/glue-etl · source commit: 2f54896 · prepared 2026-05-19
+  </div>
+
+</div>
+</body>
+</html>

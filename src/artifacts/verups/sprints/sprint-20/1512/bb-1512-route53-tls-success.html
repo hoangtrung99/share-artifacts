@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Route53 Approach — TLS Handshake Success (Valid DNS)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — Sage/Emerald for success story ============ */
+  :root {
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+
+    --bg: #f6faf7;
+    --surface: #ffffff;
+    --surface2: #ecf5ee;
+    --surface-recessed: #e4efe6;
+    --border: rgba(22, 101, 52, 0.09);
+    --border-bright: rgba(22, 101, 52, 0.18);
+    --text: #1a2e1f;
+    --text-dim: #4d6854;
+
+    --green: #166534;
+    --green-dim: rgba(22, 101, 52, 0.06);
+    --green-bright: #22c55e;
+    --sage: #65a30d;
+    --sage-dim: rgba(101, 163, 13, 0.07);
+    --teal: #0e7490;
+    --teal-dim: rgba(14, 116, 144, 0.06);
+    --amber: #a16207;
+    --amber-dim: rgba(161, 98, 7, 0.06);
+    --slate: #475569;
+    --slate-dim: rgba(71, 85, 105, 0.06);
+    --navy: #1e3a5f;
+    --navy-dim: rgba(30, 58, 95, 0.06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1a10;
+      --surface: #12261a;
+      --surface2: #1a3324;
+      --surface-recessed: #091209;
+      --border: rgba(34, 197, 94, 0.10);
+      --border-bright: rgba(34, 197, 94, 0.20);
+      --text: #d8eed8;
+      --text-dim: #7da889;
+
+      --green: #4ade80;
+      --green-dim: rgba(74, 222, 128, 0.10);
+      --green-bright: #86efac;
+      --sage: #a3e635;
+      --sage-dim: rgba(163, 230, 53, 0.10);
+      --teal: #67e8f9;
+      --teal-dim: rgba(103, 232, 249, 0.10);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.10);
+      --slate: #94a3b8;
+      --slate-dim: rgba(148, 163, 184, 0.10);
+      --navy: #93c5fd;
+      --navy-dim: rgba(147, 197, 253, 0.10);
+    }
+  }
+
+  /* ============ RESET ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% 0%, var(--green-dim) 0%, transparent 60%),
+      radial-gradient(circle, var(--border) 0.8px, transparent 0.8px);
+    background-size: 100% 100%, 20px 20px;
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 48px 40px;
+    min-height: 100vh;
+    line-height: 1.7;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .a { animation: fadeUp 0.45s ease-out both; animation-delay: calc(var(--i, 0) * 0.06s); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container { max-width: 960px; margin: 0 auto; }
+
+  /* ============ TYPOGRAPHY ============ */
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    line-height: 1.2;
+    color: var(--green);
+    margin-bottom: 8px;
+  }
+
+  .page-sub {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.3px;
+    margin-bottom: 28px;
+  }
+
+  .lead {
+    font-size: 17px;
+    line-height: 1.8;
+    color: var(--text-dim);
+    max-width: 740px;
+    margin-bottom: 36px;
+  }
+
+  .sec-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--sage);
+    padding: 5px 12px;
+    background: var(--sage-dim);
+    border-left: 3px solid var(--sage);
+    border-radius: 0 5px 5px 0;
+    margin: 44px 0 16px;
+    display: inline-block;
+  }
+
+  h2 {
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--green);
+    margin-bottom: 12px;
+    letter-spacing: -0.3px;
+  }
+
+  p { margin-bottom: 12px; font-size: 15px; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--teal-dim);
+    color: var(--teal);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+
+  /* ============ CARDS ============ */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  .card--hero {
+    border-color: var(--border-bright);
+    box-shadow: 0 4px 20px rgba(22, 101, 52, 0.05);
+    padding: 28px;
+  }
+
+  .card--recessed {
+    background: var(--surface-recessed);
+  }
+
+  .card-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+  }
+
+  /* ============ DNS FLOW ============ */
+  .dns-chain {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+  }
+
+  .dns-node {
+    background: var(--surface);
+    border: 1.5px solid var(--border-bright);
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
+    min-width: 0;
+  }
+
+  .dns-node-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .dns-node-val {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--green);
+    word-break: break-all;
+    font-weight: 500;
+  }
+
+  .dns-arr {
+    font-size: 18px;
+    color: var(--sage);
+    flex-shrink: 0;
+  }
+
+  /* ============ DOMAIN VISUAL ============ */
+  .domain-vis {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-wrap: wrap;
+    margin: 14px 0;
+    font-family: var(--font-mono);
+    font-size: 14px;
+  }
+
+  .d-part {
+    padding: 5px 10px;
+    border-radius: 5px;
+    border: 2px solid;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .d-wild { border-color: var(--sage); background: var(--sage-dim); color: var(--sage); }
+  .d-sub { border-color: var(--teal); background: var(--teal-dim); color: var(--teal); }
+  .d-base { border-color: var(--green); background: var(--green-dim); color: var(--green); }
+  .d-dot { font-size: 16px; color: var(--text-dim); font-weight: 700; }
+
+  .match-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    margin: 8px 0;
+    background: var(--green-dim);
+    border: 1px solid var(--green);
+    color: var(--green);
+  }
+
+  .match-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* ============ PROTOCOL PHASES ============ */
+  .phases {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 20px 0;
+  }
+
+  .phase-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    border-top: 3px solid var(--border);
+    transition: border-color 0.2s;
+  }
+
+  .phase-card:hover { border-top-color: var(--green); }
+
+  .phase-num {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--sage);
+    margin-bottom: 4px;
+  }
+
+  .phase-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .phase-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .phase-pkt {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface-recessed);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-top: 8px;
+    display: inline-block;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+
+  /* ============ MERMAID ============ */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow: auto;
+    margin: 20px 0;
+  }
+
+  .mermaid-wrap .mermaid {
+    display: flex;
+    justify-content: center;
+    transition: transform 0.2s ease;
+    transform-origin: top center;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px; height: 28px; border: none;
+    background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 14px;
+    cursor: pointer; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+
+  .mermaid-wrap { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+  .mermaid-wrap.is-zoomed { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  /* Mermaid overrides */
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; color: var(--text) !important; }
+  .mermaid .messageText { font-family: var(--font-mono) !important; font-size: 11.5px !important; }
+  .mermaid .noteText { font-family: var(--font-mono) !important; font-size: 10.5px !important; }
+  .mermaid .loopText { font-family: var(--font-mono) !important; font-size: 10.5px !important; }
+  .mermaid .labelText { font-family: var(--font-mono) !important; font-size: 11px !important; }
+  .mermaid .actor { stroke-width: 1.5px; }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--sage);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    margin: 18px 0;
+  }
+  .callout strong { color: var(--text); }
+  .callout code { font-size: 11.5px; }
+
+  /* ============ SUMMARY BOX ============ */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+
+  .summary-key {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-align: right;
+    padding-top: 2px;
+  }
+
+  .summary-val { color: var(--text); }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 768px) {
+    body { padding: 20px 14px; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 20px; }
+    .lead { font-size: 15px; }
+    .phases { grid-template-columns: 1fr; }
+    .dns-chain { flex-direction: column; align-items: stretch; }
+    .dns-arr { transform: rotate(90deg); text-align: center; }
+    .mermaid-wrap { padding: 16px 10px; }
+    .domain-vis { font-size: 11px; }
+    .d-part { padding: 3px 7px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1 class="a" style="--i:0">Route53 + HTTPS-only<br><span style="font-size:0.55em;font-weight:500;color:var(--sage)">TLS Handshake Th&agrave;nh C&ocirc;ng</span></h1>
+  <p class="page-sub a" style="--i:1">Gi&#7843; &#273;&#7883;nh DNS h&#7907;p l&#7879; (1-level subdomain) &mdash; CloudFront &rarr; Route53 &rarr; ALB</p>
+
+  <p class="lead a" style="--i:2">
+    N&#7871;u Route53 record l&agrave; <code>origin-alb.backseat-service.com</code> (1 c&#7845;p subdomain),
+    cert wildcard <code>*.backseat-service.com</code> s&#7869; match v&agrave; TLS handshake th&agrave;nh c&ocirc;ng.
+    Trang n&agrave;y m&ocirc; t&#7843; chi ti&#7871;t t&#7915;ng b&#432;&#7899;c c&#7911;a qu&aacute; tr&igrave;nh &#273;&oacute;.
+  </p>
+
+  <!-- ========== SECTION 1: VALID DNS ========== -->
+  <div class="sec-label a" style="--i:3">01 &mdash; DNS h&#7907;p l&#7879;</div>
+
+  <h2 class="a" style="--i:4">&#272;i&#7873;u ki&#7879;n &#273;&#7875; TLS th&agrave;nh c&ocirc;ng</h2>
+
+  <p class="a" style="--i:5">
+    Domain c&#7911;a origin ph&#7843;i l&agrave; <strong>1-level subdomain</strong> c&#7911;a <code>backseat-service.com</code>
+    &#273;&#7875; match cert wildcard:
+  </p>
+
+  <div class="card a" style="--i:6">
+    <div class="card-tag" style="color:var(--sage)">Cert Wildcard Pattern</div>
+    <div class="domain-vis">
+      <span class="d-part d-wild">*</span>
+      <span class="d-dot">.</span>
+      <span class="d-part d-base">backseat-service.com</span>
+    </div>
+  </div>
+
+  <div class="card card--hero a" style="--i:7">
+    <div class="card-tag" style="color:var(--green)">DNS h&#7907;p l&#7879; &mdash; 1-level subdomain</div>
+    <div class="domain-vis">
+      <span class="d-part d-sub">origin-alb</span>
+      <span class="d-dot">.</span>
+      <span class="d-part d-base">backseat-service.com</span>
+    </div>
+    <div class="match-badge">
+      <span class="match-dot">&#10003;</span>
+      <code>*</code> = <code>origin-alb</code> (&#273;&uacute;ng 1 label) &rarr; MATCH theo RFC 6125
+    </div>
+  </div>
+
+  <div class="dns-chain a" style="--i:8">
+    <div class="dns-node">
+      <div class="dns-node-label">Route53 Record (A Alias)</div>
+      <div class="dns-node-val">origin-alb.backseat-service.com</div>
+    </div>
+    <div class="dns-arr">&rarr;</div>
+    <div class="dns-node">
+      <div class="dns-node-label">Alias Target</div>
+      <div class="dns-node-val">point-alb-xxx.ap-northeast-1.elb.amazonaws.com</div>
+    </div>
+    <div class="dns-arr">&rarr;</div>
+    <div class="dns-node">
+      <div class="dns-node-label">ALB IPs</div>
+      <div class="dns-node-val">172.18.11.x, 172.18.12.x</div>
+    </div>
+  </div>
+
+  <div class="callout a" style="--i:9">
+    <strong>L&#432;u &yacute;:</strong> Trong th&#7921;c t&#7871; BB-1512,
+    c&aacute;c m&ocirc;i tr&#432;&#7901;ng c&oacute; Route53 zone ri&ecirc;ng (<code>dev-ex.backseat-service.com</code>,
+    <code>stg-ex.backseat-service.com</code>). N&#7871;u mu&#7889;n d&ugrave;ng Route53 approach,
+    c&#7847;n record trong zone g&#7889;c <code>backseat-service.com</code>
+    ho&#7863;c cert ri&ecirc;ng cho t&#7915;ng zone con.
+  </div>
+
+  <!-- ========== SECTION 2: FULL SEQUENCE ========== -->
+  <div class="sec-label a" style="--i:10">02 &mdash; Sequence Diagram</div>
+
+  <h2 class="a" style="--i:11">To&agrave;n b&#7897; qu&aacute; tr&igrave;nh TLS 1.2 Handshake</h2>
+
+  <div class="mermaid-wrap a" style="--i:12">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+    </div>
+    <pre class="mermaid">
+sequenceDiagram
+    participant U as User Browser
+    participant CF as CloudFront
+    participant DNS as Route53
+    participant ALB as ALB
+
+    Note over U,ALB: PHASE 1 - User to CloudFront
+
+    U->>CF: HTTPS GET dev-ex.backseat-service.com/app/home
+    Note over U,CF: TLS OK - CloudFront has ACM cert for *.backseat-service.com
+
+    Note over CF,ALB: PHASE 2 - DNS Resolution
+
+    CF->>CF: Origin domain = origin-alb.backseat-service.com
+    CF->>DNS: A query: origin-alb.backseat-service.com
+    DNS-->>CF: Alias to ALB - resolved to 172.18.11.x
+
+    Note over CF,ALB: PHASE 3 - TCP 3-Way Handshake
+
+    CF->>ALB: SYN to 172.18.11.x port 443
+    ALB-->>CF: SYN-ACK
+    CF->>ALB: ACK - TCP established
+
+    Note over CF,ALB: PHASE 4 - TLS 1.2 Handshake
+
+    CF->>ALB: ClientHello - TLS 1.2, SNI=origin-alb.backseat-service.com, cipher suites, random
+    ALB-->>CF: ServerHello - chosen cipher TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, session ID, random
+    ALB-->>CF: Certificate - subject *.backseat-service.com, chain, validity 2026-03-10
+
+    Note over CF: CERT VALIDATION
+    Note over CF: 1. Check expiry - OK, valid until 2027
+    Note over CF: 2. Check chain - trusted CA - OK
+    Note over CF: 3. Match SNI: *.backseat-service.com vs origin-alb.backseat-service.com
+    Note over CF: 4. RFC 6125: * matches origin-alb = 1 label - MATCH
+
+    ALB-->>CF: ServerKeyExchange - ECDHE P-256 params, signature
+    ALB-->>CF: ServerHelloDone
+
+    CF->>ALB: ClientKeyExchange - ECDHE public key
+    CF->>ALB: ChangeCipherSpec
+    CF->>ALB: Finished - encrypted verify hash
+
+    ALB-->>CF: ChangeCipherSpec
+    ALB-->>CF: Finished - encrypted verify hash
+
+    Note over CF,ALB: TLS 1.2 Session Established - All traffic encrypted
+
+    Note over CF,ALB: PHASE 5 - Application Data
+
+    CF->>ALB: GET /app/home HTTP/1.1 Host: dev-ex.backseat-service.com
+    ALB-->>CF: HTTP/1.1 200 OK - response body
+    CF-->>U: HTTP/2 200 OK - forwarded response
+    </pre>
+  </div>
+
+  <!-- ========== SECTION 3: PHASE BREAKDOWN ========== -->
+  <div class="sec-label a" style="--i:13">03 &mdash; Chi ti&#7871;t t&#7915;ng Phase</div>
+
+  <h2 class="a" style="--i:14">6 Phase c&#7911;a m&#7897;t request</h2>
+
+  <div class="phases a" style="--i:15">
+    <div class="phase-card">
+      <div class="phase-num">01</div>
+      <div class="phase-title">User &rarr; CloudFront</div>
+      <div class="phase-desc">
+        Browser k&#7871;t n&#7889;i HTTPS t&#7899;i CloudFront edge g&#7847;n nh&#7845;t.
+        CloudFront c&oacute; cert ACM (US-East-1) cho <code>*.backseat-service.com</code>.
+        TLS gi&#7919;a user v&agrave; CloudFront lu&ocirc;n th&agrave;nh c&ocirc;ng.
+      </div>
+    </div>
+
+    <div class="phase-card">
+      <div class="phase-num">02</div>
+      <div class="phase-title">DNS Resolution</div>
+      <div class="phase-desc">
+        CloudFront resolve origin domain qua Route53.
+        Alias record tr&#7843; v&#7873; ALB IP address.
+      </div>
+      <div class="phase-pkt">origin-alb.backseat-service.com &rarr; 172.18.11.x</div>
+    </div>
+
+    <div class="phase-card">
+      <div class="phase-num">03</div>
+      <div class="phase-title">TCP Handshake</div>
+      <div class="phase-desc">
+        CloudFront m&#7903; TCP connection t&#7899;i ALB port 443.
+        SYN &rarr; SYN-ACK &rarr; ACK. Nhanh v&igrave; c&#7843; hai &#273;&#7873;u &#7903; AWS Tokyo region.
+      </div>
+    </div>
+
+    <div class="phase-card">
+      <div class="phase-num">04</div>
+      <div class="phase-title" style="color:var(--green)">TLS Handshake</div>
+      <div class="phase-desc">
+        Phase quan tr&#7885;ng nh&#7845;t. CloudFront g&#7917;i <strong>ClientHello</strong> v&#7899;i
+        SNI = origin domain. ALB tr&#7843; cert v&agrave; CloudFront validate.
+        V&#7899;i 1-level subdomain, cert <strong>match</strong>.
+      </div>
+    </div>
+
+    <div class="phase-card">
+      <div class="phase-num">05</div>
+      <div class="phase-title">Key Exchange</div>
+      <div class="phase-desc">
+        Sau khi cert &#273;&#432;&#7907;c ch&#7845;p nh&#7853;n, c&#7843; hai th&#7921;c hi&#7879;n ECDHE key exchange
+        &#273;&#7875; t&#7841;o shared secret. ChangeCipherSpec chuy&#7875;n sang m&atilde; h&oacute;a.
+        Finished message x&aacute;c nh&#7853;n c&#7843; hai c&oacute; c&ugrave;ng key.
+      </div>
+    </div>
+
+    <div class="phase-card">
+      <div class="phase-num">06</div>
+      <div class="phase-title">Application Data</div>
+      <div class="phase-desc">
+        HTTP request &#273;&#432;&#7907;c g&#7917;i qua k&ecirc;nh m&atilde; h&oacute;a.
+        CloudFront forward Host header g&#7889;c (<code>dev-ex.backseat-service.com</code>)
+        &#273;&#7875; ALB route &#273;&uacute;ng.
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== SECTION 4: CERT VALIDATION DETAIL ========== -->
+  <div class="sec-label a" style="--i:16">04 &mdash; Cert Validation</div>
+
+  <h2 class="a" style="--i:17">4 b&#432;&#7899;c ki&#7875;m tra certificate</h2>
+
+  <p class="a" style="--i:18">
+    Khi CloudFront nh&#7853;n &#273;&#432;&#7907;c cert t&#7915; ALB, n&oacute; th&#7921;c hi&#7879;n 4 b&#432;&#7899;c validation:
+  </p>
+
+  <div class="card card--hero a" style="--i:19">
+    <div class="summary-grid">
+      <span class="summary-key">B&#432;&#7899;c 1</span>
+      <span class="summary-val"><strong>Expiry check</strong> &mdash; Cert c&oacute; h&#7871;t h&#7841;n ch&#432;a? Valid: 2026-03-10 &rarr; 2027-03-10. <span style="color:var(--green);font-weight:600">OK</span></span>
+
+      <span class="summary-key">B&#432;&#7899;c 2</span>
+      <span class="summary-val"><strong>Chain of trust</strong> &mdash; Cert c&oacute; &#273;&#432;&#7907;c sign b&#7903;i trusted CA? Verify chain l&ecirc;n root CA trong trust store. <span style="color:var(--green);font-weight:600">OK</span></span>
+
+      <span class="summary-key">B&#432;&#7899;c 3</span>
+      <span class="summary-val"><strong>Hostname match</strong> &mdash; Subject/SAN c&oacute; match SNI domain? <code>*.backseat-service.com</code> vs <code>origin-alb.backseat-service.com</code>. <span style="color:var(--green);font-weight:600">MATCH</span></span>
+
+      <span class="summary-key">B&#432;&#7899;c 4</span>
+      <span class="summary-val"><strong>Revocation</strong> &mdash; Ki&#7875;m tra OCSP/CRL xem cert c&oacute; b&#7883; thu h&#7891;i kh&ocirc;ng. <span style="color:var(--green);font-weight:600">OK</span></span>
+    </div>
+  </div>
+
+  <div class="callout a" style="--i:20">
+    <strong>B&#432;&#7899;c 3 l&agrave; then ch&#7889;t.</strong>
+    CloudFront so s&aacute;nh cert subject <code>*.backseat-service.com</code> v&#7899;i SNI value
+    <code>origin-alb.backseat-service.com</code>. V&igrave; <code>origin-alb</code> l&agrave; &#273;&uacute;ng 1 DNS label,
+    n&oacute; match wildcard <code>*</code>. N&#7871;u l&agrave; <code>origin-alb.dev-ex.backseat-service.com</code>
+    (2 labels), b&#432;&#7899;c n&agrave;y s&#7869; <strong>fail</strong>.
+  </div>
+
+  <!-- ========== SECTION 5: SNI DETAIL ========== -->
+  <div class="sec-label a" style="--i:21">05 &mdash; SNI v&agrave; Cert Selection</div>
+
+  <h2 class="a" style="--i:22">ALB ch&#7885;n cert nh&#432; th&#7871; n&agrave;o?</h2>
+
+  <div class="card a" style="--i:23">
+    <div class="card-tag" style="color:var(--teal)">Server Name Indication (SNI)</div>
+    <p style="margin-bottom:12px;font-size:14px">
+      SNI l&agrave; extension c&#7911;a TLS, n&#7857;m trong <strong>ClientHello</strong> message (g&oacute;i tin &#273;&#7847;u ti&ecirc;n).
+      N&oacute; cho ALB bi&#7871;t client mu&#7889;n k&#7871;t n&#7889;i t&#7899;i domain n&agrave;o &mdash;
+      quan tr&#7885;ng khi ALB host nhi&#7873;u cert cho nhi&#7873;u domain.
+    </p>
+    <div class="summary-grid" style="font-size:14px">
+      <span class="summary-key">ClientHello</span>
+      <span class="summary-val">SNI = <code>origin-alb.backseat-service.com</code></span>
+
+      <span class="summary-key">ALB logic</span>
+      <span class="summary-val">T&igrave;m cert match nh&#7845;t v&#7899;i SNI &rarr; <code>*.backseat-service.com</code></span>
+
+      <span class="summary-key">ServerHello</span>
+      <span class="summary-val">G&#7917;i cert + ECDHE params v&#7873; cho CloudFront</span>
+
+      <span class="summary-key">CF validate</span>
+      <span class="summary-val"><code>*</code> = <code>origin-alb</code> (1 label) &rarr; MATCH &rarr; ti&#7871;p t&#7909;c key exchange</span>
+    </div>
+  </div>
+
+  <div class="card card--recessed a" style="--i:24">
+    <div class="card-tag" style="color:var(--amber)">Sau khi TLS established</div>
+    <p style="font-size:14px;margin-bottom:10px">
+      M&#7885;i data gi&#7919;a CloudFront v&agrave; ALB &#273;&#7873;u &#273;&#432;&#7907;c m&atilde; h&oacute;a b&#7857;ng AES-128-GCM.
+      HTTP request &#273;&#432;&#7907;c forward qua k&ecirc;nh n&agrave;y:
+    </p>
+    <pre style="font-family:var(--font-mono);font-size:12px;line-height:1.8;white-space:pre-wrap;color:var(--text-dim)">GET /app/home HTTP/1.1
+Host: dev-ex.backseat-service.com
+X-Forwarded-For: 203.0.113.50
+X-Forwarded-Proto: https
+Connection: keep-alive</pre>
+    <p style="font-size:13px;margin-top:12px;margin-bottom:0;color:var(--text-dim)">
+      ALB nh&#7853;n HTTP request qua encrypted channel, route theo path rule, forward &#273;&#7871;n target group.
+    </p>
+  </div>
+
+  <!-- ========== SUMMARY ========== -->
+  <div class="sec-label a" style="--i:25">06 &mdash; T&oacute;m t&#7855;t</div>
+
+  <h2 class="a" style="--i:26">T&#7841;i sao approach n&agrave;y kh&#7843; thi v&#7873; l&yacute; thuy&#7871;t?</h2>
+
+  <div class="card card--hero a" style="--i:27">
+    <div class="summary-grid" style="font-size:14px">
+      <span class="summary-key">Origin domain</span>
+      <span class="summary-val"><code>origin-alb.backseat-service.com</code> &mdash; 1-level subdomain</span>
+
+      <span class="summary-key">Cert</span>
+      <span class="summary-val"><code>*.backseat-service.com</code> &mdash; wildcard match 1 label</span>
+
+      <span class="summary-key">SNI</span>
+      <span class="summary-val">CloudFront g&#7917;i SNI = origin domain &rarr; ALB ch&#7885;n &#273;&uacute;ng cert</span>
+
+      <span class="summary-key">Validation</span>
+      <span class="summary-val"><code>*</code> = <code>origin-alb</code> &rarr; MATCH &rarr; TLS th&agrave;nh c&ocirc;ng</span>
+
+      <span class="summary-key">K&#7871;t qu&#7843;</span>
+      <span class="summary-val" style="color:var(--green);font-weight:600">HTTPS-only ho&#7841;t &#273;&#7897;ng &mdash; m&atilde; h&oacute;a end-to-end</span>
+    </div>
+  </div>
+
+  <div class="callout a" style="--i:28">
+    <strong>Th&#7921;c t&#7871; BB-1512:</strong>
+    Approach n&agrave;y <strong>kh&ocirc;ng &#225;p d&#7909;ng &#273;&#432;&#7907;c</strong> v&igrave; c&aacute;c m&ocirc;i tr&#432;&#7901;ng
+    c&oacute; Route53 zone ri&ecirc;ng (<code>dev-ex.backseat-service.com</code>) n&ecirc;n record s&#7869; l&agrave;
+    <code>origin-alb.<strong>dev-ex</strong>.backseat-service.com</code> (2-level) &mdash; kh&ocirc;ng match wildcard.
+    &#272;&#7875; d&ugrave;ng &#273;&#432;&#7907;c, c&#7847;n t&#7841;o record trong zone g&#7889;c <code>backseat-service.com</code>,
+    nh&#432;ng &#273;i&#7873;u n&agrave;y l&agrave;m m&#7845;t t&iacute;nh isolated gi&#7919;a c&aacute;c m&ocirc;i tr&#432;&#7901;ng.
+    V&igrave; v&#7853;y BB-1512 ch&#7885;n <strong>Forward Host Header</strong> thay th&#7871;.
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#1a3324' : '#ecf5ee',
+      primaryBorderColor: isDark ? '#4ade80' : '#166534',
+      primaryTextColor: isDark ? '#d8eed8' : '#1a2e1f',
+      secondaryColor: isDark ? '#1d2a18' : '#f0fdf4',
+      secondaryBorderColor: isDark ? '#66bb6a' : '#276749',
+      secondaryTextColor: isDark ? '#d8eed8' : '#1a2e1f',
+      tertiaryColor: isDark ? '#2e2618' : '#fef9ee',
+      tertiaryBorderColor: isDark ? '#fbbf24' : '#a16207',
+      tertiaryTextColor: isDark ? '#d8eed8' : '#1a2e1f',
+      lineColor: isDark ? '#7da889' : '#4d6854',
+      fontSize: '14px',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#2e2618' : '#fef9ee',
+      noteTextColor: isDark ? '#d8eed8' : '#1a2e1f',
+      noteBorderColor: isDark ? '#fbbf24' : '#a16207',
+      actorBkg: isDark ? '#1a3324' : '#ecf5ee',
+      actorBorder: isDark ? '#4ade80' : '#166534',
+      actorTextColor: isDark ? '#d8eed8' : '#1a2e1f',
+      activationBkgColor: isDark ? '#1a3324' : '#d5ebd8',
+      activationBorderColor: isDark ? '#4ade80' : '#166534',
+      signalColor: isDark ? '#7da889' : '#4d6854',
+      labelBoxBkgColor: isDark ? '#12261a' : '#ffffff',
+      labelBoxBorderColor: isDark ? '#4ade80' : '#166534',
+    }
+  });
+</script>
+<script>
+  function updateZoomState(wrap) {
+    var target = wrap.querySelector('.mermaid');
+    var zoom = parseFloat(target.dataset.zoom || '1');
+    wrap.classList.toggle('is-zoomed', zoom > 1);
+  }
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || '1');
+    var next = Math.min(Math.max(current * factor, 0.3), 5);
+    target.dataset.zoom = next;
+    target.style.transform = 'scale(' + next + ')';
+    updateZoomState(wrap);
+  }
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = '1';
+    target.style.transform = 'scale(1)';
+    updateZoomState(wrap);
+  }
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || '1');
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.3), 5);
+      target.dataset.zoom = next;
+      target.style.transform = 'scale(' + next + ')';
+      updateZoomState(wrap);
+    }, { passive: false });
+    var startX, startY, scrollL, scrollT;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      var target = wrap.querySelector('.mermaid');
+      if (parseFloat(target.dataset.zoom || '1') <= 1) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.scrollLeft = scrollL - (e.clientX - startX);
+      wrap.scrollTop = scrollT - (e.clientY - startY);
+    });
+    window.addEventListener('mouseup', function() {
+      wrap.classList.remove('is-panning');
+    });
+  });
+</script>
+
+</body>
+</html>

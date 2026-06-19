@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoreDNS ConfigMap Analysis — STG-EX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface2: #e8eef4;
+    --surface-elevated: #f7fafc;
+    --border: rgba(0, 0, 0, 0.07);
+    --border-bright: rgba(0, 0, 0, 0.14);
+    --text: #1e3a5f;
+    --text-dim: #5a7a9a;
+    --accent: #1e3a5f;
+    --accent-dim: rgba(30, 58, 95, 0.07);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.1);
+    --teal: #0891b2;
+    --teal-dim: rgba(8, 145, 178, 0.08);
+    --green: #059669;
+    --green-dim: rgba(5, 150, 105, 0.08);
+    --red: #be123c;
+    --red-dim: rgba(190, 18, 60, 0.08);
+    --amber: #d97706;
+    --amber-dim: rgba(217, 119, 6, 0.08);
+    --grid-line: rgba(30, 58, 95, 0.04);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1520;
+      --surface: #142030;
+      --surface2: #1a2a3e;
+      --surface-elevated: #1e3048;
+      --border: rgba(255, 255, 255, 0.06);
+      --border-bright: rgba(255, 255, 255, 0.12);
+      --text: #c8dae8;
+      --text-dim: #6a8eaa;
+      --accent: #7db8e0;
+      --accent-dim: rgba(125, 184, 224, 0.1);
+      --gold: #f0c850;
+      --gold-dim: rgba(240, 200, 80, 0.1);
+      --teal: #22d3ee;
+      --teal-dim: rgba(34, 211, 238, 0.1);
+      --green: #34d399;
+      --green-dim: rgba(52, 211, 153, 0.1);
+      --red: #fb7185;
+      --red-dim: rgba(251, 113, 133, 0.1);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.1);
+      --grid-line: rgba(125, 184, 224, 0.03);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    color: var(--text);
+    line-height: 1.6;
+    padding: 40px;
+  }
+
+  .wrap {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 170px 1fr;
+    gap: 0 40px;
+  }
+
+  .main { min-width: 0; }
+
+  /* ---- TOC ---- */
+  .toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    padding: 14px 0;
+    grid-row: 1 / -1;
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+  }
+  .toc::-webkit-scrollbar { width: 3px; }
+  .toc::-webkit-scrollbar-thumb { background: var(--surface-elevated); border-radius: 2px; }
+  .toc-title {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    padding: 0 0 10px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .toc a {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    line-height: 1.4;
+    margin-bottom: 1px;
+  }
+  .toc a:hover { color: var(--text); background: var(--surface2); }
+  .toc a.active { color: var(--text); border-left-color: var(--gold); }
+
+  @media (max-width: 1000px) {
+    .wrap { grid-template-columns: 1fr; padding-top: 0; }
+    body { padding-top: 0; }
+    .toc {
+      position: sticky; top: 0; z-index: 200;
+      max-height: none; display: flex; gap: 4px; align-items: center;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      padding: 10px 0; margin: 0 -40px; padding-left: 40px; padding-right: 40px;
+      grid-row: auto;
+    }
+    .toc::-webkit-scrollbar { display: none; }
+    .toc-title { display: none; }
+    .toc a {
+      white-space: nowrap; flex-shrink: 0;
+      border-left: none; border-bottom: 2px solid transparent;
+      border-radius: 4px 4px 0 0; padding: 6px 10px; font-size: 10px;
+    }
+    .toc a.active { border-left: none; border-bottom-color: var(--gold); background: var(--surface); }
+    .main { padding-top: 20px; }
+    .sec-head { scroll-margin-top: 52px; }
+  }
+
+  /* ---- Typography ---- */
+  h1 {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-bottom: 36px;
+    font-family: var(--font-mono);
+  }
+  .sec-head {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 10px 0;
+    margin-top: 40px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border-bright);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sec-head .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 20px 0 10px;
+    color: var(--text);
+  }
+  p { margin-bottom: 12px; font-size: 14px; }
+
+  /* ---- Cards ---- */
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .ve-card--hero {
+    background: color-mix(in srgb, var(--surface) 92%, var(--gold) 8%);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.03);
+    border-color: color-mix(in srgb, var(--border) 50%, var(--gold) 50%);
+  }
+  .ve-card--elevated {
+    background: var(--surface-elevated);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.03);
+  }
+  .ve-card--recessed {
+    background: color-mix(in srgb, var(--bg) 70%, var(--surface) 30%);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .ve-card__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ve-card__label::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* ---- Status badges ---- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .badge--yes { background: var(--green-dim); color: var(--green); }
+  .badge--no { background: var(--red-dim); color: var(--red); }
+  .badge--warn { background: var(--amber-dim); color: var(--amber); }
+  .badge--info { background: var(--teal-dim); color: var(--teal); }
+
+  /* ---- Code blocks ---- */
+  .code-file {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .code-file__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .code-file__body {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 14px 16px;
+    background: var(--surface);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 500px;
+    overflow: auto;
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  /* ---- Grid layouts ---- */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 768px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  /* ---- Table ---- */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 12px 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    position: sticky;
+    top: 0;
+    background: var(--surface2);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-bright);
+    color: var(--text-dim);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: var(--surface-elevated); }
+
+  /* ---- Mermaid ---- */
+  .mermaid-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 16px 0;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 20px;
+    min-height: 200px;
+  }
+  .mermaid-wrap .zoom-ctrl {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+  }
+  .mermaid-wrap .zoom-ctrl button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+  .mermaid-wrap .zoom-ctrl button:hover { background: var(--surface2); color: var(--text); }
+  .mermaid-inner {
+    transform-origin: center center;
+    transition: transform 0.2s ease;
+    cursor: grab;
+  }
+  .mermaid-inner.dragging { cursor: grabbing; transition: none; }
+
+  /* ---- Flow arrow ---- */
+  .flow-arrow {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .flow-arrow svg { width: 24px; height: 32px; }
+
+  /* ---- Callout ---- */
+  .callout {
+    border-left: 3px solid var(--amber);
+    background: var(--amber-dim);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  .callout--info {
+    border-left-color: var(--teal);
+    background: var(--teal-dim);
+  }
+  .callout--danger {
+    border-left-color: var(--red);
+    background: var(--red-dim);
+  }
+  .callout strong {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  /* ---- Animations ---- */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(12px);
+    animation: fadeUp 0.5s ease forwards;
+    animation-delay: calc(var(--i, 0) * 80ms);
+  }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fade-in { opacity: 1; transform: none; animation: none; }
+  }
+
+  /* ---- Details/summary ---- */
+  details {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  summary {
+    padding: 12px 16px;
+    background: var(--surface);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text-dim);
+    transition: background 0.15s;
+  }
+  summary:hover { background: var(--surface2); color: var(--text); }
+  details > div {
+    padding: 16px;
+    background: var(--surface-elevated);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ---- Verdict banner ---- */
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 24px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .verdict--active {
+    background: var(--green-dim);
+    border: 1px solid var(--green);
+    color: var(--green);
+  }
+  .verdict .verdict-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+  }
+
+  .kpi-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+  .kpi {
+    flex: 1;
+    min-width: 140px;
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .kpi__label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .kpi__val {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="toc" id="toc">
+    <div class="toc-title">Contents</div>
+    <a href="#s1">1. Tổng quan</a>
+    <a href="#s2">2. Config chi tiết</a>
+    <a href="#s3">3. Deploy flow</a>
+    <a href="#s4">4. Sau BB-1525/1527</a>
+    <a href="#s5">5. Terraform vs kubectl</a>
+    <a href="#s6">6. DEV vs STG</a>
+    <a href="#s7">7. Kiểm tra hiện tại</a>
+    <a href="#s8">8. Rủi ro & Khuyến nghị</a>
+  </nav>
+
+  <div class="main">
+    <h1 class="fade-in" style="--i:0">CoreDNS ConfigMap Analysis</h1>
+    <p class="subtitle fade-in" style="--i:1">aws-coredns-cm.yaml &mdash; STG-EX &bull; Reviewed 2026-03-13</p>
+
+    <!-- ===== SECTION 1: OVERVIEW ===== -->
+    <div id="s1" class="sec-head fade-in" style="--i:2">
+      <span class="dot" style="background:var(--gold)"></span>
+      1 &mdash; T&#7893;ng Quan
+    </div>
+
+    <div class="verdict verdict--active fade-in" style="--i:3">
+      <span class="verdict-icon">&#10003;</span>
+      <div>
+        <div>ConfigMap v&#7851;n &#273;ang ho&#7841;t &#273;&#7897;ng &amp; c&#7847;n thi&#7871;t</div>
+        <div style="font-size:12px;font-weight:400;color:var(--text-dim);margin-top:4px">
+          BB-1525 (NetworkPolicy) v&agrave; BB-1527 (IMDS hop limit) kh&ocirc;ng thay &#273;&#7893;i ho&#7863;c x&oacute;a CoreDNS ConfigMap n&agrave;y.
+          N&oacute; v&#7851;n &#273;&#432;&#7907;c apply cho STG-EX v&agrave; ch&#7913;a custom DNS entries cho h&#7879; th&#7889;ng Loyalty.
+        </div>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--hero fade-in" style="--i:4">
+      <div class="ve-card__label" style="color:var(--gold)">File</div>
+      <p style="margin:0">
+        <code>bs-exchange-infra/k8s-manifests/point/stg-ex/aws-coredns-cm.yaml</code>
+      </p>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--text-dim)">
+        Kubernetes ConfigMap ghi &#273;&egrave; Corefile m&#7863;c &#273;&#7883;nh c&#7911;a CoreDNS trong namespace <code>kube-system</code>,
+        th&ecirc;m c&aacute;c custom DNS records &#273;&#7875; ph&acirc;n gi&#7843;i hostname c&#7911;a h&#7879; th&#7889;ng Loyalty (PONTA) sang IP n&#7897;i b&#7897;.
+      </p>
+    </div>
+
+    <div class="kpi-row fade-in" style="--i:5">
+      <div class="kpi">
+        <div class="kpi__label">Lo&#7841;i</div>
+        <div class="kpi__val" style="color:var(--teal)">ConfigMap</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">Namespace</div>
+        <div class="kpi__val" style="color:var(--accent)">kube-system</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">M&ocirc;i tr&#432;&#7901;ng</div>
+        <div class="kpi__val" style="color:var(--gold)">STG only</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">Custom hosts</div>
+        <div class="kpi__val" style="color:var(--green)">2 entries</div>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 2: CONFIG ===== -->
+    <div id="s2" class="sec-head fade-in" style="--i:6">
+      <span class="dot" style="background:var(--teal)"></span>
+      2 &mdash; Config Chi Ti&#7871;t
+    </div>
+
+    <div class="code-file fade-in" style="--i:7">
+      <div class="code-file__header">aws-coredns-cm.yaml &mdash; Corefile</div>
+      <pre class="code-file__body">.:53 {
+    errors                    # Log DNS errors
+    health {
+        lameduck 5s           # Ch&#7901; 5s tr&#432;&#7899;c shutdown
+    }
+    ready                     # Readiness probe endpoint
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
+      pods insecure           # Ph&acirc;n gi&#7843;i pod DNS (kh&ocirc;ng verify)
+      fallthrough in-addr.arpa ip6.arpa
+    }
+    hosts {
+      10.50.0.114 onlinest01.lp.loyalty.co.jp   # Loyalty LP (STG)
+      10.50.2.25  onlineit102.lw.loyalty.co.jp   # Loyalty LW (IT)
+      fallthrough             # Kh&ocirc;ng match &#8594; chuy&#7875;n plugin ti&#7871;p theo
+    }
+    prometheus :9153          # Metrics endpoint
+    forward . /etc/resolv.conf  # Forward t&#7899;i upstream DNS
+    cache 30                  # Cache responses 30s
+    loop                      # Ph&aacute;t hi&#7879;n DNS loop
+    reload                    # Auto reload khi ConfigMap thay &#273;&#7893;i
+    loadbalance               # Round-robin DNS responses
+}</pre>
+    </div>
+
+    <div class="grid-2 fade-in" style="--i:8">
+      <div class="ve-card">
+        <div class="ve-card__label" style="color:var(--teal)">&#272;i&#7875;m m&#7845;u ch&#7889;t: hosts block</div>
+        <p style="font-size:13px">
+          Block <code>hosts</code> t&#7841;o <strong>static DNS entries</strong> &mdash; khi pod trong cluster query
+          <code>onlinest01.lp.loyalty.co.jp</code>, CoreDNS tr&#7843; v&#7873; <code>10.50.0.114</code> thay v&igrave; forward l&ecirc;n upstream DNS.
+        </p>
+        <p style="font-size:13px">
+          D&#7843;i IP <code>10.50.x.x</code> n&#7857;m ngo&agrave;i VPC (<code>172.19.0.0/16</code>), c&oacute; th&#7875; k&#7871;t n&#7889;i qua VPN/Direct Connect t&#7899;i m&#7841;ng n&#7897;i b&#7897; c&#7911;a Loyalty.
+        </p>
+      </div>
+      <div class="ve-card">
+        <div class="ve-card__label" style="color:var(--green)">T&#7841;i sao c&#7847;n custom DNS?</div>
+        <p style="font-size:13px">
+          Hostname <code>*.loyalty.co.jp</code> kh&ocirc;ng ph&acirc;n gi&#7843;i &#273;&#432;&#7907;c qua DNS public (n&#7897;i b&#7897; c&#7911;a Loyalty).
+          N&#7871;u kh&ocirc;ng c&oacute; <code>hosts</code> block, pod s&#7869; kh&ocirc;ng th&#7875; k&#7871;t n&#7889;i &#273;&#7871;n API c&#7911;a Loyalty &#8594; t&iacute;nh n&#259;ng PONTA point s&#7869; fail.
+        </p>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 3: DEPLOY FLOW ===== -->
+    <div id="s3" class="sec-head fade-in" style="--i:9">
+      <span class="dot" style="background:var(--green)"></span>
+      3 &mdash; Deploy Flow
+    </div>
+
+    <p class="fade-in" style="--i:10">CoreDNS &#273;&#432;&#7907;c deploy qua <strong>2 layer</strong>: Terraform (EKS addon) v&agrave; kubectl (custom ConfigMap).</p>
+
+    <div class="mermaid-wrap fade-in" style="--i:11">
+      <div class="zoom-ctrl">
+        <button onclick="zoomIn(this)">+</button>
+        <button onclick="zoomOut(this)">&#8722;</button>
+        <button onclick="zoomReset(this)">R</button>
+      </div>
+      <div class="mermaid-inner">
+        <pre class="mermaid">
+flowchart TD
+    A["<b>Terraform Apply</b><br/>terraform/components/eks/"] -->|addon_create_coredns = true| B["<b>EKS Managed Addon</b><br/>CoreDNS v1.11.4-eksbuild.28"]
+    B --> C{"Environment?"}
+    C -->|dev-ex| D["<b>Default CoreDNS</b><br/>No custom hosts<br/>Standard DNS resolution"]
+    C -->|stg / stg-ex| E["<b>k8s_apply.sh</b><br/>bin/k8s_apply.sh:117-122"]
+    E -->|kubectl apply -f| F["<b>Custom ConfigMap</b><br/>aws-coredns-cm.yaml"]
+    F --> G["<b>CoreDNS Override</b><br/>+ hosts block<br/>+ Loyalty DNS entries"]
+
+    style A fill:#1e3a5f,stroke:#1e3a5f,color:#fff
+    style B fill:#0891b2,stroke:#0891b2,color:#fff
+    style C fill:#d97706,stroke:#d97706,color:#fff
+    style D fill:#059669,stroke:#059669,color:#fff
+    style E fill:#d4a73a,stroke:#d4a73a,color:#1a1a2e
+    style F fill:#be123c,stroke:#be123c,color:#fff
+    style G fill:#059669,stroke:#059669,color:#fff
+        </pre>
+      </div>
+    </div>
+
+    <div class="code-file fade-in" style="--i:12">
+      <div class="code-file__header">k8s_apply.sh &mdash; Lines 117-122</div>
+      <pre class="code-file__body">echo_label "apply: aws-coredns"
+echo
+if [ $ENV = stg ] || [ $ENV = stg-ex ]; then
+  kubectl apply -f $APP_DIR/aws-coredns-cm.yaml
+fi</pre>
+    </div>
+
+    <div class="callout callout--info fade-in" style="--i:13">
+      <strong>Gi&#7843;i th&iacute;ch</strong>
+      Script <code>k8s_apply.sh</code> ch&#7881; apply CoreDNS ConfigMap khi <code>$ENV = stg</code> ho&#7863;c <code>stg-ex</code>.
+      V&#7899;i dev-ex, kh&ocirc;ng c&oacute; custom ConfigMap &#8594; CoreDNS d&ugrave;ng Corefile m&#7863;c &#273;&#7883;nh c&#7911;a AWS EKS addon.
+    </div>
+
+    <!-- ===== SECTION 4: AFTER BB-1525/1527 ===== -->
+    <div id="s4" class="sec-head fade-in" style="--i:14">
+      <span class="dot" style="background:var(--amber)"></span>
+      4 &mdash; Sau BB-1525 &amp; BB-1527
+    </div>
+
+    <div class="grid-2 fade-in" style="--i:15">
+      <div class="ve-card" style="border-left: 3px solid var(--teal)">
+        <div class="ve-card__label" style="color:var(--teal)">BB-1525 &mdash; NetworkPolicy</div>
+        <p style="font-size:13px"><strong>Thay &#273;&#7893;i:</strong> Th&ecirc;m default deny NetworkPolicy cho namespace <code>default</code> + allow rules cho PONTA.</p>
+        <p style="font-size:13px"><strong>&#7842;nh h&#432;&#7903;ng &#273;&#7871;n CoreDNS:</strong></p>
+        <div style="margin:8px 0">
+          <span class="badge badge--yes">Kh&ocirc;ng &#7843;nh h&#432;&#7903;ng</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-dim)">
+          CoreDNS ch&#7841;y trong <code>kube-system</code>, NetworkPolicy ch&#7881; &aacute;p d&#7909;ng cho <code>default</code> namespace.
+          &#272;&#7891;ng th&#7901;i, <code>networkpolicy-allow-dns.yaml</code> (base) &#273;&atilde; cho ph&eacute;p egress UDP/TCP 53 t&#7899;i <code>kube-system</code> &#8594; pods v&#7851;n query &#273;&#432;&#7907;c CoreDNS.
+        </p>
+      </div>
+
+      <div class="ve-card" style="border-left: 3px solid var(--amber)">
+        <div class="ve-card__label" style="color:var(--amber)">BB-1527 &mdash; IMDS Hop Limit</div>
+        <p style="font-size:13px"><strong>Thay &#273;&#7893;i:</strong> Set <code>http_put_response_hop_limit = 1</code> + migrate IRSA cho system components.</p>
+        <p style="font-size:13px"><strong>&#7842;nh h&#432;&#7903;ng &#273;&#7871;n CoreDNS:</strong></p>
+        <div style="margin:8px 0">
+          <span class="badge badge--warn">Gi&aacute;n ti&#7871;p</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-dim)">
+          CoreDNS c&#7847;n IRSA &#273;&#7875; ho&#7841;t &#273;&#7897;ng khi hop limit = 1 (kh&ocirc;ng th&#7875; d&ugrave;ng node IAM role).
+          EKS managed addon t&#7921; &#273;&#7897;ng handle IRSA cho CoreDNS &#8594; kh&ocirc;ng c&#7847;n ch&#7881;nh ConfigMap.
+          <strong>ConfigMap n&agrave;y ch&#7881; ch&#7913;a Corefile config (DNS rules), kh&ocirc;ng li&ecirc;n quan &#273;&#7871;n IAM/auth.</strong>
+        </p>
+      </div>
+    </div>
+
+    <div class="callout fade-in" style="--i:16">
+      <strong>K&#7871;t lu&#7853;n</strong>
+      C&#7843; hai task BB-1525 v&agrave; BB-1527 &#273;&#7873;u <strong>kh&ocirc;ng s&#7917;a, x&oacute;a, hay thay th&#7871;</strong> file <code>aws-coredns-cm.yaml</code>.
+      File v&#7851;n &#273;&#432;&#7907;c apply khi deploy STG v&agrave; CoreDNS v&#7851;n &#273;ang ph&acirc;n gi&#7843;i DNS cho Loyalty services.
+    </div>
+
+    <div class="ve-card ve-card--recessed fade-in" style="--i:16">
+      <div class="ve-card__label" style="color:var(--green)">NetworkPolicy DNS Flow</div>
+      <p style="font-size:13px;margin-bottom:8px">BB-1525 th&ecirc;m <code>networkpolicy-allow-dns.yaml</code> v&agrave;o base, &#273;&#7843;m b&#7843;o pods v&#7851;n query &#273;&#432;&#7907;c CoreDNS d&ugrave; c&oacute; default-deny:</p>
+      <div class="code-file" style="margin:0">
+        <div class="code-file__header">point/base/networkpolicy-allow-dns.yaml</div>
+        <pre class="code-file__body">apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: default
+spec:
+  podSelector: {}          # &Aacute;p d&#7909;ng cho t&#7845;t c&#7843; pods
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53          # DNS standard
+        - protocol: TCP
+          port: 53</pre>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 5: TERRAFORM vs KUBECTL ===== -->
+    <div id="s5" class="sec-head fade-in" style="--i:17">
+      <span class="dot" style="background:var(--red)"></span>
+      5 &mdash; Terraform vs kubectl &mdash; Hai Layer Qu&#7843;n L&yacute;
+    </div>
+
+    <div class="table-wrap fade-in" style="--i:18">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:20%">Layer</th>
+            <th style="width:25%">C&ocirc;ng c&#7909;</th>
+            <th style="width:30%">Qu&#7843;n l&yacute; g&igrave;?</th>
+            <th style="width:25%">Ghi ch&uacute;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge--info">Layer 1</span></td>
+            <td><strong>Terraform</strong><br/><code>eks/main.tf</code></td>
+            <td>EKS managed addon CoreDNS<br/>Version: <code>v1.11.4-eksbuild.28</code></td>
+            <td>C&agrave;i &#273;&#7863;t CoreDNS binary + default Corefile<br/><code>resolve_conflicts = OVERWRITE</code></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--warn">Layer 2</span></td>
+            <td><strong>kubectl</strong><br/><code>k8s_apply.sh</code></td>
+            <td>Custom ConfigMap ghi &#273;&egrave; Corefile<br/>Th&ecirc;m hosts block cho Loyalty</td>
+            <td>Ch&#7881; apply cho <code>stg</code> / <code>stg-ex</code><br/>Kh&ocirc;ng track b&#7903;i Terraform state</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout--danger fade-in" style="--i:19">
+      <strong>C&#7843;nh b&aacute;o: Conflict ti&#7873;m &#7849;n</strong>
+      Terraform addon config c&oacute; <code>resolve_conflicts_on_update = "OVERWRITE"</code>.
+      N&#7871;u ch&#7841;y <code>terraform apply</code> cho EKS addon m&agrave; kh&ocirc;ng ch&#7841;y l&#7841;i <code>k8s_apply.sh</code>,
+      custom ConfigMap c&oacute; th&#7875; b&#7883; <strong>reset v&#7873; default</strong> &#8594; m&#7845;t hosts entries &#8594; Loyalty connection fail.
+    </div>
+
+    <!-- ===== SECTION 6: DEV vs STG ===== -->
+    <div id="s6" class="sec-head fade-in" style="--i:20">
+      <span class="dot" style="background:var(--teal)"></span>
+      6 &mdash; So S&aacute;nh DEV vs STG
+    </div>
+
+    <div class="table-wrap fade-in" style="--i:21">
+      <table>
+        <thead>
+          <tr>
+            <th>Th&agrave;nh ph&#7847;n</th>
+            <th>DEV-EX</th>
+            <th>STG-EX</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>CoreDNS addon (Terraform)</td>
+            <td><span class="badge badge--yes">v1.11.4-eksbuild.28</span></td>
+            <td><span class="badge badge--yes">v1.11.4-eksbuild.28</span></td>
+          </tr>
+          <tr>
+            <td>Custom ConfigMap</td>
+            <td><span class="badge badge--no">Kh&ocirc;ng c&oacute;</span></td>
+            <td><span class="badge badge--yes">aws-coredns-cm.yaml</span></td>
+          </tr>
+          <tr>
+            <td>Loyalty DNS resolution</td>
+            <td><span class="badge badge--no">Kh&ocirc;ng ph&acirc;n gi&#7843;i &#273;&#432;&#7907;c</span></td>
+            <td><span class="badge badge--yes">10.50.0.114 / 10.50.2.25</span></td>
+          </tr>
+          <tr>
+            <td>PONTA integration test</td>
+            <td><span class="badge badge--warn">Kh&ocirc;ng test &#273;&#432;&#7907;c DNS</span></td>
+            <td><span class="badge badge--yes">Full test</span></td>
+          </tr>
+          <tr>
+            <td>k8s_apply.sh behavior</td>
+            <td>Skip coredns block</td>
+            <td><code>kubectl apply -f aws-coredns-cm.yaml</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ===== SECTION 7: HOW TO CHECK ===== -->
+    <div id="s7" class="sec-head fade-in" style="--i:22">
+      <span class="dot" style="background:var(--gold)"></span>
+      7 &mdash; Ki&#7875;m Tra Config Hi&#7879;n T&#7841;i
+    </div>
+
+    <h3>T&#7841;i DEV cluster</h3>
+    <div class="code-file fade-in" style="--i:23">
+      <div class="code-file__header">Terminal</div>
+      <pre class="code-file__body"># 1. Chuy&#7875;n sang DEV context
+aws eks update-kubeconfig --name point --region ap-northeast-1 \
+  --profile dev  # ho&#7863;c alias/profile t&#432;&#417;ng &#7913;ng
+
+# 2. Xem full ConfigMap
+kubectl get configmap coredns -n kube-system -o yaml
+
+# 3. Ch&#7881; xem Corefile
+kubectl get configmap coredns -n kube-system \
+  -o jsonpath='{.data.Corefile}'
+
+# 4. Ki&#7875;m tra CoreDNS pods &#273;ang ch&#7841;y
+kubectl get pods -n kube-system -l k8s-app=kube-dns
+
+# 5. Test DNS resolution t&#7915; trong pod
+kubectl run dns-test --rm -it --restart=Never \
+  --image=busybox:1.36 -- nslookup onlinest01.lp.loyalty.co.jp</pre>
+    </div>
+
+    <h3>T&#7841;i STG cluster</h3>
+    <div class="code-file fade-in" style="--i:24">
+      <div class="code-file__header">Terminal</div>
+      <pre class="code-file__body"># T&#432;&#417;ng t&#7921; nh&#432; DEV nh&#432;ng d&ugrave;ng STG context
+aws eks update-kubeconfig --name point --region ap-northeast-1 \
+  --profile stg
+
+# So s&aacute;nh Corefile gi&#7919;a live v&agrave; repo
+kubectl get configmap coredns -n kube-system \
+  -o jsonpath='{.data.Corefile}' > /tmp/live-corefile.txt
+diff /tmp/live-corefile.txt \
+  bs-exchange-infra/k8s-manifests/point/stg-ex/aws-coredns-cm.yaml</pre>
+    </div>
+
+    <div class="callout callout--info fade-in" style="--i:25">
+      <strong>Expected: DEV</strong>
+      Corefile s&#7869; <strong>kh&ocirc;ng c&oacute;</strong> <code>hosts</code> block (ch&#7881; c&oacute; kubernetes, forward, cache, loop, reload, loadbalance).
+      N&#7871;u DEV c&oacute; hosts block &#8594; ai &#273;&oacute; &#273;&atilde; apply th&#7911; c&ocirc;ng m&agrave; kh&ocirc;ng commit v&agrave;o repo.
+    </div>
+
+    <!-- ===== SECTION 8: RISKS ===== -->
+    <div id="s8" class="sec-head fade-in" style="--i:26">
+      <span class="dot" style="background:var(--red)"></span>
+      8 &mdash; R&#7911;i Ro &amp; Khuy&#7871;n Ngh&#7883;
+    </div>
+
+    <div class="grid-2 fade-in" style="--i:27">
+      <div class="ve-card" style="border-left: 3px solid var(--red)">
+        <div class="ve-card__label" style="color:var(--red)">R&#7911;i ro 1: Terraform overwrite</div>
+        <p style="font-size:13px">
+          <code>resolve_conflicts_on_update = "OVERWRITE"</code> trong Terraform addon config.
+          M&#7895;i l&#7847;n <code>terraform apply</code> c&oacute; th&#7875; reset Corefile v&#7873; default, x&oacute;a hosts entries.
+        </p>
+        <p style="font-size:12px;color:var(--text-dim)">
+          <strong>Gi&#7843;i ph&aacute;p:</strong> Thay <code>preserve = false</code> th&agrave;nh <code>preserve = true</code>,
+          ho&#7863;c d&ugrave;ng <code>configuration_values</code> trong Terraform &#273;&#7875; inject Corefile custom.
+        </p>
+      </div>
+      <div class="ve-card" style="border-left: 3px solid var(--amber)">
+        <div class="ve-card__label" style="color:var(--amber)">R&#7911;i ro 2: IP hardcoded</div>
+        <p style="font-size:13px">
+          IP <code>10.50.0.114</code> v&agrave; <code>10.50.2.25</code> &#273;&#432;&#7907;c hardcode trong YAML.
+          N&#7871;u Loyalty thay &#273;&#7893;i IP &#8594; ph&#7843;i update file v&agrave; re-apply th&#7911; c&ocirc;ng.
+        </p>
+        <p style="font-size:12px;color:var(--text-dim)">
+          <strong>Gi&#7843;i ph&aacute;p:</strong> Document r&otilde; trong runbook. Ho&#7863;c d&ugrave;ng ExternalDNS / Route53 Private Hosted Zone.
+        </p>
+      </div>
+    </div>
+    <div class="grid-2 fade-in" style="--i:28">
+      <div class="ve-card" style="border-left: 3px solid var(--amber)">
+        <div class="ve-card__label" style="color:var(--amber)">R&#7911;i ro 3: DEV/STG drift</div>
+        <p style="font-size:13px">
+          DEV kh&ocirc;ng c&oacute; custom CoreDNS &#8594; kh&ocirc;ng th&#7875; test Loyalty DNS resolution tr&ecirc;n DEV.
+          N&#7871;u c&oacute; bug li&ecirc;n quan DNS, ch&#7881; ph&aacute;t hi&#7879;n khi deploy STG.
+        </p>
+        <p style="font-size:12px;color:var(--text-dim)">
+          <strong>Gi&#7843;i ph&aacute;p:</strong> T&#7841;o <code>dev-ex/aws-coredns-cm.yaml</code> v&#7899;i IP t&#432;&#417;ng &#7913;ng c&#7911;a DEV (n&#7871;u c&oacute;).
+        </p>
+      </div>
+      <div class="ve-card" style="border-left: 3px solid var(--teal)">
+        <div class="ve-card__label" style="color:var(--teal)">R&#7911;i ro 4: PRD ch&#432;a c&oacute; config</div>
+        <p style="font-size:13px">
+          Khi tri&#7875;n khai PRD, c&#7847;n t&#7841;o <code>prd-ex/aws-coredns-cm.yaml</code> v&#7899;i &#273;&uacute;ng IP c&#7911;a PRD Loyalty endpoints.
+          N&#7871;u qu&ecirc;n &#8594; PONTA integration s&#7869; fail tr&ecirc;n production.
+        </p>
+        <p style="font-size:12px;color:var(--text-dim)">
+          <strong>Gi&#7843;i ph&aacute;p:</strong> Th&ecirc;m v&agrave;o PRD deployment checklist.
+        </p>
+      </div>
+    </div>
+
+    <details class="fade-in" style="--i:29">
+      <summary>File references &#273;&#7847;y &#273;&#7911;</summary>
+      <div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>File</th><th>Ch&#7913;c n&#259;ng</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>k8s-manifests/point/stg-ex/aws-coredns-cm.yaml</code></td>
+                <td>Custom CoreDNS ConfigMap (STG)</td>
+              </tr>
+              <tr>
+                <td><code>k8s-manifests/bin/k8s_apply.sh:117-122</code></td>
+                <td>Deploy script &mdash; conditional apply</td>
+              </tr>
+              <tr>
+                <td><code>terraform/components/eks/main.tf:95-102</code></td>
+                <td>EKS addon CoreDNS definition</td>
+              </tr>
+              <tr>
+                <td><code>terraform/components/eks/terraform.tfvars:17-18</code></td>
+                <td>CoreDNS addon version config</td>
+              </tr>
+              <tr>
+                <td><code>terraform/components/eks/moves.tf:14-15</code></td>
+                <td>State migration (old &#8594; new module)</td>
+              </tr>
+              <tr>
+                <td><code>k8s-manifests/point/base/networkpolicy-allow-dns.yaml</code></td>
+                <td>Allow DNS egress (BB-1525)</td>
+              </tr>
+              <tr>
+                <td><code>k8s-manifests/point/base/networkpolicy-default-deny.yaml</code></td>
+                <td>Default deny all (BB-1525)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+    <p style="margin-top:40px;font-size:11px;color:var(--text-dim);font-family:var(--font-mono);text-align:center">
+      Generated 2026-03-13 &bull; Project: verup (BB) &bull; Ref: BB-1525, BB-1527
+    </p>
+  </div><!-- /main -->
+</div><!-- /wrap -->
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontSize: '14px',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      primaryColor: isDark ? '#1e3048' : '#e8eef4',
+      primaryTextColor: isDark ? '#c8dae8' : '#1e3a5f',
+      primaryBorderColor: isDark ? '#3a5a7a' : '#b0c4d8',
+      lineColor: isDark ? '#4a7a9a' : '#7a9ab0',
+      secondaryColor: isDark ? '#142030' : '#f0f4f8',
+      tertiaryColor: isDark ? '#1a2a3e' : '#ffffff',
+    },
+    flowchart: { curve: 'basis', padding: 16 }
+  });
+</script>
+
+<script>
+// Scroll spy
+(function() {
+  const toc = document.getElementById('toc');
+  const links = toc.querySelectorAll('a');
+  const sections = [];
+  links.forEach(link => {
+    const id = link.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (el) sections.push({ id, el, link });
+  });
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const match = sections.find(s => s.el === entry.target);
+        if (match) {
+          match.link.classList.add('active');
+          if (window.innerWidth <= 1000) {
+            match.link.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          }
+        }
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  sections.forEach(s => observer.observe(s.el));
+  links.forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      const id = link.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + id); }
+    });
+  });
+})();
+
+// Zoom controls for mermaid
+let currentScale = 1;
+function zoomIn(btn) {
+  currentScale = Math.min(currentScale + 0.2, 3);
+  btn.closest('.mermaid-wrap').querySelector('.mermaid-inner').style.transform = `scale(${currentScale})`;
+}
+function zoomOut(btn) {
+  currentScale = Math.max(currentScale - 0.2, 0.4);
+  btn.closest('.mermaid-wrap').querySelector('.mermaid-inner').style.transform = `scale(${currentScale})`;
+}
+function zoomReset(btn) {
+  currentScale = 1;
+  btn.closest('.mermaid-wrap').querySelector('.mermaid-inner').style.transform = 'scale(1)';
+}
+
+// Drag support for mermaid
+document.querySelectorAll('.mermaid-inner').forEach(inner => {
+  let isDragging = false, startX, startY, scrollLeft, scrollTop;
+  const wrap = inner.parentElement;
+  inner.addEventListener('mousedown', e => {
+    if (currentScale <= 1) return;
+    isDragging = true; inner.classList.add('dragging');
+    startX = e.pageX; startY = e.pageY;
+    scrollLeft = wrap.scrollLeft; scrollTop = wrap.scrollTop;
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    e.preventDefault();
+    wrap.scrollLeft = scrollLeft - (e.pageX - startX);
+    wrap.scrollTop = scrollTop - (e.pageY - startY);
+  });
+  document.addEventListener('mouseup', () => { isDragging = false; inner.classList.remove('dragging'); });
+});
+
+// Ctrl+scroll zoom
+document.querySelectorAll('.mermaid-wrap').forEach(wrap => {
+  wrap.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const inner = wrap.querySelector('.mermaid-inner');
+    currentScale += e.deltaY > 0 ? -0.1 : 0.1;
+    currentScale = Math.max(0.4, Math.min(3, currentScale));
+    inner.style.transform = `scale(${currentScale})`;
+  }, { passive: false });
+});
+</script>
+</body>
+</html>

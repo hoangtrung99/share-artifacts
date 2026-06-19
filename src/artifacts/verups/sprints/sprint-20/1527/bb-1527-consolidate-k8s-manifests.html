@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BB-1527 Diff Review — Consolidate Legacy K8s Manifests</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+      --bg: #fafaf8;
+      --bg-alt: #f3f2ee;
+      --surface: #ffffff;
+      --surface2: #f5f4f0;
+      --surface-elevated: #ffffff;
+      --border: rgba(0, 0, 0, 0.08);
+      --border-bright: rgba(0, 0, 0, 0.14);
+      --text: #1c1917;
+      --text-dim: #78716c;
+      --text-dimmer: #a8a29e;
+      --accent: #0e7490;
+      --accent-dim: rgba(14, 116, 144, 0.08);
+      --add: #166534;
+      --add-bg: #dcfce7;
+      --add-border: #86efac;
+      --del: #991b1b;
+      --del-bg: #fee2e2;
+      --del-border: #fca5a5;
+      --mod: #92400e;
+      --mod-bg: #fef3c7;
+      --mod-border: #fde68a;
+      --dep: #6b7280;
+      --dep-bg: #f3f4f6;
+      --dep-border: #d1d5db;
+      --good: #166534;
+      --good-bg: #f0fdf4;
+      --bad: #991b1b;
+      --bad-bg: #fef2f2;
+      --ugly: #92400e;
+      --ugly-bg: #fffbeb;
+      --question: #1e40af;
+      --question-bg: #eff6ff;
+      --hero-bg: linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 40%, #fafaf8 100%);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0c0a09;
+        --bg-alt: #1c1917;
+        --surface: #1c1917;
+        --surface2: #292524;
+        --surface-elevated: #292524;
+        --border: rgba(255, 255, 255, 0.06);
+        --border-bright: rgba(255, 255, 255, 0.12);
+        --text: #e7e5e4;
+        --text-dim: #a8a29e;
+        --text-dimmer: #78716c;
+        --accent: #22d3ee;
+        --accent-dim: rgba(34, 211, 238, 0.08);
+        --add: #4ade80;
+        --add-bg: rgba(22, 101, 52, 0.15);
+        --add-border: rgba(74, 222, 128, 0.3);
+        --del: #f87171;
+        --del-bg: rgba(153, 27, 27, 0.15);
+        --del-border: rgba(248, 113, 113, 0.3);
+        --mod: #fbbf24;
+        --mod-bg: rgba(146, 64, 14, 0.15);
+        --mod-border: rgba(251, 191, 36, 0.3);
+        --dep: #9ca3af;
+        --dep-bg: rgba(107, 114, 128, 0.1);
+        --dep-border: rgba(156, 163, 175, 0.2);
+        --good: #4ade80;
+        --good-bg: rgba(22, 101, 52, 0.1);
+        --bad: #f87171;
+        --bad-bg: rgba(153, 27, 27, 0.1);
+        --ugly: #fbbf24;
+        --ugly-bg: rgba(146, 64, 14, 0.1);
+        --question: #60a5fa;
+        --question-bg: rgba(30, 64, 175, 0.1);
+        --hero-bg: linear-gradient(135deg, rgba(13, 148, 136, 0.06) 0%, rgba(5, 150, 105, 0.04) 40%, #0c0a09 100%);
+      }
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px;
+    }
+
+    .wrap {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 0 40px;
+    }
+
+    .main {
+      min-width: 0;
+    }
+
+    /* TOC */
+    .toc {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      padding: 14px 0;
+      grid-row: 1 / -1;
+      max-height: calc(100dvh - 48px);
+      overflow-y: auto;
+    }
+
+    .toc::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    .toc::-webkit-scrollbar-thumb {
+      background: var(--surface-elevated);
+      border-radius: 2px;
+    }
+
+    .toc-title {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+      padding: 0 0 10px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .toc a {
+      display: block;
+      font-size: 11px;
+      color: var(--text-dim);
+      text-decoration: none;
+      padding: 4px 8px;
+      border-radius: 5px;
+      border-left: 2px solid transparent;
+      transition: all 0.15s;
+      line-height: 1.4;
+      margin-bottom: 1px;
+    }
+
+    .toc a:hover {
+      color: var(--text);
+      background: var(--surface2);
+    }
+
+    .toc a.active {
+      color: var(--text);
+      border-left-color: var(--accent);
+    }
+
+    @media (max-width: 1000px) {
+      .wrap {
+        grid-template-columns: 1fr;
+        padding-top: 0;
+      }
+
+      body {
+        padding: 16px;
+        padding-top: 0;
+      }
+
+      .toc {
+        position: sticky;
+        top: 0;
+        z-index: 200;
+        max-height: none;
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
+        padding: 10px 0;
+        margin: 0 -16px;
+        padding-left: 16px;
+        padding-right: 16px;
+        grid-row: auto;
+      }
+
+      .toc::-webkit-scrollbar {
+        display: none;
+      }
+
+      .toc-title {
+        display: none;
+      }
+
+      .toc a {
+        white-space: nowrap;
+        flex-shrink: 0;
+        border-left: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 4px 4px 0 0;
+        padding: 6px 10px;
+        font-size: 10px;
+      }
+
+      .toc a.active {
+        border-left: none;
+        border-bottom-color: var(--accent);
+        background: var(--surface);
+      }
+
+      .main {
+        padding-top: 20px;
+      }
+
+      .sec-head {
+        scroll-margin-top: 52px;
+      }
+    }
+
+    /* Section headers */
+    .sec-head {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-dim);
+      margin: 48px 0 20px;
+      padding: 0 0 8px;
+      border-bottom: 1px solid var(--border);
+      scroll-margin-top: 20px;
+    }
+
+    .sec-head:first-of-type {
+      margin-top: 32px;
+    }
+
+    /* Hero */
+    .hero {
+      background: var(--hero-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 48px 40px;
+      margin-bottom: 32px;
+    }
+
+    .hero h1 {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 8px;
+    }
+
+    .hero .ticket {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      margin-bottom: 16px;
+      display: inline-block;
+      background: var(--accent-dim);
+      padding: 2px 10px;
+      border-radius: 4px;
+    }
+
+    .hero .lead {
+      font-size: 18px;
+      line-height: 1.7;
+      color: var(--text-dim);
+      max-width: 800px;
+    }
+
+    .hero .lead strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* KPIs */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .kpi .num {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .kpi .num.add {
+      color: var(--add);
+    }
+
+    .kpi .num.del {
+      color: var(--del);
+    }
+
+    .kpi .num.mod {
+      color: var(--mod);
+    }
+
+    .kpi .num.accent {
+      color: var(--accent);
+    }
+
+    .kpi .label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-na {
+      background: var(--dep-bg);
+      color: var(--dep);
+      border: 1px solid var(--dep-border);
+    }
+
+    .badge-ok {
+      background: var(--add-bg);
+      color: var(--add);
+      border: 1px solid var(--add-border);
+    }
+
+    /* Cards */
+    .ve-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 12px;
+      min-width: 0;
+    }
+
+    .ve-card--hero {
+      border-left: 3px solid var(--accent);
+      background: var(--accent-dim);
+    }
+
+    /* Diff panels */
+    .diff-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .diff-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .diff-panel {
+      border-radius: 10px;
+      padding: 16px;
+      min-width: 0;
+      overflow-wrap: break-word;
+    }
+
+    .diff-panel--before {
+      background: var(--del-bg);
+      border: 1px solid var(--del-border);
+    }
+
+    .diff-panel--after {
+      background: var(--add-bg);
+      border: 1px solid var(--add-border);
+    }
+
+    .diff-panel h4 {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    .diff-panel--before h4 {
+      color: var(--del);
+    }
+
+    .diff-panel--after h4 {
+      color: var(--add);
+    }
+
+    .diff-panel pre {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      color: var(--text);
+    }
+
+    .diff-panel .line-del {
+      color: var(--del);
+    }
+
+    .diff-panel .line-add {
+      color: var(--add);
+    }
+
+    /* File map */
+    .file-tree {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.8;
+      list-style: none;
+    }
+
+    .file-tree li {
+      padding: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .file-tag {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    .file-tag--new {
+      background: var(--add-bg);
+      color: var(--add);
+      border: 1px solid var(--add-border);
+    }
+
+    .file-tag--mod {
+      background: var(--mod-bg);
+      color: var(--mod);
+      border: 1px solid var(--mod-border);
+    }
+
+    .file-tag--dep {
+      background: var(--dep-bg);
+      color: var(--dep);
+      border: 1px solid var(--dep-border);
+    }
+
+    .file-path {
+      overflow-wrap: break-word;
+      min-width: 0;
+    }
+
+    /* Review cards */
+    .review-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 10px;
+      min-width: 0;
+    }
+
+    .review-card--good {
+      border-left: 3px solid var(--good);
+      background: var(--good-bg);
+    }
+
+    .review-card--bad {
+      border-left: 3px solid var(--bad);
+      background: var(--bad-bg);
+    }
+
+    .review-card--ugly {
+      border-left: 3px solid var(--ugly);
+      background: var(--ugly-bg);
+    }
+
+    .review-card--question {
+      border-left: 3px solid var(--question);
+      background: var(--question-bg);
+    }
+
+    .review-card h5 {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .review-card--good h5 {
+      color: var(--good);
+    }
+
+    .review-card--bad h5 {
+      color: var(--bad);
+    }
+
+    .review-card--ugly h5 {
+      color: var(--ugly);
+    }
+
+    .review-card--question h5 {
+      color: var(--question);
+    }
+
+    .review-card p {
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .review-card code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--surface2);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* Decision cards */
+    .decision-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 10px;
+    }
+
+    .decision-card--high {
+      border-left: 3px solid var(--good);
+    }
+
+    .decision-card--medium {
+      border-left: 3px solid var(--question);
+    }
+
+    .decision-card dt {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      margin-top: 10px;
+    }
+
+    .decision-card dt:first-child {
+      margin-top: 0;
+    }
+
+    .decision-card dd {
+      font-size: 14px;
+      line-height: 1.6;
+      margin-top: 2px;
+    }
+
+    .decision-card dd:first-of-type {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .confidence-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .confidence-badge--high {
+      background: var(--add-bg);
+      color: var(--add);
+    }
+
+    .confidence-badge--medium {
+      background: var(--question-bg);
+      color: var(--question);
+    }
+
+    /* Mermaid */
+    .mermaid-wrap {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .mermaid-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      gap: 4px;
+      z-index: 10;
+    }
+
+    .mermaid-controls button {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--border-bright);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .mermaid-controls button:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    .mermaid-viewport {
+      overflow: auto;
+      cursor: grab;
+      min-height: 200px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .mermaid-viewport:active {
+      cursor: grabbing;
+    }
+
+    .mermaid-viewport .mermaid {
+      transform-origin: center center;
+      transition: transform 0.2s;
+    }
+
+    .mermaid .nodeLabel {
+      color: var(--text) !important;
+    }
+
+    .mermaid .edgeLabel {
+      color: var(--text-dim) !important;
+      background-color: var(--bg) !important;
+    }
+
+    .mermaid .edgeLabel rect {
+      fill: var(--bg) !important;
+    }
+
+    /* Collapsible */
+    details {
+      margin-bottom: 12px;
+    }
+
+    details summary {
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      padding: 8px 12px;
+      background: var(--surface2);
+      border-radius: 8px;
+      list-style: none;
+      user-select: none;
+    }
+
+    details summary::before {
+      content: '+ ';
+    }
+
+    details[open] summary::before {
+      content: '- ';
+    }
+
+    details summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details>div {
+      padding: 12px 0 0;
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .ve-card,
+    .diff-grid,
+    .kpi,
+    .review-card,
+    .decision-card,
+    .mermaid-wrap {
+      animation: fadeUp 0.5s ease-out both;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .ve-card,
+      .diff-grid,
+      .kpi,
+      .review-card,
+      .decision-card,
+      .mermaid-wrap {
+        animation: none;
+      }
+    }
+
+    /* Flow diagram in section 3 */
+    .flow-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="wrap">
+
+    <nav class="toc" id="toc">
+      <div class="toc-title">Contents</div>
+      <a href="#s1">1. Summary</a>
+      <a href="#s2">2. KPIs</a>
+      <a href="#s3">3. Architecture</a>
+      <a href="#s4">4. Before / After</a>
+      <a href="#s5">5. Apply Flow</a>
+      <a href="#s6">6. File Map</a>
+      <a href="#s7">7. Code Review</a>
+      <a href="#s8">8. Decisions</a>
+      <a href="#s9">9. Re-entry</a>
+    </nav>
+
+    <div class="main">
+
+      <!-- S1: HERO -->
+      <div id="s1" class="sec-head" style="border:none;margin-top:0;padding:0;"></div>
+      <div class="hero">
+        <span class="ticket">BB-1527</span>
+        <h1>Consolidate Legacy K8s Manifests into Env Folders</h1>
+        <p class="lead">
+          Shared K8s manifests (<code>kube-system/</code>, <code>amazon-cloudwatch/</code>) contain different IRSA
+          configs per env, but were applied identically across all environments.
+          This caused a <strong>bug: IRSA annotation was overwritten</strong> when <code>k8s_apply.sh</code> applied the
+          autodiscover file (without IRSA) after the standalone SA file (with IRSA).
+          This refactor merges the IRSA annotation directly into the source files, copies everything into env folders
+          (<code>dev-ex/</code>, <code>stg-ex/</code>), and switches all paths in the script to <code>$APP_DIR/</code>.
+          <strong>Result: each env folder is self-contained, and the ordering bug is eliminated.</strong>
+        </p>
+      </div>
+
+      <!-- S2: KPIs -->
+      <div id="s2" class="sec-head">2 &mdash; KPI Dashboard</div>
+      <div class="kpi-grid">
+        <div class="kpi" style="animation-delay:.1s">
+          <div class="num add">16</div>
+          <div class="label">New Files</div>
+        </div>
+        <div class="kpi" style="animation-delay:.15s">
+          <div class="num mod">1</div>
+          <div class="label">Modified</div>
+        </div>
+        <div class="kpi" style="animation-delay:.2s">
+          <div class="num" style="color:var(--dep)">14</div>
+          <div class="label">Deprecated</div>
+        </div>
+        <div class="kpi" style="animation-delay:.25s">
+          <div class="num accent">31</div>
+          <div class="label">Total Files</div>
+        </div>
+        <div class="kpi" style="animation-delay:.3s">
+          <div class="num add">+1,889</div>
+          <div class="label">Lines Added</div>
+        </div>
+        <div class="kpi" style="animation-delay:.35s">
+          <div class="num del">-10</div>
+          <div class="label">Lines Removed</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:32px;flex-wrap:wrap;">
+        <span class="badge badge-na">Changelog: N/A (infra)</span>
+        <span class="badge badge-na">Tests: N/A (manifests)</span>
+        <span class="badge badge-ok">Docs: deprecated notes added</span>
+      </div>
+
+      <!-- S3: Architecture -->
+      <div id="s3" class="sec-head">3 &mdash; Module Architecture (Before &rarr; After)</div>
+
+      <div class="diff-grid">
+        <div class="diff-panel diff-panel--before">
+          <h4>Before &mdash; Shared Legacy Folders</h4>
+          <pre>k8s-manifests/
+├── bin/k8s_apply.sh
+│   <span class="line-del">→ refs: kube-system/, amazon-cloudwatch/</span>
+│   <span class="line-del">→ refs: $APP_DIR/*-service-account.yaml</span>
+├── kube-system/          <span class="line-del">← shared</span>
+│   ├── cluster-autoscaler-autodiscover.yaml
+│   └── metrics-server.yaml
+├── amazon-cloudwatch/    <span class="line-del">← shared</span>
+│   ├── cloudwatch-namespace.yaml
+│   ├── cwagent-{serviceaccount,configmap,daemonset}.yaml
+│   ├── fluent-bit{,-cluster-info}.yaml
+│   └── ...
+└── point/
+    ├── dev-ex/
+    │   ├── cluster-autoscaler-service-account.yaml
+    │   └── cloudwatch-agent-service-account.yaml
+    └── stg-ex/
+        ├── cluster-autoscaler-service-account.yaml
+        └── cloudwatch-agent-service-account.yaml</pre>
+        </div>
+        <div class="diff-panel diff-panel--after">
+          <h4>After &mdash; Self-Contained Env Folders</h4>
+          <pre>k8s-manifests/
+├── bin/k8s_apply.sh
+│   <span class="line-add">→ all refs: $APP_DIR/ only</span>
+├── kube-system/          <span style="color:var(--dep)">⚠ DEPRECATED</span>
+│   └── (kept for reference)
+├── amazon-cloudwatch/    <span style="color:var(--dep)">⚠ DEPRECATED</span>
+│   └── (kept for reference)
+└── point/
+    ├── dev-ex/
+    │   ├── <span class="line-add">cluster-autoscaler-autodiscover.yaml</span>
+    │   │   <span class="line-add">↳ merged IRSA (845131030484)</span>
+    │   ├── <span class="line-add">cwagent-serviceaccount.yaml</span>
+    │   │   <span class="line-add">↳ merged IRSA (845131030484)</span>
+    │   ├── <span class="line-add">metrics-server.yaml</span>
+    │   ├── <span class="line-add">cloudwatch-namespace.yaml</span>
+    │   ├── <span class="line-add">cwagent-{configmap,daemonset}.yaml</span>
+    │   └── <span class="line-add">fluent-bit{,-cluster-info}.yaml</span>
+    └── stg-ex/
+        └── <span class="line-add">(same, IRSA → 520411743393)</span></pre>
+        </div>
+      </div>
+
+      <div class="mermaid-wrap" style="animation-delay:.3s">
+        <div class="mermaid-controls">
+          <button onclick="zoomMermaid(this,1.2)" title="Zoom in">+</button>
+          <button onclick="zoomMermaid(this,0.8)" title="Zoom out">&minus;</button>
+          <button onclick="resetMermaid(this)" title="Reset">R</button>
+        </div>
+        <div class="mermaid-viewport">
+          <pre class="mermaid">
+graph LR
+  subgraph BEFORE["Before: Shared Folders"]
+    direction TB
+    SA1["SA file<br/>with IRSA"] --> AD1["autodiscover<br/>without IRSA"]
+    AD1 -.->|"OVERWRITES<br/>IRSA annotation"| BUG["Bug: IRSA lost"]
+  end
+
+  subgraph AFTER["After: Merged Files"]
+    direction TB
+    AD2["autodiscover.yaml<br/>+ IRSA merged"] --> OK["SA + RBAC + Deploy<br/>in one file"]
+    OK -.->|"single apply"| WIN["IRSA preserved"]
+  end
+
+  BEFORE ==>|refactor| AFTER
+
+  classDef bugNode fill:#fee2e233,stroke:#ef4444,stroke-width:2px
+  classDef okNode fill:#dcfce733,stroke:#22c55e,stroke-width:2px
+  class BUG bugNode
+  class WIN okNode
+    </pre>
+        </div>
+        <p class="flow-label">IRSA annotation ordering bug &rarr; fixed by merging SA into autodiscover file</p>
+      </div>
+
+      <!-- S4: Major Feature Comparisons -->
+      <div id="s4" class="sec-head">4 &mdash; Major Changes: Before / After</div>
+
+      <h3 style="font-size:15px;margin-bottom:12px;">4a. Autoscaler Section in <code>k8s_apply.sh</code></h3>
+      <div class="diff-grid">
+        <div class="diff-panel diff-panel--before">
+          <h4>Before (2 kubectl calls)</h4>
+          <pre><span class="line-del">kubectl apply -f $APP_DIR/cluster-autoscaler-service-account.yaml</span>
+<span class="line-del">kubectl apply -f kube-system/cluster-autoscaler-autodiscover.yaml</span>
+kubectl annotate --overwrite ...</pre>
+        </div>
+        <div class="diff-panel diff-panel--after">
+          <h4>After (1 kubectl call)</h4>
+          <pre><span class="line-add">kubectl apply -f $APP_DIR/cluster-autoscaler-autodiscover.yaml</span>
+kubectl annotate --overwrite ...</pre>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;margin-bottom:12px;">4b. CloudWatch Section in <code>k8s_apply.sh</code></h3>
+      <div class="diff-grid">
+        <div class="diff-panel diff-panel--before">
+          <h4>Before (5 kubectl calls, mixed paths)</h4>
+          <pre><span class="line-del">kubectl apply -f amazon-cloudwatch/cloudwatch-namespace.yaml</span>
+<span class="line-del">kubectl apply -f amazon-cloudwatch/cwagent-serviceaccount.yaml</span>
+<span class="line-del">kubectl apply -f $APP_DIR/cloudwatch-agent-service-account.yaml</span>
+<span class="line-del">kubectl apply -f amazon-cloudwatch/cwagent-configmap.yaml</span>
+<span class="line-del">kubectl apply -f amazon-cloudwatch/cwagent-daemonset.yaml</span></pre>
+        </div>
+        <div class="diff-panel diff-panel--after">
+          <h4>After (4 kubectl calls, $APP_DIR/ only)</h4>
+          <pre><span class="line-add">kubectl apply -f $APP_DIR/cloudwatch-namespace.yaml</span>
+<span class="line-add">kubectl apply -f $APP_DIR/cwagent-serviceaccount.yaml</span>
+<span class="line-add">kubectl apply -f $APP_DIR/cwagent-configmap.yaml</span>
+<span class="line-add">kubectl apply -f $APP_DIR/cwagent-daemonset.yaml</span></pre>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;margin-bottom:12px;">4c. IRSA Annotation Merge</h3>
+      <div class="diff-grid">
+        <div class="diff-panel diff-panel--before">
+          <h4>Before: SA without IRSA in autodiscover</h4>
+          <pre>apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+  name: cluster-autoscaler
+  namespace: kube-system</pre>
+        </div>
+        <div class="diff-panel diff-panel--after">
+          <h4>After: SA with IRSA merged</h4>
+          <pre>apiVersion: v1
+kind: ServiceAccount
+metadata:
+  <span class="line-add">annotations:</span>
+    <span class="line-add">eks.amazonaws.com/role-arn: arn:aws:iam::845131030484:role/point-cluster-autoscaler-irsa-role</span>
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+  name: cluster-autoscaler
+  namespace: kube-system</pre>
+        </div>
+      </div>
+
+      <!-- S5: Flow Diagram -->
+      <div id="s5" class="sec-head">5 &mdash; Apply Flow Diagram</div>
+
+      <div class="mermaid-wrap" style="animation-delay:.4s">
+        <div class="mermaid-controls">
+          <button onclick="zoomMermaid(this,1.2)" title="Zoom in">+</button>
+          <button onclick="zoomMermaid(this,0.8)" title="Zoom out">&minus;</button>
+          <button onclick="resetMermaid(this)" title="Reset">R</button>
+        </div>
+        <div class="mermaid-viewport">
+          <pre class="mermaid">
+graph TD
+  START["k8s_apply.sh"] --> AUTH["aws-auth-cm.yaml"]
+  AUTH --> RBAC["rbac/"]
+  RBAC --> ALB["aws-load-balancer-controller"]
+  ALB --> NFS{"NFS?<br/>stg/prd only"}
+  NFS --> HELM["helm upgrade ALB"]
+  HELM --> CA["cluster-autoscaler-autodiscover.yaml<br/>SA + IRSA + RBAC + Deploy"]
+  CA --> MS["metrics-server.yaml"]
+  MS --> CW1["cloudwatch-namespace.yaml"]
+  CW1 --> CW2["cwagent-serviceaccount.yaml<br/>SA + IRSA + RBAC"]
+  CW2 --> CW3["cwagent-configmap.yaml"]
+  CW3 --> CW4["cwagent-daemonset.yaml"]
+  CW4 --> FB1["fluent-bit-cluster-info.yaml"]
+  FB1 --> FB2["fluent-bit.yaml"]
+  FB2 --> PSA["namespace-psa.yaml"]
+  PSA --> SEC["fetch_credentials.sh"]
+  SEC --> APP["kustomize: admin, api, app, mmh, worker"]
+  APP --> ING["ingress.yaml"]
+
+  classDef changed fill:#dcfce733,stroke:#22c55e,stroke-width:2px
+  classDef unchanged fill:#f3f4f611,stroke:#9ca3af44,stroke-width:1px
+  class CA,MS,CW1,CW2,CW3,CW4,FB1,FB2 changed
+  class START,AUTH,RBAC,ALB,NFS,HELM,PSA,SEC,APP,ING unchanged
+    </pre>
+        </div>
+        <p class="flow-label">Green nodes = paths changed from legacy folders to $APP_DIR/. All 8 manifests now sourced
+          from env folder.</p>
+      </div>
+
+      <!-- S6: File Map -->
+      <div id="s6" class="sec-head">6 &mdash; File Map</div>
+      <details>
+        <summary>31 files total (16 new, 14 deprecated, 1 modified) &mdash; click to expand</summary>
+        <div>
+          <h4 style="font-size:13px;margin:12px 0 8px;color:var(--add);">New Files (16)</h4>
+          <ul class="file-tree">
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/cluster-autoscaler-autodiscover.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/cwagent-serviceaccount.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/metrics-server.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/cloudwatch-namespace.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/cwagent-configmap.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/cwagent-daemonset.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/fluent-bit-cluster-info.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/dev-ex/fluent-bit.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/cluster-autoscaler-autodiscover.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/cwagent-serviceaccount.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/metrics-server.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/cloudwatch-namespace.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/cwagent-configmap.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/cwagent-daemonset.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/fluent-bit-cluster-info.yaml</span></li>
+            <li><span class="file-tag file-tag--new">new</span><span
+                class="file-path">point/stg-ex/fluent-bit.yaml</span></li>
+          </ul>
+
+          <h4 style="font-size:13px;margin:16px 0 8px;color:var(--dep);">Deprecated Files (14)</h4>
+          <ul class="file-tree">
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">kube-system/cluster-autoscaler-autodiscover.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">kube-system/metrics-server.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/cloudwatch-namespace.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/cwagent-serviceaccount.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/cwagent-configmap.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/cwagent-daemonset.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/fluent-bit-cluster-info.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/fluent-bit.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/fluent-bit.yaml.1.23</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">amazon-cloudwatch/README.md</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">point/dev-ex/cluster-autoscaler-service-account.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">point/dev-ex/cloudwatch-agent-service-account.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">point/stg-ex/cluster-autoscaler-service-account.yaml</span></li>
+            <li><span class="file-tag file-tag--dep">dep</span><span
+                class="file-path">point/stg-ex/cloudwatch-agent-service-account.yaml</span></li>
+          </ul>
+
+          <h4 style="font-size:13px;margin:16px 0 8px;color:var(--mod);">Modified Files (1)</h4>
+          <ul class="file-tree">
+            <li><span class="file-tag file-tag--mod">mod</span><span class="file-path">bin/k8s_apply.sh <span
+                  style="color:var(--text-dim);font-size:11px">(+8, -10)</span></span></li>
+          </ul>
+        </div>
+      </details>
+
+      <!-- S7: Code Review -->
+      <div id="s7" class="sec-head">7 &mdash; Code Review</div>
+
+      <div class="review-card review-card--good">
+        <h5>Good</h5>
+        <p><strong>IRSA ordering bug eliminated.</strong> Merging the IRSA annotation directly into
+          <code>cluster-autoscaler-autodiscover.yaml</code> and <code>cwagent-serviceaccount.yaml</code> means a single
+          <code>kubectl apply</code> creates the SA with the correct annotation. No more ordering-dependent overwrites.
+        </p>
+      </div>
+
+      <div class="review-card review-card--good">
+        <h5>Good</h5>
+        <p><strong>Self-contained env folders.</strong> Each env folder now has everything it needs. When a new env
+          (e.g., <code>prd</code>) is added, just copy <code>stg-ex/</code>, change the IRSA role ARNs, and it works. No
+          need to touch shared folders or worry about cross-env side effects.</p>
+      </div>
+
+      <div class="review-card review-card--good">
+        <h5>Good</h5>
+        <p><strong>Deprecated files kept with clear notes.</strong> Legacy files are preserved with
+          <code># DEPRECATED</code> comments pointing to the replacement files. Safe rollback path if something goes
+          wrong.
+        </p>
+      </div>
+
+      <div class="review-card review-card--good">
+        <h5>Good</h5>
+        <p><strong>Script references fully migrated.</strong> <code>k8s_apply.sh</code> no longer references
+          <code>kube-system/</code> or <code>amazon-cloudwatch/</code> directly. All paths go through
+          <code>$APP_DIR/</code>, making the env-specific pattern consistent.
+        </p>
+      </div>
+
+      <div class="review-card review-card--ugly">
+        <h5>Ugly</h5>
+        <p><strong>6/8 files are identical copies across envs.</strong> Files like <code>metrics-server.yaml</code>,
+          <code>cloudwatch-namespace.yaml</code>, <code>cwagent-configmap.yaml</code>,
+          <code>cwagent-daemonset.yaml</code>, <code>fluent-bit-cluster-info.yaml</code>, and
+          <code>fluent-bit.yaml</code> are byte-for-byte identical between <code>dev-ex/</code> and
+          <code>stg-ex/</code>. This is an accepted tradeoff (self-contained &gt; DRY), but adds maintenance burden when
+          these files need updates. A future improvement could use kustomize overlays.
+        </p>
+      </div>
+
+      <div class="review-card review-card--question">
+        <h5>Question</h5>
+        <p><strong>PRD env preparation.</strong> When <code>prd</code> env is set up, these 8 files will need to be
+          copied again with the correct IAM account ID. Is there documentation or a checklist for creating a new env
+          from this template?</p>
+      </div>
+
+      <!-- S8: Decisions -->
+      <div id="s8" class="sec-head">8 &mdash; Decision Log</div>
+
+      <div class="decision-card decision-card--high">
+        <dl>
+          <dt>Decision</dt>
+          <dd>Merge IRSA annotation into existing manifest files rather than keeping separate SA files</dd>
+          <dt>Rationale</dt>
+          <dd>The root cause of the bug was ordering: <code>k8s_apply.sh</code> applied the autodiscover file (which
+            redefines the SA without IRSA) after the standalone SA file (with IRSA), overwriting the annotation. Merging
+            eliminates the ordering dependency entirely.</dd>
+          <dt>Alternatives</dt>
+          <dd>Could have fixed ordering in <code>k8s_apply.sh</code> without restructuring files, but that would be
+            fragile &mdash; any future reordering could reintroduce the bug.</dd>
+        </dl>
+      </div>
+
+      <div class="decision-card decision-card--high">
+        <dl>
+          <dt>Decision</dt>
+          <dd>Accept file duplication (6 identical files per env) over a shared base with overlays</dd>
+          <dt>Rationale</dt>
+          <dd>Simplicity and independence. Each env folder can be modified without affecting others. When cluster name,
+            region, or config differs per env in the future, changes are localized. Kustomize overlays would reduce
+            duplication but add complexity.</dd>
+          <dt>Alternatives</dt>
+          <dd>Kustomize base + overlays pattern. Rejected because the project doesn't currently use kustomize for
+            infrastructure manifests (only for app deployments), and introducing it for 6 small files adds tooling
+            overhead.</dd>
+          <dt>Confidence</dt>
+          <dd><span class="confidence-badge confidence-badge--high">High</span> Explicitly discussed in plan: "6/8 files
+            identical &mdash; chap nhan duplication de doi lay cau truc ro rang hon."</dd>
+        </dl>
+      </div>
+
+      <div class="decision-card decision-card--medium">
+        <dl>
+          <dt>Decision</dt>
+          <dd>Keep deprecated files rather than deleting them</dd>
+          <dt>Rationale</dt>
+          <dd>Provides a safe rollback path. If the new setup has issues, the old files are still available. The
+            deprecated notes clearly state they are no longer applied and can be removed after verification.</dd>
+          <dt>Alternatives</dt>
+          <dd>Delete immediately. Rejected because git history recovery is less convenient than having the files present
+            with clear deprecation notes.</dd>
+          <dt>Confidence</dt>
+          <dd><span class="confidence-badge confidence-badge--medium">Medium</span> Inferred from the plan's consistent
+            use of "kept for reference" pattern. Could be cleaned up in a follow-up PR.</dd>
+        </dl>
+      </div>
+
+      <!-- S9: Re-entry -->
+      <div id="s9" class="sec-head">9 &mdash; Re-entry Context</div>
+      <details open>
+        <summary>Notes for future-you</summary>
+        <div>
+          <div class="ve-card" style="animation-delay:.5s">
+            <h4 style="font-size:13px;margin-bottom:8px;">Key Invariants</h4>
+            <ul style="font-size:14px;padding-left:20px;line-height:1.8;">
+              <li><code>k8s_apply.sh</code> must NEVER reference <code>kube-system/</code> or
+                <code>amazon-cloudwatch/</code> directly &mdash; always use <code>$APP_DIR/</code>
+              </li>
+              <li>IRSA annotation must live inside the same file as the ServiceAccount definition &mdash; never in a
+                separate file that gets applied first</li>
+              <li>Dev-ex and stg-ex files must be identical except for IRSA role ARNs (account ID difference:
+                <code>845131030484</code> vs <code>520411743393</code>)
+              </li>
+            </ul>
+          </div>
+          <div class="ve-card" style="animation-delay:.55s">
+            <h4 style="font-size:13px;margin-bottom:8px;">Non-obvious Coupling</h4>
+            <ul style="font-size:14px;padding-left:20px;line-height:1.8;">
+              <li><code>fluent-bit.yaml</code> references <code>fluent-bit-cluster-info</code> ConfigMap by name &mdash;
+                if you rename the ConfigMap, update both files</li>
+              <li><code>cwagent-daemonset.yaml</code> references <code>cwagentconfig</code> ConfigMap &mdash; coupled
+                with <code>cwagent-configmap.yaml</code></li>
+              <li>Cluster name <code>point</code> appears in <code>cwagent-configmap.yaml</code> and
+                <code>fluent-bit-cluster-info.yaml</code> &mdash; if it changes, update both per env
+              </li>
+            </ul>
+          </div>
+          <div class="ve-card" style="animation-delay:.6s">
+            <h4 style="font-size:13px;margin-bottom:8px;">Don't Forget</h4>
+            <ul style="font-size:14px;padding-left:20px;line-height:1.8;">
+              <li>When creating <code>prd</code> env: copy all 8 files from <code>stg-ex/</code>, replace account ID in
+                IRSA annotations</li>
+              <li>After verifying new setup works on dev/stg: consider deleting deprecated files and folders in a
+                cleanup PR</li>
+              <li><code>fluent-bit.yaml.1.23</code> in <code>amazon-cloudwatch/</code> is legacy for K8s 1.23 &mdash;
+                not copied to env folders (running K8s 1.28+)</li>
+            </ul>
+          </div>
+        </div>
+      </details>
+
+    </div><!-- /main -->
+  </div><!-- /wrap -->
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#134e4a' : '#ccfbf1',
+        primaryBorderColor: isDark ? '#14b8a6' : '#0d9488',
+        primaryTextColor: isDark ? '#f0fdfa' : '#134e4a',
+        secondaryColor: isDark ? '#1e293b' : '#f0fdf4',
+        secondaryBorderColor: isDark ? '#059669' : '#16a34a',
+        secondaryTextColor: isDark ? '#f1f5f9' : '#1e293b',
+        tertiaryColor: isDark ? '#27201a' : '#fef3c7',
+        tertiaryBorderColor: isDark ? '#d97706' : '#f59e0b',
+        tertiaryTextColor: isDark ? '#fef3c7' : '#27201a',
+        lineColor: isDark ? '#64748b' : '#94a3b8',
+        fontSize: '14px',
+        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+        noteBkgColor: isDark ? '#1e293b' : '#fefce8',
+        noteTextColor: isDark ? '#f1f5f9' : '#1e293b',
+        noteBorderColor: isDark ? '#fbbf24' : '#d97706',
+      }
+    });
+  </script>
+  <script>
+    // Mermaid zoom controls
+    const zoomLevels = new WeakMap();
+    function getZoom(wrap) { return zoomLevels.get(wrap) || 1; }
+    function setZoom(wrap, z) {
+      z = Math.max(0.3, Math.min(3, z));
+      zoomLevels.set(wrap, z);
+      const svg = wrap.querySelector('.mermaid svg, .mermaid');
+      if (svg) svg.style.transform = 'scale(' + z + ')';
+    }
+    function zoomMermaid(btn, factor) {
+      const wrap = btn.closest('.mermaid-wrap');
+      setZoom(wrap, getZoom(wrap) * factor);
+    }
+    function resetMermaid(btn) {
+      const wrap = btn.closest('.mermaid-wrap');
+      setZoom(wrap, 1);
+    }
+    document.querySelectorAll('.mermaid-viewport').forEach(vp => {
+      vp.addEventListener('wheel', e => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const wrap = vp.closest('.mermaid-wrap');
+          setZoom(wrap, getZoom(wrap) * (e.deltaY < 0 ? 1.1 : 0.9));
+        }
+      }, { passive: false });
+      let dragging = false, startX, startY, scrollLeft, scrollTop;
+      vp.addEventListener('mousedown', e => {
+        dragging = true; startX = e.pageX - vp.offsetLeft; startY = e.pageY - vp.offsetTop;
+        scrollLeft = vp.scrollLeft; scrollTop = vp.scrollTop;
+      });
+      vp.addEventListener('mousemove', e => {
+        if (!dragging) return; e.preventDefault();
+        vp.scrollLeft = scrollLeft - (e.pageX - vp.offsetLeft - startX);
+        vp.scrollTop = scrollTop - (e.pageY - vp.offsetTop - startY);
+      });
+      vp.addEventListener('mouseup', () => dragging = false);
+      vp.addEventListener('mouseleave', () => dragging = false);
+    });
+
+    // TOC scroll spy
+    (function () {
+      const toc = document.getElementById('toc');
+      const links = toc.querySelectorAll('a');
+      const sections = [];
+      links.forEach(link => {
+        const id = link.getAttribute('href').slice(1);
+        const el = document.getElementById(id);
+        if (el) sections.push({ id, el, link });
+      });
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            links.forEach(l => l.classList.remove('active'));
+            const match = sections.find(s => s.el === entry.target);
+            if (match) {
+              match.link.classList.add('active');
+              if (window.innerWidth <= 1000) {
+                match.link.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+              }
+            }
+          }
+        });
+      }, { rootMargin: '-10% 0px -80% 0px' });
+      sections.forEach(s => observer.observe(s.el));
+      links.forEach(link => {
+        link.addEventListener('click', e => {
+          e.preventDefault();
+          const id = link.getAttribute('href').slice(1);
+          const el = document.getElementById(id);
+          if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + id); }
+        });
+      });
+    })();
+  </script>
+
+</body>
+
+</html>

@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB-1525: Default Deny NetworkPolicy — Implementation &amp; Evidence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface2: #f0f2f5;
+    --surface-elevated: #ffffff;
+    --border: rgba(0,0,0,0.07);
+    --border-bright: rgba(0,0,0,0.14);
+    --text: #1a1d26;
+    --text-dim: #6b7280;
+    --accent: #1e3a5f;
+    --accent-dim: rgba(30,58,95,0.08);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212,167,58,0.10);
+    --teal: #0891b2;
+    --teal-dim: rgba(8,145,178,0.08);
+    --green: #059669;
+    --green-dim: rgba(5,150,105,0.08);
+    --red: #be123c;
+    --red-dim: rgba(190,18,60,0.08);
+    --orange: #d97706;
+    --orange-dim: rgba(217,119,6,0.08);
+    --slate: #475569;
+    --slate-dim: rgba(71,85,105,0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1219;
+      --surface: #171c28;
+      --surface2: #1e2433;
+      --surface-elevated: #222940;
+      --border: rgba(255,255,255,0.06);
+      --border-bright: rgba(255,255,255,0.12);
+      --text: #e2e8f0;
+      --text-dim: #8b949e;
+      --accent: #7db4e0;
+      --accent-dim: rgba(125,180,224,0.12);
+      --gold: #fbbf24;
+      --gold-dim: rgba(251,191,36,0.12);
+      --teal: #22d3ee;
+      --teal-dim: rgba(34,211,238,0.10);
+      --green: #34d399;
+      --green-dim: rgba(52,211,153,0.10);
+      --red: #fda4af;
+      --red-dim: rgba(253,164,175,0.10);
+      --orange: #fbbf24;
+      --orange-dim: rgba(251,191,36,0.10);
+      --slate: #94a3b8;
+      --slate-dim: rgba(148,163,184,0.10);
+    }
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, var(--accent-dim) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 100%, var(--gold-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 32px 40px;
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ========== NAV ========== */
+  .wrap {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 0 40px;
+  }
+  .main { min-width: 0; }
+
+  .toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    padding: 14px 0;
+    grid-row: 1 / -1;
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+  }
+  .toc::-webkit-scrollbar { width: 3px; }
+  .toc::-webkit-scrollbar-thumb { background: var(--surface-elevated); border-radius: 2px; }
+  .toc-title {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    padding: 0 0 10px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .toc a {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    line-height: 1.4;
+    margin-bottom: 1px;
+  }
+  .toc a:hover { color: var(--text); background: var(--surface2); }
+  .toc a.active { color: var(--text); border-left-color: var(--gold); }
+
+  @media (max-width: 1000px) {
+    .wrap { grid-template-columns: 1fr; padding-top: 0; }
+    body { padding-top: 0; padding-left: 16px; padding-right: 16px; }
+    .toc {
+      position: sticky; top: 0; z-index: 200;
+      max-height: none; display: flex; gap: 4px; align-items: center;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      padding: 10px 0; margin: 0 -16px; padding-left: 16px; padding-right: 16px; grid-row: auto;
+    }
+    .toc::-webkit-scrollbar { display: none; }
+    .toc-title { display: none; }
+    .toc a { white-space: nowrap; flex-shrink: 0; border-left: none; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; padding: 6px 10px; font-size: 10px; }
+    .toc a.active { border-left: none; border-bottom-color: var(--gold); background: var(--surface); }
+    .main { padding-top: 20px; }
+    .sec-head { scroll-margin-top: 52px; }
+  }
+
+  /* ========== TYPOGRAPHY ========== */
+  h1 { font-size: 36px; font-weight: 700; letter-spacing: -0.8px; margin-bottom: 6px; text-wrap: balance; }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 32px; font-family: var(--font-mono); }
+  .subtitle code { background: var(--gold-dim); color: var(--gold); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+  .sec-head {
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin: 40px 0 16px;
+    display: flex; align-items: center; gap: 8px;
+    scroll-margin-top: 24px;
+  }
+  .sec-head .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  /* ========== ANIMATION ========== */
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  .anim { animation: fadeUp 0.4s ease-out both; animation-delay: calc(var(--i,0) * 0.06s); }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; } }
+
+  /* ========== CARDS ========== */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card--hero {
+    background: var(--surface-elevated);
+    border-color: color-mix(in srgb, var(--border) 50%, var(--gold) 50%);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    padding: 24px 28px;
+  }
+  .card--recessed {
+    background: var(--surface2);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+
+  /* ========== KPI GRID ========== */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .kpi .val { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+  .kpi .lbl { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-top: 4px; }
+
+  /* ========== TABLE ========== */
+  .table-wrap { overflow-x: auto; margin-bottom: 16px; border-radius: 10px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: var(--surface2); position: sticky; top: 0; }
+  th { font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: var(--surface2); }
+  td code { font-family: var(--font-mono); font-size: 11px; background: var(--accent-dim); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+
+  /* ========== BADGES ========== */
+  .badge { display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .badge--green { background: var(--green-dim); color: var(--green); }
+  .badge--red { background: var(--red-dim); color: var(--red); }
+  .badge--orange { background: var(--orange-dim); color: var(--orange); }
+  .badge--teal { background: var(--teal-dim); color: var(--teal); }
+  .badge--gold { background: var(--gold-dim); color: var(--gold); }
+  .badge--slate { background: var(--slate-dim); color: var(--slate); }
+
+  /* ========== INNER GRID ========== */
+  .inner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .inner-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  .inner-card .title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .inner-card .desc { color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+  .inner-card code { font-family: var(--font-mono); font-size: 11px; background: var(--accent-dim); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+
+  /* ========== CALLOUT ========== */
+  .callout {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-left: 3px solid var(--gold); border-radius: 0 8px 8px 0;
+    padding: 14px 18px; font-size: 13px; line-height: 1.6; color: var(--text-dim); margin-bottom: 16px;
+  }
+  .callout strong { color: var(--text); }
+  .callout code { font-family: var(--font-mono); font-size: 11px; background: var(--accent-dim); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+
+  /* ========== FLOW ARROW ========== */
+  .flow-arrow {
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; padding: 4px 0;
+  }
+  .flow-arrow svg { width: 20px; height: 20px; fill: none; stroke: var(--border-bright); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ========== MERMAID ========== */
+  .mermaid-wrap {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; overflow: hidden; margin-bottom: 16px;
+  }
+  .mermaid-wrap .mermaid-inner {
+    overflow: auto; cursor: grab; min-height: 200px;
+    display: flex; justify-content: center;
+  }
+  .mermaid-wrap .mermaid-inner.dragging { cursor: grabbing; }
+  .mermaid-wrap .zoom-controls {
+    position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; z-index: 10;
+  }
+  .mermaid-wrap .zoom-controls button {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
+    width: 28px; height: 28px; font-size: 14px; cursor: pointer; color: var(--text-dim);
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .mermaid-wrap .zoom-controls button:hover { background: var(--surface); color: var(--text); border-color: var(--border-bright); }
+  .mermaid .nodeLabel { color: var(--text) !important; }
+  .mermaid .edgeLabel { color: var(--text-dim) !important; background-color: var(--bg) !important; }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+
+  /* ========== FILE LIST ========== */
+  .file-list { list-style: none; font-size: 13px; }
+  .file-list li { padding: 8px 0 8px 16px; position: relative; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: baseline; }
+  .file-list li:last-child { border-bottom: none; }
+  .file-list li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); position: absolute; left: 0; top: 14px; }
+  .file-list .fname { font-family: var(--font-mono); font-size: 12px; color: var(--accent); font-weight: 500; flex-shrink: 0; }
+  .file-list .fdesc { color: var(--text-dim); font-size: 12px; }
+
+  /* ========== THREE COL ========== */
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+  /* ========== CODE BLOCK ========== */
+  .code-block {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; font-family: var(--font-mono); font-size: 12px;
+    line-height: 1.7; overflow-x: auto; white-space: pre-wrap; margin-bottom: 16px;
+    color: var(--text);
+  }
+  .code-block .cm { color: var(--text-dim); }
+  .code-block .kw { color: var(--teal); font-weight: 500; }
+  .code-block .str { color: var(--gold); }
+  .code-block .num { color: var(--orange); }
+
+  /* ========== DETAILS ========== */
+  details { margin-bottom: 12px; }
+  details summary {
+    cursor: pointer; font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+    color: var(--accent); padding: 8px 0; list-style: none;
+  }
+  details summary::before { content: '+ '; }
+  details[open] summary::before { content: '- '; }
+  details .detail-body { padding: 8px 0 8px 16px; border-left: 2px solid var(--border); }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width: 768px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .inner-grid { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<nav class="toc" id="toc">
+  <div class="toc-title">Contents</div>
+  <a href="#s1">1. Overview</a>
+  <a href="#s2">2. Architecture</a>
+  <a href="#s3">3. Implementation</a>
+  <a href="#s4">4. Egress Rules</a>
+  <a href="#s5">5. Endpoints Inventory</a>
+  <a href="#s6">6. VPC Flow Logs</a>
+  <a href="#s7">7. CIDR Alternatives</a>
+  <a href="#s8">8. Gap Analysis</a>
+  <a href="#s9">9. Risk Assessment</a>
+  <a href="#s10">10. Key Findings</a>
+</nav>
+
+<div class="main">
+
+<h1>BB-1525: Default Deny NetworkPolicy</h1>
+<p class="subtitle">CyberZeal Security Requirement &mdash; EKS Namespace <code>default</code> &mdash; 2026-03-05</p>
+
+<!-- ===== SECTION 1: OVERVIEW ===== -->
+<div id="s1" class="sec-head anim" style="--i:0; color: var(--gold)"><span class="dot" style="background:var(--gold)"></span> Overview</div>
+
+<div class="card card--hero anim" style="--i:1">
+  <p style="font-size:15px; margin-bottom:16px;">
+    Task BB-1525 implements <strong>default deny NetworkPolicy</strong> for the EKS <code>default</code> namespace, enforcing least-privilege networking as required by the CyberZeal security audit.
+    Before this change, <strong>zero NetworkPolicies</strong> existed &mdash; all ingress/egress traffic was unrestricted.
+  </p>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="val" style="color:var(--accent)">9</div><div class="lbl">Files Changed</div></div>
+    <div class="kpi"><div class="val" style="color:var(--gold)">7</div><div class="lbl">Egress Ports</div></div>
+    <div class="kpi"><div class="val" style="color:var(--teal)">29</div><div class="lbl">Endpoints Audited</div></div>
+    <div class="kpi"><div class="val" style="color:var(--green)">5</div><div class="lbl">Workloads</div></div>
+  </div>
+</div>
+
+<div class="card anim" style="--i:2">
+  <h3>Workloads in namespace <code>default</code></h3>
+  <div class="inner-grid">
+    <div class="inner-card"><div class="title">point-admin</div><div class="desc">Admin panel. Port <code>8080</code> + <code>8082</code></div></div>
+    <div class="inner-card"><div class="title">point-api</div><div class="desc">REST API server. Port <code>8080</code> + <code>8082</code></div></div>
+    <div class="inner-card"><div class="title">point-app</div><div class="desc">User-facing app. Port <code>8080</code> + <code>8082</code></div></div>
+    <div class="inner-card"><div class="title">point-mmh</div><div class="desc">Market maker handler. Port <code>8082</code></div></div>
+    <div class="inner-card"><div class="title">point-worker</div><div class="desc">Background workers. Port <code>8080</code> + <code>8082</code></div></div>
+  </div>
+</div>
+
+<!-- ===== SECTION 2: ARCHITECTURE ===== -->
+<div id="s2" class="sec-head anim" style="--i:3; color: var(--accent)"><span class="dot" style="background:var(--accent)"></span> Architecture</div>
+
+<div class="mermaid-wrap anim" style="--i:4">
+  <div class="zoom-controls">
+    <button onclick="zoom(this,1.2)" title="Zoom in">+</button>
+    <button onclick="zoom(this,0.83)" title="Zoom out">&minus;</button>
+    <button onclick="resetZoom(this)" title="Reset">R</button>
+  </div>
+  <div class="mermaid-inner">
+    <pre class="mermaid">
+graph TD
+  subgraph VPC["VPC (172.18.0.0/16 DEV | 172.19.0.0/16 STG)"]
+    ALB["ALB<br/>8080, 8082"]
+    subgraph NS["namespace: default"]
+      DD["default-deny-all<br/>DENY ALL ingress+egress"]
+      PODS["admin | api | app | mmh | worker"]
+    end
+    AURORA["Aurora MySQL<br/>3306"]
+    REDIS["ElastiCache Redis<br/>6379"]
+    REDSHIFT["Redshift<br/>5439"]
+    DNS["CoreDNS<br/>kube-system:53"]
+  end
+  HTTPS["External HTTPS<br/>0.0.0.0/0:443"]
+  SES["AWS SES SMTP<br/>0.0.0.0/0:587"]
+  PONTA1["Ponta Loyalty<br/>0.0.0.0/0:8443"]
+  PONTA2["Ponta IFS<br/>0.0.0.0/0:28443"]
+
+  ALB -->|"ingress VPC CIDR<br/>8080, 8082"| PODS
+  PODS <-->|"internal<br/>8080"| PODS
+  PODS -->|"egress VPC CIDR<br/>3306"| AURORA
+  PODS -->|"egress VPC CIDR<br/>6379"| REDIS
+  PODS -->|"egress VPC CIDR<br/>5439"| REDSHIFT
+  PODS -->|"egress<br/>UDP+TCP 53"| DNS
+  PODS -->|"egress 443"| HTTPS
+  PODS -->|"egress 587"| SES
+  PODS -->|"egress 8443"| PONTA1
+  PODS -->|"egress 28443"| PONTA2
+
+  classDef deny fill:#be123c22,stroke:#be123c,stroke-width:2px
+  classDef vpc fill:#1e3a5f22,stroke:#1e3a5f,stroke-width:1.5px
+  classDef ext fill:#d4a73a22,stroke:#d4a73a,stroke-width:1.5px
+  classDef pod fill:#05966922,stroke:#059669,stroke-width:2px
+
+  class DD deny
+  class AURORA,REDIS,REDSHIFT,DNS,ALB vpc
+  class HTTPS,SES,PONTA1,PONTA2 ext
+  class PODS pod
+    </pre>
+  </div>
+</div>
+
+<div class="callout anim" style="--i:5">
+  <strong>Additive Model:</strong> Kubernetes NetworkPolicy is additive. The <code>default-deny-all</code> blocks everything, then each allow policy opens specific traffic. Policies are OR'd together &mdash; if any policy allows a connection, it is permitted.
+</div>
+
+<!-- ===== SECTION 3: IMPLEMENTATION ===== -->
+<div id="s3" class="sec-head anim" style="--i:6; color: var(--teal)"><span class="dot" style="background:var(--teal)"></span> Implementation</div>
+
+<div class="card anim" style="--i:7">
+  <h3>Files Changed (9 total)</h3>
+  <ul class="file-list">
+    <li>
+      <span class="fname">terraform/components/eks/main.tf</span>
+      <span class="fdesc">Enable VPC CNI Network Policy Agent (<code>enableNetworkPolicy = "true"</code>)</span>
+    </li>
+    <li>
+      <span class="fname">point/base/networkpolicy-default-deny.yaml</span>
+      <span class="fdesc">Default deny all ingress + egress for all pods</span>
+    </li>
+    <li>
+      <span class="fname">point/base/networkpolicy-allow-dns.yaml</span>
+      <span class="fdesc">Allow egress to kube-system on UDP/TCP 53</span>
+    </li>
+    <li>
+      <span class="fname">point/base/networkpolicy-allow-internal.yaml</span>
+      <span class="fdesc">Allow pod-to-pod ingress/egress on port 8080</span>
+    </li>
+    <li>
+      <span class="fname">point/dev-ex/networkpolicy-allow-ingress-vpc.yaml</span>
+      <span class="fdesc">Allow ingress from VPC CIDR (172.18.0.0/16) on 8080, 8082</span>
+    </li>
+    <li>
+      <span class="fname">point/stg-ex/networkpolicy-allow-ingress-vpc.yaml</span>
+      <span class="fdesc">Allow ingress from VPC CIDR (172.19.0.0/16) on 8080, 8082</span>
+    </li>
+    <li>
+      <span class="fname">point/dev-ex/networkpolicy-allow-egress-vpc.yaml</span>
+      <span class="fdesc">Allow egress to VPC + external (7 rules, dev CIDR)</span>
+    </li>
+    <li>
+      <span class="fname">point/stg-ex/networkpolicy-allow-egress-vpc.yaml</span>
+      <span class="fdesc">Allow egress to VPC + external (7 rules, stg CIDR)</span>
+    </li>
+    <li>
+      <span class="fname">k8s-manifests/bin/k8s_apply.sh</span>
+      <span class="fdesc">Deploy script: apply all 5 policies in a single <code>kubectl apply</code></span>
+    </li>
+  </ul>
+</div>
+
+<div class="card card--recessed anim" style="--i:8">
+  <h3>Terraform Change</h3>
+  <div class="code-block"><span class="cm"># terraform/components/eks/main.tf — vpc-cni addon</span>
+<span class="str">"vpc-cni"</span> = {
+  addon_version               = var.eks.addon_vpc_cni_version
+  service_account_role_arn    = aws_iam_role.vpc_cni_aws_node.arn
+  <span class="kw">configuration_values</span> = jsonencode({     <span class="cm"># NEW</span>
+    <span class="kw">enableNetworkPolicy</span> = <span class="str">"true"</span>          <span class="cm"># NEW — enables eBPF enforcement</span>
+  })                                        <span class="cm"># NEW</span>
+}</div>
+  <p style="font-size:12px; color:var(--text-dim); margin-top:8px;">
+    <strong>Safety:</strong> Enabling the agent with zero NetworkPolicy resources has no effect &mdash; traffic flows normally until policies are applied.
+  </p>
+</div>
+
+<div class="card card--recessed anim" style="--i:9">
+  <h3>Deploy Script (Single Atomic Apply)</h3>
+  <div class="code-block"><span class="cm"># k8s-manifests/bin/k8s_apply.sh</span>
+kubectl apply \
+  -f point/base/networkpolicy-default-deny.yaml \    <span class="cm"># 1. Deny all</span>
+  -f point/base/networkpolicy-allow-dns.yaml \        <span class="cm"># 2. Allow DNS</span>
+  -f point/base/networkpolicy-allow-internal.yaml \   <span class="cm"># 3. Allow pod-to-pod</span>
+  -f $APP_DIR/networkpolicy-allow-ingress-vpc.yaml \  <span class="cm"># 4. Allow VPC ingress</span>
+  -f $APP_DIR/networkpolicy-allow-egress-vpc.yaml     <span class="cm"># 5. Allow VPC egress</span></div>
+  <p style="font-size:12px; color:var(--text-dim); margin-top:8px;">
+    <strong>Critical:</strong> All 5 policies are applied in a single command to prevent a window where deny is active but allow rules haven't been created yet.
+  </p>
+</div>
+
+<!-- ===== SECTION 4: EGRESS RULES ===== -->
+<div id="s4" class="sec-head anim" style="--i:10; color: var(--green)"><span class="dot" style="background:var(--green)"></span> Egress Rules Detail</div>
+
+<div class="table-wrap anim" style="--i:11">
+  <table>
+    <thead>
+      <tr>
+        <th>Rule</th>
+        <th>Port</th>
+        <th>Protocol</th>
+        <th>Destination</th>
+        <th>Service</th>
+        <th>Used By</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge--teal">1</span></td>
+        <td><code>3306</code></td>
+        <td>TCP</td>
+        <td>VPC CIDR</td>
+        <td>Aurora MySQL</td>
+        <td>All modules</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge--teal">2</span></td>
+        <td><code>6379</code></td>
+        <td>TCP</td>
+        <td>VPC CIDR</td>
+        <td>ElastiCache Redis</td>
+        <td>All modules</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge--teal">3</span></td>
+        <td><code>5439</code></td>
+        <td>TCP</td>
+        <td>VPC CIDR</td>
+        <td>Redshift</td>
+        <td>All modules</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge--gold">4</span></td>
+        <td><code>443</code></td>
+        <td>TCP</td>
+        <td><code>0.0.0.0/0</code></td>
+        <td>HTTPS (AWS APIs + external)</td>
+        <td>All modules</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge--gold">5</span></td>
+        <td><code>587</code></td>
+        <td>TCP</td>
+        <td><code>0.0.0.0/0</code></td>
+        <td>AWS SES SMTP</td>
+        <td>admin, api, app, mmh, worker</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge--gold">6</span></td>
+        <td><code>8443</code></td>
+        <td>TCP</td>
+        <td><code>0.0.0.0/0</code></td>
+        <td>Ponta Loyalty</td>
+        <td>app, worker</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge--gold">7</span></td>
+        <td><code>28443</code></td>
+        <td>TCP</td>
+        <td><code>0.0.0.0/0</code></td>
+        <td>Ponta IFS</td>
+        <td>app, worker</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout anim" style="--i:12">
+  <strong>VPC CIDR vs 0.0.0.0/0:</strong> Managed services (Aurora, Redis, Redshift) have ENIs within the VPC, so their CIDR is restricted to the VPC range. External services (AWS public APIs, Ponta, SES) have dynamic IPs and must use <code>0.0.0.0/0</code> with port-level restriction. This is still a significant improvement over zero restriction.
+</div>
+
+<!-- ===== SECTION 5: ENDPOINTS INVENTORY ===== -->
+<div id="s5" class="sec-head anim" style="--i:13; color: var(--orange)"><span class="dot" style="background:var(--orange)"></span> Endpoints Inventory (29 Discovered)</div>
+
+<div class="card anim" style="--i:14">
+  <h3>Database &amp; Cache (VPC Internal)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Service</th><th>Port</th><th>Driver</th><th>Coverage</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Aurora MySQL</td><td><code>3306</code></td><td><code>org.mariadb.jdbc.Driver</code></td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>2</td><td>Redshift</td><td><code>5439</code></td><td><code>com.amazon.redshift.jdbc42.Driver</code></td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>3</td><td>ElastiCache Redis</td><td><code>6379</code></td><td>Lettuce client</td><td><span class="badge badge--green">covered</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card anim" style="--i:15">
+  <h3>AWS Services</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Service</th><th>Port</th><th>Protocol</th><th>Coverage</th></tr></thead>
+      <tbody>
+        <tr><td>4</td><td>SES SMTP</td><td><code>587</code></td><td>SMTP/TLS</td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>5</td><td>SNS</td><td><code>443</code></td><td>HTTPS SDK</td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>6</td><td>SQS</td><td><code>443</code></td><td>HTTPS SDK</td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>7</td><td>S3</td><td><code>443</code></td><td>HTTPS SDK</td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>8</td><td>CloudWatch</td><td><code>443</code></td><td>HTTPS SDK</td><td><span class="badge badge--green">covered</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card anim" style="--i:16">
+  <h3>Third-Party External Services (all HTTPS 443)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Service</th><th>Domain</th><th>Purpose</th><th>Coverage</th></tr></thead>
+      <tbody>
+        <tr><td>9</td><td>GMO Aozora Bank</td><td><code>stg-api.gmo-aozora.com</code></td><td>Banking API</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>10</td><td>WhaleFin (Amber)</td><td><code>aws-private-alpha.whalefin.com</code></td><td>Trading API</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>11</td><td>Chainalysis</td><td><code>api.chainalysis.com</code></td><td>AML compliance</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>12</td><td>Refinitiv World-Check</td><td><code>api-worldcheck.refinitiv.com</code></td><td>AML screening</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>13</td><td>Sygna Hub</td><td><code>cb-sygna-stg-api.coinbook.co.jp</code></td><td>Travel Rule</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>14</td><td>Fireblocks</td><td><code>api.fireblocks.io</code></td><td>Crypto custody</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>15</td><td>Wallet Gateway</td><td><code>wallet-gateway-stg-internal.coinbook.co.jp</code></td><td>Internal service</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>16</td><td>eKYC (Nexway)</td><td><code>sand-nexwaykyc.nexlink2.jp</code></td><td>KYC</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>17</td><td>eKYC (Polaris)</td><td><code>ekyc-enter.dev-polaris.com</code></td><td>KYC</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>18</td><td>Google reCAPTCHA</td><td><code>www.google.com</code></td><td>Bot protection</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>19</td><td>SMS (CPaaS Now)</td><td><code>sandbox.cpaasnow.com</code></td><td>SMS gateway</td><td><span class="badge badge--green">443</span></td></tr>
+        <tr><td>20</td><td>OKCoin Japan</td><td><code>www.okcoin.jp</code></td><td>Exchange trading</td><td><span class="badge badge--green">443</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card anim" style="--i:17">
+  <h3>Ponta Loyalty (Custom Ports)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Service</th><th>Port</th><th>Env</th><th>Domain</th><th>Coverage</th></tr></thead>
+      <tbody>
+        <tr><td>21</td><td>Ponta WebIF</td><td><code>8443</code></td><td>STG/PRD</td><td><code>onlinest01.lp.loyalty.co.jp</code></td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>22</td><td>Ponta IF1507/IF1511</td><td><code>28443</code></td><td>STG/PRD</td><td><code>onlineit102.lw.loyalty.co.jp</code></td><td><span class="badge badge--green">covered</span></td></tr>
+        <tr><td>23</td><td>Ponta DEV</td><td><code>8080</code></td><td>DEV only</td><td><code>18.179.24.206</code></td><td><span class="badge badge--slate">dev only</span></td></tr>
+        <tr><td>24</td><td>Ponta Proxy</td><td><code>3128</code></td><td>STG</td><td><code>10.51.187.96</code></td><td><span class="badge badge--orange">deferred</span></td></tr>
+        <tr><td>25</td><td>Ponta Login</td><td><code>443</code></td><td>STG/PRD</td><td><code>st.ponta.jp</code></td><td><span class="badge badge--green">443</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== SECTION 6: VPC FLOW LOGS ===== -->
+<div id="s6" class="sec-head anim" style="--i:18; color: var(--red)"><span class="dot" style="background:var(--red)"></span> VPC Flow Logs Analysis (24h)</div>
+
+<div class="card anim" style="--i:19">
+  <h3>Top Outbound Traffic &mdash; HTTPS (Port 443)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Destination</th><th>Connections</th><th>Bytes</th><th>Identification</th></tr></thead>
+      <tbody>
+        <tr><td><code>104.18.0.50</code>, <code>104.18.1.50</code></td><td style="text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums;"><strong>~5,000,000</strong></td><td style="text-align:right">~10.6 GB</td><td>Cloudflare &mdash; Exchange API calls (99%+ of traffic)</td></tr>
+        <tr><td><code>52.195.x.x</code> (EC2 Tokyo)</td><td style="text-align:right; font-variant-numeric:tabular-nums;">~3,000</td><td style="text-align:right">~12 MB</td><td>AWS service endpoints</td></tr>
+        <tr><td><code>99.83.x.x</code>, <code>75.2.x.x</code></td><td style="text-align:right; font-variant-numeric:tabular-nums;">~1,700</td><td style="text-align:right">~8 MB</td><td>AWS Global Accelerator</td></tr>
+        <tr><td><code>35.71.114.x</code></td><td style="text-align:right; font-variant-numeric:tabular-nums;">~260</td><td style="text-align:right">~1.6 MB</td><td>DynamoDB &mdash; <strong>source: Redshift ENI</strong> (<code>RedshiftNetworkInterface</code> <code>eni-08db2251f1cb18895</code>, IP <code>172.18.11.136</code>). Not pod traffic.</td></tr>
+        <tr><td><code>34.96.108.209</code></td><td style="text-align:right; font-variant-numeric:tabular-nums;">130</td><td style="text-align:right">~248 KB</td><td>Google Cloud (GCP) service</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="inner-grid anim" style="--i:20; margin-bottom:16px;">
+  <div class="card" style="margin-bottom:0">
+    <h3>NTP Traffic (Port 123/UDP)</h3>
+    <p style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">~17,000 connections to Amazon Time Sync + 84 to Canonical NTP. This is <strong>node-level traffic</strong>, not pod-level &mdash; NetworkPolicy does not affect it.</p>
+    <span class="badge badge--slate">no action needed</span>
+  </div>
+  <div class="card" style="margin-bottom:0">
+    <h3>Metadata Endpoint (169.254.170.2:80)</h3>
+    <p style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">785 connections. This is the <strong>IRSA credential endpoint</strong>. Cluster uses IRSA (STS:443), not EKS Pod Identity. Link-local traffic bypasses NetworkPolicy at the VPC CNI level.</p>
+    <span class="badge badge--green">false positive</span>
+  </div>
+</div>
+
+<div class="inner-grid anim" style="--i:20.5; margin-bottom:16px;">
+  <div class="card" style="margin-bottom:0">
+    <h3>Port 8082 Egress &mdash; NOT Needed</h3>
+    <p style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Port 8082 is <strong>Spring Boot Actuator management port</strong> (configured via <code>management.server.port=8082</code>). It only <em>receives</em> traffic (ingress) from kubelet for liveness/readiness probes and preStop hook. No pod-to-pod communication on 8082. All inter-service calls use port 8080 only.</p>
+    <span class="badge badge--green">ingress only</span>
+  </div>
+  <div class="card" style="margin-bottom:0">
+    <h3>DynamoDB Traffic &mdash; Redshift ENI</h3>
+    <p style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">~260 connections to <code>35.71.114.x</code> (DynamoDB) originate from <strong>Redshift ENI</strong> (<code>RedshiftNetworkInterface</code>, ENI <code>eni-08db2251f1cb18895</code>, IP <code>172.18.11.136</code>). Amazon Redshift internally uses DynamoDB for metadata management. This is AWS-managed, <strong>not pod traffic</strong>.</p>
+    <span class="badge badge--green">resolved &mdash; not EKS</span>
+  </div>
+</div>
+
+<div class="card anim" style="--i:21">
+  <h3>Source IP Analysis &mdash; Top Senders</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source IP</th><th>Connections</th><th>Bytes</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>172.18.11.49</code></td><td style="text-align:right; font-variant-numeric:tabular-nums;">2,524,279</td><td style="text-align:right">~5.3 GB</td><td>NAT Gateway (aggregates all private subnet traffic)</td></tr>
+        <tr><td><code>172.18.22.20</code></td><td style="text-align:right; font-variant-numeric:tabular-nums;">1,557,914</td><td style="text-align:right">~3.3 GB</td><td>Pod/Node &mdash; exchange API calls (heaviest sender)</td></tr>
+        <tr><td><code>172.18.22.194</code></td><td style="text-align:right; font-variant-numeric:tabular-nums;">831,641</td><td style="text-align:right">~1.7 GB</td><td>Pod/Node in private subnet</td></tr>
+        <tr><td><code>172.18.11.167</code></td><td style="text-align:right; font-variant-numeric:tabular-nums;">4,865</td><td style="text-align:right">~13 MB</td><td>ALB (point-alb)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card anim" style="--i:22">
+  <h3>VPC Endpoints (Already Configured)</h3>
+  <div class="inner-grid">
+    <div style="font-size:12px; line-height:2;">
+      <span class="badge badge--green">S3</span>&ensp;
+      <span class="badge badge--green">ECR</span>&ensp;
+      <span class="badge badge--green">SQS</span>&ensp;
+      <span class="badge badge--green">SNS</span>&ensp;
+      <span class="badge badge--green">CloudWatch</span>&ensp;
+      <span class="badge badge--green">Secrets Manager</span>&ensp;
+    </div>
+    <div style="font-size:12px; line-height:2;">
+      <span class="badge badge--green">STS</span>&ensp;
+      <span class="badge badge--green">KMS</span>&ensp;
+      <span class="badge badge--green">SES SMTP</span>&ensp;
+      <span class="badge badge--green">SSM</span>&ensp;
+      <span class="badge badge--green">EC2</span>&ensp;
+      <span class="badge badge--red">DynamoDB missing</span>
+    </div>
+  </div>
+  <p style="font-size:12px; color:var(--text-dim); margin-top:10px;">
+    Most AWS service traffic stays within the VPC via endpoints. DynamoDB traffic (~260 connections/day) still goes through NAT Gateway &mdash; recommend creating a VPC Gateway Endpoint (BB-1526).
+  </p>
+</div>
+
+<!-- ===== SECTION 7: CIDR ALTERNATIVES ===== -->
+<div id="s7" class="sec-head anim" style="--i:23; color: var(--slate)"><span class="dot" style="background:var(--slate)"></span> VPC CIDR Alternatives</div>
+
+<div class="table-wrap anim" style="--i:24">
+  <table>
+    <thead>
+      <tr><th>Approach</th><th>Feasible</th><th>Complexity</th><th>Recommendation</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>podSelector / namespaceSelector</td><td><span class="badge badge--red">no</span></td><td>&mdash;</td><td>AWS managed services have no Pod identity in K8s</td></tr>
+      <tr><td>Terraform output + envsubst/sed</td><td><span class="badge badge--green">yes</span></td><td><span class="badge badge--red">high</span></td><td>Over-complex pipeline dependency on TF state at deploy time</td></tr>
+      <tr><td>Kustomize Replacements</td><td><span class="badge badge--green">yes</span></td><td><span class="badge badge--orange">medium</span></td><td>Good future option when more envs are added</td></tr>
+      <tr><td>Broader CIDR (172.16.0.0/12)</td><td><span class="badge badge--green">yes</span></td><td><span class="badge badge--green">low</span></td><td><span class="badge badge--red">reject</span> &mdash; violates least-privilege (1M IPs vs 65K)</td></tr>
+      <tr><td>Kustomize JSON Patch</td><td><span class="badge badge--green">yes</span></td><td><span class="badge badge--orange">medium</span></td><td>Less clean than replacements</td></tr>
+      <tr style="background: var(--gold-dim);"><td><strong>Keep per-env hardcoded files</strong></td><td><span class="badge badge--green">yes</span></td><td><span class="badge badge--green">low</span></td><td><span class="badge badge--gold">recommended</span> &mdash; simple, auditable, CIDR never changes</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout anim" style="--i:25">
+  <strong>Decision:</strong> Keep per-env hardcoded CIDR files. VPC CIDR is a near-immutable value after VPC creation. With only 2-3 environments, the complexity of dynamic injection far exceeds the benefit of avoiding a simple copy-paste. Direct YAML reading makes auditing trivial.
+</div>
+
+<!-- ===== SECTION 8: GAP ANALYSIS ===== -->
+<div id="s8" class="sec-head anim" style="--i:26; color: var(--orange)"><span class="dot" style="background:var(--orange)"></span> Gap Analysis</div>
+
+<div class="table-wrap anim" style="--i:27">
+  <table>
+    <thead>
+      <tr><th>Gap</th><th>Source</th><th>Impact</th><th>Severity</th><th>Resolution</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>4 rules use <code>0.0.0.0/0</code></strong></td>
+        <td>Design</td>
+        <td>Over-permissive egress on ports 443, 587, 8443, 28443</td>
+        <td><span class="badge badge--orange">medium</span></td>
+        <td>Port-level restriction is still better than zero. Will tighten when BB-1526 VPC endpoints are complete.</td>
+      </tr>
+      <tr>
+        <td><strong>Ponta Proxy port 3128</strong></td>
+        <td>Codebase</td>
+        <td>STG Ponta connections via proxy will fail</td>
+        <td><span class="badge badge--orange">medium</span></td>
+        <td>Deferred &mdash; direct 8443/28443 already open. Add <code>10.51.187.96/32:3128</code> for STG if proxy is mandatory.</td>
+      </tr>
+      <tr>
+        <td><strong>NTP port 123/UDP</strong></td>
+        <td>Flow Logs</td>
+        <td>17K connections/day to Amazon NTP</td>
+        <td><span class="badge badge--green">low</span></td>
+        <td>Node-level traffic, not pod-level. NetworkPolicy does not affect it.</td>
+      </tr>
+      <tr>
+        <td><strong>DynamoDB via NAT</strong></td>
+        <td>Flow Logs</td>
+        <td>~260 connections &mdash; source is <strong>Redshift ENI</strong> (<code>RedshiftNetworkInterface</code>), not EKS pods</td>
+        <td><span class="badge badge--green">resolved</span></td>
+        <td>AWS-managed Redshift internal metadata traffic. Completely outside EKS pod scope &mdash; NetworkPolicy has no impact. VPC endpoint tracked in BB-1526.</td>
+      </tr>
+      <tr>
+        <td><strong>High port 28716 (Cloudflare)</strong></td>
+        <td>Flow Logs</td>
+        <td>248 connections to unknown Cloudflare service</td>
+        <td><span class="badge badge--orange">medium</span></td>
+        <td>Needs investigation &mdash; likely WebSocket/streaming for real-time market data.</td>
+      </tr>
+      <tr>
+        <td><strong>169.254.170.2:80 metadata</strong></td>
+        <td>Flow Logs</td>
+        <td>785 connections to IRSA credential endpoint</td>
+        <td><span class="badge badge--green">false positive</span></td>
+        <td>Cluster uses IRSA (STS:443). Link-local traffic bypasses NetworkPolicy at VPC CNI level. <strong>No rule needed.</strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== SECTION 9: RISK ASSESSMENT ===== -->
+<div id="s9" class="sec-head anim" style="--i:28; color: var(--red)"><span class="dot" style="background:var(--red)"></span> Risk Assessment</div>
+
+<div class="table-wrap anim" style="--i:29">
+  <table>
+    <thead>
+      <tr><th>Risk</th><th>Probability</th><th>Impact</th><th>Level</th><th>Mitigation</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Outage from wrong apply order</strong></td>
+        <td><span class="badge badge--red">high</span></td>
+        <td>SERVICE DOWN</td>
+        <td><span class="badge badge--red">critical</span></td>
+        <td>Single <code>kubectl apply</code>. Rollback: <code>kubectl delete networkpolicy --all -n default</code></td>
+      </tr>
+      <tr>
+        <td><strong>Missed endpoint causing degradation</strong></td>
+        <td><span class="badge badge--orange">medium</span></td>
+        <td>Partial feature failure</td>
+        <td><span class="badge badge--orange">medium</span></td>
+        <td>Thorough DEV testing + policy event logs for denied traffic detection</td>
+      </tr>
+      <tr>
+        <td><strong>aws-node DaemonSet rolling restart</strong></td>
+        <td><span class="badge badge--red">certain</span></td>
+        <td>Brief network disruption</td>
+        <td><span class="badge badge--orange">medium</span></td>
+        <td>Apply on DEV/STG first. Accept short downtime on non-production.</td>
+      </tr>
+      <tr>
+        <td><strong>IRSA metadata endpoint blocked</strong></td>
+        <td><span class="badge badge--green">low</span></td>
+        <td>All AWS API calls fail</td>
+        <td><span class="badge badge--green">resolved</span></td>
+        <td>Confirmed: VPC CNI does not apply NetworkPolicy to link-local traffic (169.254.x.x). IRSA uses STS:443 which is covered.</td>
+      </tr>
+      <tr>
+        <td><strong>Over-permissive <code>0.0.0.0/0</code> rules</strong></td>
+        <td><span class="badge badge--green">low</span></td>
+        <td>Wider egress than ideal</td>
+        <td><span class="badge badge--green">low</span></td>
+        <td>Port-level restriction still far better than zero. Tighten with BB-1526 VPC endpoints.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== SECTION 10: KEY FINDINGS ===== -->
+<div id="s10" class="sec-head anim" style="--i:30; color: var(--gold)"><span class="dot" style="background:var(--gold)"></span> Key Findings</div>
+
+<div class="three-col anim" style="--i:31">
+  <div class="card" style="margin-bottom:0; border-left: 3px solid var(--green);">
+    <h3 style="color:var(--green); font-size:13px;">IRSA vs Pod Identity</h3>
+    <p style="font-size:12px; color:var(--text-dim);">
+      Cluster uses <strong>IRSA</strong> (IAM Roles for Service Accounts) which authenticates via <code>STS:443</code>.
+      The <code>169.254.170.2:80</code> metadata endpoint is for EKS Pod Identity &mdash; a different mechanism <strong>not used here</strong>.
+      VPC CNI Network Policy does not block link-local addresses.
+    </p>
+  </div>
+  <div class="card" style="margin-bottom:0; border-left: 3px solid var(--teal);">
+    <h3 style="color:var(--teal); font-size:13px;">VPC Endpoints Impact</h3>
+    <p style="font-size:12px; color:var(--text-dim);">
+      12 VPC Endpoints already exist (S3, SQS, SNS, STS, KMS, etc.). AWS service traffic stays <strong>within the VPC</strong> on port 443 via endpoint ENIs.
+      The <code>0.0.0.0/0:443</code> rule covers both endpoint traffic and external API traffic. No separate rules needed.
+    </p>
+  </div>
+  <div class="card" style="margin-bottom:0; border-left: 3px solid var(--gold);">
+    <h3 style="color:var(--gold); font-size:13px;">Flow Logs Validation</h3>
+    <p style="font-size:12px; color:var(--text-dim);">
+      24h VPC Flow Logs analysis confirmed: <strong>99%+ outbound</strong> is HTTPS 443 to Cloudflare (exchange APIs).
+      All codebase-identified endpoints map to observed traffic patterns.
+      <strong>Zero rejected outbound traffic</strong> in current state &mdash; SG allows all egress.
+    </p>
+  </div>
+</div>
+
+<div class="card card--recessed anim" style="--i:32; margin-top:16px;">
+  <h3>Rollback Plan</h3>
+  <div class="code-block"><span class="cm"># If any issues after applying NetworkPolicy:</span>
+kubectl delete networkpolicy --all -n default
+<span class="cm"># Traffic returns to default (allow all) within seconds.</span>
+<span class="cm"># Network Policy Agent remains running but enforces nothing.</span></div>
+</div>
+
+<div class="callout anim" style="--i:33; margin-top:16px;">
+  <strong>Investigation Team:</strong> 4 parallel agents &mdash;
+  <code>cidr-investigator</code> (CIDR alternatives),
+  <code>code-investigator</code> (29 external endpoints from codebase),
+  <code>traffic-investigator</code> (VPC Flow Logs 24h analysis),
+  <code>evidence-writer</code> (consolidated evidence document).
+  Full reports in <code>docs/1525/</code>.
+</div>
+
+</div><!-- /main -->
+</div><!-- /wrap -->
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#1e3a5f' : '#e8f0fe',
+      primaryBorderColor: isDark ? '#7db4e0' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e2e8f0' : '#1a1d26',
+      secondaryColor: isDark ? '#1e2433' : '#f0fdf4',
+      secondaryBorderColor: isDark ? '#34d399' : '#059669',
+      secondaryTextColor: isDark ? '#e2e8f0' : '#1a1d26',
+      tertiaryColor: isDark ? '#2a2318' : '#fef3c7',
+      tertiaryBorderColor: isDark ? '#fbbf24' : '#d97706',
+      tertiaryTextColor: isDark ? '#fef3c7' : '#2a2318',
+      lineColor: isDark ? '#64748b' : '#94a3b8',
+      fontSize: '15px',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#1e2433' : '#fefce8',
+      noteTextColor: isDark ? '#e2e8f0' : '#1a1d26',
+      noteBorderColor: isDark ? '#fbbf24' : '#d97706',
+    }
+  });
+</script>
+
+<script>
+// Scroll spy
+(function() {
+  const toc = document.getElementById('toc');
+  const links = toc.querySelectorAll('a');
+  const sections = [];
+  links.forEach(link => {
+    const id = link.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (el) sections.push({ id, el, link });
+  });
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const match = sections.find(s => s.el === entry.target);
+        if (match) {
+          match.link.classList.add('active');
+          if (window.innerWidth <= 1000) {
+            match.link.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          }
+        }
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  sections.forEach(s => observer.observe(s.el));
+  links.forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      const id = link.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + id); }
+    });
+  });
+})();
+
+// Zoom controls for Mermaid
+function zoom(btn, factor) {
+  const wrap = btn.closest('.mermaid-wrap');
+  const svg = wrap.querySelector('svg');
+  if (!svg) return;
+  const current = parseFloat(svg.style.transform?.match(/scale\(([^)]+)\)/)?.[1] || '1');
+  const next = Math.max(0.3, Math.min(3, current * factor));
+  svg.style.transform = `scale(${next})`;
+  svg.style.transformOrigin = 'center top';
+}
+function resetZoom(btn) {
+  const wrap = btn.closest('.mermaid-wrap');
+  const svg = wrap.querySelector('svg');
+  if (svg) svg.style.transform = '';
+}
+
+// Ctrl/Cmd+scroll zoom on mermaid
+document.querySelectorAll('.mermaid-inner').forEach(inner => {
+  inner.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const svg = inner.querySelector('svg');
+      if (!svg) return;
+      const current = parseFloat(svg.style.transform?.match(/scale\(([^)]+)\)/)?.[1] || '1');
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const next = Math.max(0.3, Math.min(3, current * factor));
+      svg.style.transform = `scale(${next})`;
+      svg.style.transformOrigin = 'center top';
+    }
+  }, { passive: false });
+
+  // Drag to pan
+  let isDragging = false, startX, startY, scrollLeft, scrollTop;
+  inner.addEventListener('mousedown', e => {
+    isDragging = true; inner.classList.add('dragging');
+    startX = e.pageX - inner.offsetLeft; startY = e.pageY - inner.offsetTop;
+    scrollLeft = inner.scrollLeft; scrollTop = inner.scrollTop;
+  });
+  inner.addEventListener('mousemove', e => {
+    if (!isDragging) return; e.preventDefault();
+    inner.scrollLeft = scrollLeft - (e.pageX - inner.offsetLeft - startX);
+    inner.scrollTop = scrollTop - (e.pageY - inner.offsetTop - startY);
+  });
+  inner.addEventListener('mouseup', () => { isDragging = false; inner.classList.remove('dragging'); });
+  inner.addEventListener('mouseleave', () => { isDragging = false; inner.classList.remove('dragging'); });
+});
+</script>
+
+</body>
+</html>

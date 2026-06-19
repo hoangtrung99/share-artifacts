@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB-1917 — Code cần viết cho 3 Solution</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #0f1822;
+    --bg-grid: rgba(212, 167, 58, 0.04);
+    --surface: #16212f;
+    --surface2: #1a2836;
+    --surface-elevated: #1e2d3d;
+    --surface-recessed: #121b27;
+    --border: rgba(212, 167, 58, 0.15);
+    --border-bright: rgba(212, 167, 58, 0.35);
+    --border-soft: rgba(255, 255, 255, 0.06);
+
+    --text: #e6edf3;
+    --text-dim: #8a9bad;
+    --text-muted: #5b6b7d;
+
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --blueprint: #5fa8d3;
+    --blueprint-dim: rgba(95, 168, 211, 0.12);
+
+    --green: #4ea672;
+    --green-dim: rgba(78, 166, 114, 0.14);
+    --red: #d66060;
+    --red-dim: rgba(214, 96, 96, 0.14);
+    --orange: #d4895a;
+    --orange-dim: rgba(212, 137, 90, 0.14);
+    --rose: #c46b8a;
+    --rose-dim: rgba(196, 107, 138, 0.12);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f3ec;
+      --bg-grid: rgba(30, 58, 95, 0.05);
+      --surface: #ffffff;
+      --surface2: #ecebe1;
+      --surface-elevated: #fbfaf2;
+      --surface-recessed: #e8e6d8;
+      --border: rgba(30, 58, 95, 0.15);
+      --border-bright: rgba(30, 58, 95, 0.3);
+      --border-soft: rgba(30, 58, 95, 0.08);
+
+      --text: #1a2332;
+      --text-dim: #556575;
+      --text-muted: #8a9bad;
+
+      --gold: #a87f2a;
+      --gold-dim: rgba(168, 127, 42, 0.12);
+      --blueprint: #1e3a5f;
+      --blueprint-dim: rgba(30, 58, 95, 0.08);
+
+      --green: #2f7a4f;
+      --green-dim: rgba(47, 122, 79, 0.12);
+      --red: #a83232;
+      --red-dim: rgba(168, 50, 50, 0.1);
+      --orange: #b05a22;
+      --orange-dim: rgba(176, 90, 34, 0.1);
+      --rose: #983e5e;
+      --rose-dim: rgba(152, 62, 94, 0.1);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+    background-image:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-attachment: fixed;
+    min-height: 100vh;
+    padding: 48px 20px 80px;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; }
+
+  /* ========== HEADER ========== */
+  .header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 24px;
+    align-items: start;
+    padding: 32px 36px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    margin-bottom: 40px;
+    position: relative;
+    animation: fadeUp 0.6s ease backwards;
+  }
+  .header::before {
+    content: "";
+    position: absolute;
+    top: 0; right: 0;
+    width: 80px;
+    height: 80px;
+    background-image:
+      linear-gradient(var(--border-bright) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-bright) 1px, transparent 1px);
+    background-size: 12px 12px;
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  .ticket-stamp {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--gold);
+    padding: 10px 14px;
+    border: 1px solid var(--gold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: var(--gold-dim);
+    line-height: 1.2;
+  }
+  .ticket-stamp__id { font-weight: 600; font-size: 14px; display: block; margin-bottom: 3px; }
+  .ticket-stamp__label { font-size: 10px; color: var(--text-dim); }
+
+  h1 {
+    font-size: 30px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  h1 .accent { color: var(--gold); }
+
+  .lede {
+    color: var(--text-dim);
+    font-size: 15px;
+    margin: 0;
+    max-width: 780px;
+  }
+  .lede code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--surface-recessed);
+    padding: 2px 6px;
+    border: 1px solid var(--border-soft);
+    color: var(--blueprint);
+  }
+
+  /* ========== SECTION LABELS ========== */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    margin: 56px 0 20px;
+  }
+  .section-label::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: var(--gold);
+    flex-shrink: 0;
+  }
+  .section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  h2 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0 0 10px;
+    color: var(--text);
+  }
+  p { margin: 0 0 12px; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ========== SOLUTION CARDS ========== */
+  .solution-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 8px;
+  }
+  @media (max-width: 960px) {
+    .solution-grid { grid-template-columns: 1fr; }
+  }
+
+  .sol-card {
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    position: relative;
+    min-width: 0;
+    animation: fadeUp 0.6s ease backwards;
+    animation-delay: calc(var(--i, 0) * 0.08s);
+  }
+  .sol-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent, var(--gold));
+  }
+  .sol-card--s1 { --accent: var(--rose); }
+  .sol-card--s2 { --accent: var(--orange); }
+  .sol-card--s3 { --accent: var(--green); }
+
+  .sol-card__status {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    background: var(--accent-dim, var(--gold-dim));
+    color: var(--accent, var(--gold));
+    border: 1px solid var(--accent, var(--gold));
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  .sol-card--s1 { --accent-dim: var(--rose-dim); }
+  .sol-card--s2 { --accent-dim: var(--orange-dim); }
+  .sol-card--s3 { --accent-dim: var(--green-dim); }
+
+  .sol-card h3 { margin-bottom: 6px; }
+  .sol-card__tagline {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 18px;
+  }
+
+  .sol-card__metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 16px 0;
+    padding: 14px 0;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .sol-metric__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 3px;
+  }
+  .sol-metric__value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .sol-metric__value--accent { color: var(--accent, var(--gold)); }
+
+  .sol-card__code-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 13px;
+  }
+  .sol-card__code-list li {
+    position: relative;
+    padding: 6px 0 6px 18px;
+    border-bottom: 1px dashed var(--border-soft);
+    color: var(--text-dim);
+  }
+  .sol-card__code-list li:last-child { border-bottom: none; }
+  .sol-card__code-list li::before {
+    content: "›";
+    position: absolute;
+    left: 0;
+    color: var(--accent, var(--gold));
+    font-weight: 600;
+  }
+  .sol-card__code-list code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* ========== RESPONSIBILITY TABLE ========== */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    animation: fadeUp 0.6s ease backwards;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-family: var(--font-body);
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-elevated);
+    color: var(--text);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--gold);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+    overflow-wrap: break-word;
+  }
+  tbody tr:nth-child(even) { background: var(--surface2); }
+  tbody tr:hover { background: var(--surface-elevated); }
+  tbody td:first-child {
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .badge--yes { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+  .badge--no  { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+  .badge--opt { background: var(--orange-dim); color: var(--orange); border-color: var(--orange); }
+  .badge--mostly { background: var(--blueprint-dim); color: var(--blueprint); border-color: var(--blueprint); }
+
+  /* ========== CODE BLOCKS ========== */
+  .code-block {
+    background: var(--surface-recessed);
+    border: 1px solid var(--border-soft);
+    border-left: 2px solid var(--gold);
+    padding: 16px 20px;
+    margin: 14px 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text);
+    position: relative;
+  }
+  .code-block__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed var(--border);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .code-block__file { color: var(--gold); }
+  .code-block__lang { color: var(--text-muted); }
+  .code-block .kw { color: var(--blueprint); font-weight: 500; }
+  .code-block .str { color: var(--green); }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .fn { color: var(--gold); }
+  .code-block .num { color: var(--orange); }
+
+  /* ========== CALLOUTS ========== */
+  .callout {
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--accent, var(--gold));
+    margin: 16px 0;
+  }
+  .callout--info { --accent: var(--blueprint); }
+  .callout--warn { --accent: var(--orange); }
+  .callout--key  { --accent: var(--gold); }
+  .callout__title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent, var(--gold));
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .callout p { font-size: 14px; color: var(--text); }
+
+  /* ========== FLOW DIAGRAM ========== */
+  .flow {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin: 20px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 24px;
+    position: relative;
+  }
+  .flow__stage {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px dashed var(--border-soft);
+    align-items: center;
+  }
+  .flow__stage:last-child { border-bottom: none; }
+  .flow__num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .flow__num b {
+    color: var(--gold);
+    background: var(--gold-dim);
+    padding: 3px 8px;
+    border: 1px solid var(--gold);
+    font-weight: 500;
+  }
+  .flow__what {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .flow__what code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--surface-recessed);
+    padding: 1px 5px;
+    color: var(--blueprint);
+    border: 1px solid var(--border-soft);
+  }
+  .flow__what .tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    margin-right: 6px;
+    background: var(--rose-dim);
+    color: var(--rose);
+    border: 1px solid var(--rose);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .flow__what .tag--crit {
+    background: var(--red-dim);
+    color: var(--red);
+    border-color: var(--red);
+  }
+  .flow__what .tag--ok {
+    background: var(--green-dim);
+    color: var(--green);
+    border-color: var(--green);
+  }
+
+  /* ========== TWO-COL LAYOUT ========== */
+  .twocol {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 20px 0;
+  }
+  @media (max-width: 900px) { .twocol { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    padding: 20px;
+    min-width: 0;
+  }
+  .panel--recessed {
+    background: var(--surface-recessed);
+    border-color: var(--border);
+  }
+  .panel h4 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--gold);
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .panel ul {
+    padding-left: 18px;
+    margin: 0;
+    font-size: 13px;
+  }
+  .panel li {
+    margin-bottom: 6px;
+    color: var(--text-dim);
+  }
+  .panel li::marker { color: var(--gold); }
+  .panel li code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--blueprint);
+    background: var(--surface-recessed);
+    padding: 1px 5px;
+    border: 1px solid var(--border-soft);
+  }
+  .panel li b { color: var(--text); font-weight: 500; }
+
+  /* ========== FOOTER ========== */
+  .footer {
+    margin-top: 60px;
+    padding: 24px;
+    text-align: center;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border-top: 1px solid var(--border-soft);
+    letter-spacing: 0.06em;
+  }
+
+  /* ========== ANIMATIONS ========== */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* ========== SCROLLBAR ========== */
+  ::-webkit-scrollbar { height: 8px; width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--surface-recessed); }
+  ::-webkit-scrollbar-thumb { background: var(--border-bright); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="ticket-stamp">
+      <span class="ticket-stamp__id">BB-1917</span>
+      <span class="ticket-stamp__label">INFRA SPEC</span>
+    </div>
+    <div>
+      <h1>Code cần viết cho <span class="accent">3 Solution</span> Aurora → Redshift</h1>
+      <p class="lede">
+        Mỗi giải pháp có yêu cầu code khác nhau: <code>PySpark script</code>, <code>Python Lambda</code>, hay chỉ <code>SQL bootstrap</code>.
+        Trang này liệt kê chính xác phần nào cần code, ngôn ngữ gì, và logic xử lý ra sao.
+      </p>
+    </div>
+  </header>
+
+  <!-- SOLUTION COMPARISON CARDS -->
+  <div class="section-label">01 · Tổng quan — Code footprint từng solution</div>
+
+  <div class="solution-grid">
+    <!-- SOLUTION 1 — GLUE -->
+    <article class="sol-card sol-card--s1" style="--i:0;">
+      <span class="sol-card__status">V1 · Deprecated</span>
+      <h3>Solution 1 — Glue ETL</h3>
+      <div class="sol-card__tagline">PySpark batch pull → S3 Parquet → Redshift COPY</div>
+      <div class="sol-card__metric-grid">
+        <div>
+          <div class="sol-metric__label">Ngôn ngữ</div>
+          <div class="sol-metric__value sol-metric__value--accent">PySpark</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">LOC ước tính</div>
+          <div class="sol-metric__value">~40 core + MERGE SQL</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">Runtime</div>
+          <div class="sol-metric__value">Glue G.1X · 4.0</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">Latency</div>
+          <div class="sol-metric__value">3-8 phút</div>
+        </div>
+      </div>
+      <ul class="sol-card__code-list">
+        <li><code>aurora_to_s3_raw.py</code> — đọc Catalog, ghi Parquet</li>
+        <li>MERGE/UPSERT SQL phía Redshift</li>
+        <li>Crawler schema re-run thủ công khi DDL</li>
+      </ul>
+    </article>
+
+    <!-- SOLUTION 2 — S3+COPY -->
+    <article class="sol-card sol-card--s2" style="--i:1;">
+      <span class="sol-card__status">V2 · Deprecated</span>
+      <h3>Solution 2 — S3 + Redshift COPY JOB</h3>
+      <div class="sol-card__tagline">Lambda orchestrator → Aurora OUTFILE S3 → auto-copy</div>
+      <div class="sol-card__metric-grid">
+        <div>
+          <div class="sol-metric__label">Ngôn ngữ</div>
+          <div class="sol-metric__value sol-metric__value--accent">Python 3.11</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">LOC</div>
+          <div class="sol-metric__value">374 (pymysql)</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">Runtime</div>
+          <div class="sol-metric__value">Lambda VPC</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">Latency</div>
+          <div class="sol-metric__value">3-10 phút</div>
+        </div>
+      </div>
+      <ul class="sol-card__code-list">
+        <li><code>orchestrator.py</code> — full workflow</li>
+        <li><code>CREATE JOB ... AUTO ON COPY</code> (7 × Redshift)</li>
+        <li><code>aws redshift create-integration</code> S3 event</li>
+      </ul>
+    </article>
+
+    <!-- SOLUTION 3 — ZERO-ETL -->
+    <article class="sol-card sol-card--s3" style="--i:2;">
+      <span class="sol-card__status">V3 · Active</span>
+      <h3>Solution 3 — Zero-ETL CDC</h3>
+      <div class="sol-card__tagline">Aurora binlog → AWS managed pipeline → Redshift</div>
+      <div class="sol-card__metric-grid">
+        <div>
+          <div class="sol-metric__label">Ngôn ngữ</div>
+          <div class="sol-metric__value sol-metric__value--accent">SQL only</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">LOC</div>
+          <div class="sol-metric__value">~10 dòng SQL</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">Runtime</div>
+          <div class="sol-metric__value">AWS managed</div>
+        </div>
+        <div>
+          <div class="sol-metric__label">Latency</div>
+          <div class="sol-metric__value">~15 giây p50</div>
+        </div>
+      </div>
+      <ul class="sol-card__code-list">
+        <li><code>CREATE DATABASE ... FROM INTEGRATION</code></li>
+        <li><code>SET HISTORY_MODE = TRUE</code></li>
+        <li>Optional SVV-poll Lambda (ticket riêng)</li>
+      </ul>
+    </article>
+  </div>
+
+  <!-- ========== RESPONSIBILITY MATRIX ========== -->
+  <div class="section-label">02 · Ma trận trách nhiệm — Ai viết gì?</div>
+
+  <div class="table-wrap">
+    <table>
+      <colgroup>
+        <col style="width:24%;">
+        <col style="width:25%;">
+        <col style="width:25%;">
+        <col style="width:26%;">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Loại code / artifact</th>
+          <th>S1 — Glue ETL</th>
+          <th>S2 — S3+COPY</th>
+          <th>S3 — Zero-ETL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Python Lambda</td>
+          <td><span class="badge badge--no">Không cần</span></td>
+          <td><span class="badge badge--yes">Bắt buộc — 374 LOC</span><br><small>pymysql + watermark + PITR detect</small></td>
+          <td><span class="badge badge--opt">Optional</span><br><small>SVV poll monitor (silent-fail detector)</small></td>
+        </tr>
+        <tr>
+          <td>PySpark script</td>
+          <td><span class="badge badge--yes">Bắt buộc</span><br><small>1 × <code>aurora_to_s3_raw.py</code> cho N tables</small></td>
+          <td><span class="badge badge--no">Không cần</span></td>
+          <td><span class="badge badge--no">Không cần</span></td>
+        </tr>
+        <tr>
+          <td>SQL Redshift bootstrap</td>
+          <td><span class="badge badge--yes">MERGE/UPSERT SQL</span><br><small>Phức tạp nhất — tự build dedup logic</small></td>
+          <td><span class="badge badge--yes"><code>CREATE JOB AUTO ON</code></span><br><small>7 × COPY JOB</small></td>
+          <td><span class="badge badge--yes"><code>CREATE DATABASE FROM INTEGRATION</code></span><br><small>1 lần duy nhất + VARCHAR pre-flight</small></td>
+        </tr>
+        <tr>
+          <td>AWS CLI manual</td>
+          <td><code>start-crawler</code> lần đầu</td>
+          <td><code>redshift create-integration</code> (S3 event)</td>
+          <td><code>rds modify-db-cluster</code> attach param group + reboot</td>
+        </tr>
+        <tr>
+          <td>Terraform resources</td>
+          <td>Glue Job + Crawler + Connection + S3</td>
+          <td>Lambda + Scheduler + SSM + SG + alarms <b>(1340 LOC)</b></td>
+          <td>Parameter group + Resource policy + Integration <b>(674 LOC)</b></td>
+        </tr>
+        <tr>
+          <td>Handle UPDATE/DELETE</td>
+          <td><span class="badge badge--no">Phải tự build MERGE</span></td>
+          <td><span class="badge badge--no">Append-only</span></td>
+          <td><span class="badge badge--yes">Native CDC binlog</span></td>
+        </tr>
+        <tr>
+          <td>Ops maintenance burden</td>
+          <td>Tune DPU, re-crawl khi DDL, handle MERGE conflict</td>
+          <td>Rebuild Lambda package, manage 7 × watermark, 4 alarms</td>
+          <td>Monitor <code>SVV_INTEGRATION_TABLE_STATE</code> + history retention</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ========== SOLUTION 1 DETAIL ========== -->
+  <div class="section-label">03 · Solution 1 — PySpark script chi tiết</div>
+
+  <h2>Glue ETL</h2>
+  <p>File <code>terraform/components/glue-etl/scripts/aurora_to_s3_raw.py</code> được upload lên S3 và reference từ <code>aws_glue_job.command.script_location</code>. Mỗi Glue Job invocation chạy script này với argument <code>--table_name</code>.</p>
+
+  <div class="code-block">
+<span class="code-block__header"><span class="code-block__file">aurora_to_s3_raw.py</span><span class="code-block__lang">PySpark · Glue 4.0</span></span>
+<span class="kw">import</span> sys
+<span class="kw">from</span> awsglue.utils <span class="kw">import</span> getResolvedOptions
+<span class="kw">from</span> awsglue.context <span class="kw">import</span> GlueContext
+<span class="kw">from</span> awsglue.job <span class="kw">import</span> Job
+<span class="kw">from</span> datetime <span class="kw">import</span> datetime
+
+args = getResolvedOptions(sys.argv, [<span class="str">'JOB_NAME'</span>, <span class="str">'table_name'</span>, <span class="str">'staging_bucket'</span>])
+glueContext = GlueContext(SparkContext())
+job = Job(glueContext); job.init(args[<span class="str">'JOB_NAME'</span>], args)
+
+<span class="com"># 1) Đọc từ Aurora qua Glue Catalog (schema do Crawler dựng)</span>
+<span class="com">#    transformation_ctx là KEY của bookmark — đổi tên sẽ làm Glue full reload</span>
+src = glueContext.create_dynamic_frame.from_catalog(
+    database=<span class="str">"aurora_point_dev_ex"</span>,
+    table_name=args[<span class="str">'table_name'</span>],
+    transformation_ctx=<span class="str">f"src_{args['table_name']}"</span>,
+)
+
+<span class="com"># 2) Ghi Parquet ra S3 partition theo thời gian</span>
+now = datetime.utcnow()
+out_path = <span class="str">f"s3://{args['staging_bucket']}/raw/{args['table_name']}"</span> \
+           <span class="str">f"/year={now.year}/month={now.month:02d}"</span> \
+           <span class="str">f"/day={now.day:02d}/hour={now.hour:02d}/"</span>
+
+glueContext.write_dynamic_frame.from_options(
+    frame=src, connection_type=<span class="str">"s3"</span>,
+    connection_options={<span class="str">"path"</span>: out_path},
+    format=<span class="str">"parquet"</span>,
+    format_options={<span class="str">"compression"</span>: <span class="str">"snappy"</span>},
+    transformation_ctx=<span class="str">f"dst_{args['table_name']}"</span>,
+)
+
+job.commit()  <span class="com"># ← Persist bookmark. Quên dòng này = full scan mỗi run</span></div>
+
+  <div class="twocol">
+    <div class="panel">
+      <h4>Bookmark mechanism</h4>
+      <ul>
+        <li><b>Lần 1</b>: SELECT toàn bộ bảng → lưu <code>id MAX = 1,000,000</code></li>
+        <li><b>Lần 2</b>: <code>WHERE id &gt; 1,000,000</code> → chỉ load mới</li>
+        <li><code>transformation_ctx</code> là key của state — phải stable</li>
+        <li>Bảng không có PK hoặc <code>updated_at</code> → full load mỗi lần</li>
+      </ul>
+    </div>
+    <div class="panel panel--recessed">
+      <h4>Redshift-side SQL cần viết</h4>
+      <ul>
+        <li><b>TRUNCATE</b> <code>staging.&lt;table&gt;_new</code> mỗi run</li>
+        <li><b>COPY</b> từ S3 <code>FORMAT AS PARQUET</code></li>
+        <li><b>MERGE/DELETE-INSERT</b> theo PK vào <code>historical.*</code></li>
+        <li>Cho 1:1 sync: tự build dedup + handle DELETE qua <code>updated_at</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout callout--warn">
+    <div class="callout__title">Điểm yếu của S1</div>
+    <p>Bookmark <code>id MAX</code> chỉ bắt INSERT. DELETE KHÔNG detect được (row biến mất không có timestamp sự kiện). Cần dùng <code>updated_at</code> column + soft-delete flag — yêu cầu App team sửa schema/code. Cost DPU scale với data: 4-8 DPU × 30-45 phút × 96 runs/mo = $85-254/mo/env cho full 1:1 sync.</p>
+  </div>
+
+  <!-- ========== SOLUTION 2 DETAIL ========== -->
+  <div class="section-label">04 · Solution 2 — Lambda Python chi tiết (374 LOC)</div>
+
+  <h2>S3 Export + Redshift COPY JOB</h2>
+  <p>File <code>orchestrator.py</code> là module nặng nhất về logic. Workflow phải tuân thứ tự nghiêm ngặt để đảm bảo 2 invariant: <b>N-9 (crash safety)</b> và <b>N-10 (PITR detection)</b>.</p>
+
+  <h3>Workflow xử lý một bảng (<code>_process_table</code>)</h3>
+
+  <div class="flow">
+    <div class="flow__stage">
+      <div class="flow__num"><b>01</b> BOOTSTRAP</div>
+      <div class="flow__what">Parse <code>TABLES_JSON</code> ở cold start; validate identifier regex <code>^[a-z_][a-z0-9_]{0,63}$</code>; fail-fast nếu thiếu <code>created_at</code>.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>02</b> READ STATE</div>
+      <div class="flow__what"><code>_get_watermark(table)</code> từ SSM <code>/point/s3-copy/watermark/&lt;table&gt;</code> → <code>last_id</code>. Bootstrap về 0 nếu chưa có.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>03</b> CONNECT</div>
+      <div class="flow__what"><code>pymysql.connect()</code> Aurora reader (port 13306), <code>read_timeout = LAMBDA_TIMEOUT - 60s</code> để không dangling.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>04</b> VERSION GATE</div>
+      <div class="flow__what"><span class="tag tag--crit">crit</span><code>_check_aurora_version()</code> — raise <code>RuntimeError</code> nếu Aurora MySQL &lt; 3.05 (không support <code>FORMAT CSV HEADER</code>).</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>05</b> N-10 DETECT</div>
+      <div class="flow__what"><span class="tag tag--crit">invariant</span>Nếu <code>MAX(id)</code> thực tế bảng &lt; <code>last_id</code> → Aurora đã rewind (PITR restore) → emit <code>WatermarkAheadOfSource</code> metric → abort.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>06</b> FIND MAX_ID</div>
+      <div class="flow__what"><code>_find_max_id(last_id, retention_days)</code> — tìm id cao nhất đã qua <code>NOW() - INTERVAL retention_days DAY</code>.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>07</b> CAP BATCH</div>
+      <div class="flow__what"><code>max_id = min(found_max_id, last_id + MAX_BATCH_ROWS)</code> — default 1M rows để tránh Lambda 15-min timeout.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>08</b> EXPORT SQL</div>
+      <div class="flow__what"><span class="tag tag--ok">idempotent</span><code>SELECT ... INTO OUTFILE S3 '&lt;uri&gt;' FORMAT CSV HEADER OVERWRITE ON ENCRYPTION SSE_S3</code>. URI gồm <code>{run_ts}_{batch_id}_</code> — unique per invocation.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>09</b> N-9 WATERMARK</div>
+      <div class="flow__what"><span class="tag tag--crit">invariant</span><code>_put_watermark(max_id)</code> TRƯỚC DELETE + commit. Trade-off: "row stuck trong Aurora" &gt; "duplicate load Redshift".</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>10</b> OPTIONAL DELETE</div>
+      <div class="flow__what">Nếu <code>spec.delete_after_export == True</code> (archive pattern): <code>DELETE FROM &lt;table&gt; WHERE id &gt; last_id AND id &lt;= max_id</code> + <code>conn.commit()</code>.</div>
+    </div>
+    <div class="flow__stage">
+      <div class="flow__num"><b>11</b> METRICS</div>
+      <div class="flow__what"><code>RowsExported</code>, <code>BatchDurationSeconds</code>, <code>LagSeconds</code> → CloudWatch namespace <code>Verup/S3CopyPipeline</code>.</div>
+    </div>
+  </div>
+
+  <h3>Export SQL sinh bởi <code>_build_export_sql</code></h3>
+  <div class="code-block">
+<span class="code-block__header"><span class="code-block__file">_build_export_sql()</span><span class="code-block__lang">SQL string builder</span></span>
+<span class="kw">SELECT</span> `col1`, `col2`, ..., `created_at`
+<span class="kw">FROM</span> `spot_trade_btcjpy`
+<span class="kw">WHERE</span> id &gt; <span class="num">{last_id}</span> <span class="kw">AND</span> id &lt;= <span class="num">{max_id}</span>
+<span class="kw">ORDER BY</span> id
+<span class="kw">INTO OUTFILE S3</span> <span class="str">'s3://&lt;bucket&gt;/&lt;table&gt;/dt=YYYYMMDD/hh=HH/&lt;ts&gt;_&lt;uuid8&gt;_'</span>
+  <span class="kw">FORMAT CSV HEADER</span>                           <span class="com">-- yêu cầu Aurora ≥ 3.05</span>
+  <span class="kw">FIELDS TERMINATED BY</span> <span class="str">','</span>
+  <span class="kw">OPTIONALLY ENCLOSED BY</span> <span class="str">'"'</span>
+  <span class="kw">ESCAPED BY</span> <span class="str">'\\'</span>
+  <span class="kw">LINES TERMINATED BY</span> <span class="str">'\n'</span>
+  <span class="kw">OVERWRITE ON</span>                              <span class="com">-- retry an toàn</span>
+  <span class="kw">ENCRYPTION SSE_S3</span>                          <span class="com">-- Aurora 3.04 chưa support SSE_KMS</span></div>
+
+  <div class="twocol">
+    <div class="panel">
+      <h4>N-9 · Watermark order invariant</h4>
+      <p style="font-size:13px; color: var(--text-dim); margin:0;">Lý do update watermark <b>TRƯỚC</b> DELETE+commit: nếu crash giữa watermark-update và DELETE, row stuck trong Aurora nhưng <b>KHÔNG re-export</b> (vì <code>id ≤ last_id</code>). Trade-off: row stuck có thể cleanup one-off; duplicate load gây dirty Redshift không recover được.</p>
+    </div>
+    <div class="panel">
+      <h4>N-10 · PITR detection</h4>
+      <p style="font-size:13px; color: var(--text-dim); margin:0;">Mỗi invocation check <code>SELECT MAX(id) FROM &lt;table&gt;</code> (không filter watermark). Nếu kết quả &lt; <code>last_id</code> → Aurora đã bị rewind (snapshot/PITR restore). Emit <code>WatermarkAheadOfSource</code> metric + abort. Alarm page operator chạy recovery procedure §8.8.</p>
+    </div>
+  </div>
+
+  <h3>Build deploy package (chạy TRƯỚC <code>terraform apply</code>)</h3>
+  <div class="code-block">
+<span class="code-block__header"><span class="code-block__file">lambda/requirements.txt → lambda/</span><span class="code-block__lang">bash · one-time per deploy</span></span>
+<span class="kw">cd</span> .worktrees/infra-bb-1917-s3-copy/terraform/components/s3-copy-pipeline/lambda
+<span class="kw">rm</span> -rf pymysql PyMySQL-*.dist-info __pycache__
+pip install -r requirements.txt -t . \
+  --platform manylinux2014_x86_64 \
+  --python-version <span class="num">3.11</span> \
+  --only-binary=:all: \
+  --implementation cp
+<span class="com"># Terraform `data.archive_file` sẽ zip thư mục này</span>
+<span class="com"># với excludes = ["build", "*.zip", "__pycache__", "README.md", "requirements.txt"]</span></div>
+
+  <div class="callout callout--warn">
+    <div class="callout__title">Security posture của S2</div>
+    <p>Identifier validation regex <code>^[a-z_][a-z0-9_]{0,63}$</code> là <b>defense-in-depth</b> chống SQL injection qua table/column names. <code>TABLES_JSON</code> từ Terraform-controlled nhưng nếu tfvars có typo hoặc populate qua path non-admin, identifier interpolate trực tiếp vào SQL qua backtick sẽ thành vector injection. Validation chạy ở cold start → Lambda init fail thay vì runtime fail giữa batch.</p>
+  </div>
+
+  <!-- ========== SOLUTION 3 DETAIL ========== -->
+  <div class="section-label">05 · Solution 3 — Chỉ SQL bootstrap</div>
+
+  <h2>Zero-ETL CDC — Zero custom code cho luồng chính</h2>
+  <p>AWS quản lý pipeline hoàn toàn. <b>Không cần viết Lambda/PySpark</b> cho flow data. Chỉ cần SQL manual một lần để bootstrap database target + enable history mode.</p>
+
+  <div class="code-block">
+<span class="code-block__header"><span class="code-block__file">Redshift Query Editor v2</span><span class="code-block__lang">SQL · one-time after Terraform apply #2</span></span>
+<span class="com">-- 1. Bootstrap database target từ integration UUID</span>
+<span class="kw">CREATE DATABASE</span> aurora_data
+  <span class="kw">FROM INTEGRATION</span> <span class="str">'&lt;integration-uuid-từ-Terraform-output&gt;'</span>
+  <span class="kw">SET</span> HISTORY_MODE = <span class="kw">TRUE</span>;          <span class="com">-- Audit trail DELETE/UPDATE</span>
+
+<span class="com">-- 2. Verify per-table state (chạy sau 15-30 phút seed)</span>
+<span class="kw">SELECT</span> table_name, table_state, last_update_time, error_message
+<span class="kw">FROM</span> SVV_INTEGRATION_TABLE_STATE
+<span class="kw">ORDER BY</span> last_update_time <span class="kw">DESC</span>;
+<span class="com">-- Expected: table_state = 'Synced' cho tất cả bảng trong data_filter</span>
+
+<span class="com">-- 3. Query pattern với history mode (Active records only)</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> aurora_data.point.spot_trade
+<span class="kw">WHERE</span> _record_is_active = <span class="kw">TRUE</span>;
+
+<span class="com">-- 4. Audit trail DELETE events</span>
+<span class="kw">SELECT</span> id, _create_time, _delete_time
+<span class="kw">FROM</span> aurora_data.point.user_info
+<span class="kw">WHERE</span> _record_is_active = <span class="kw">FALSE</span>
+  <span class="kw">AND</span> _delete_time &gt; <span class="str">'2026-04-01'</span>;</div>
+
+  <h3>VARCHAR 65,535-byte pre-flight check (BẮT BUỘC trước apply)</h3>
+
+  <div class="code-block">
+<span class="code-block__header"><span class="code-block__file">sql/preflight_varchar_check.sql · chạy trên Aurora qua bastion</span><span class="code-block__lang">SQL · pre-apply gate</span></span>
+<span class="com">-- Query 1 — VARCHAR/TEXT/BLOB deterministic</span>
+<span class="kw">SELECT</span> table_schema, table_name, column_name, data_type,
+       character_maximum_length, character_octet_length
+<span class="kw">FROM</span> information_schema.COLUMNS
+<span class="kw">WHERE</span> table_schema = <span class="str">'point'</span>
+  <span class="kw">AND</span> character_octet_length &gt; <span class="num">65535</span>;
+<span class="com">-- Expected: 0 rows. Nếu có row → ALTER TABLE hoặc exclude khỏi data_filter</span>
+
+<span class="com">-- Query 2 — JSON columns (Zero-ETL KHÔNG support)</span>
+<span class="kw">SELECT</span> table_schema, table_name, column_name
+<span class="kw">FROM</span> information_schema.COLUMNS
+<span class="kw">WHERE</span> table_schema = <span class="str">'point'</span> <span class="kw">AND</span> data_type = <span class="str">'json'</span>;
+<span class="com">-- Expected: 0 rows. Zero-ETL drop bảng đó silent — phải exclude explicit</span></div>
+
+  <h3>Phần code OPTIONAL (ticket riêng, KHÔNG bắt buộc cho S2 đầu tiên)</h3>
+
+  <div class="twocol">
+    <div class="panel">
+      <h4>SVV Poll Monitor Lambda</h4>
+      <ul>
+        <li><b>Vì sao cần</b>: AWS không expose CloudWatch metric native cho per-table <code>table_state</code></li>
+        <li><b>Runtime</b>: Python 3.11, <code>boto3 redshift-data</code> client</li>
+        <li><b>Schedule</b>: EventBridge cron 5 phút</li>
+        <li><b>Logic</b>: async <code>execute_statement</code> → poll <code>describe_statement</code> → parse result → emit <code>TableHealthy</code> metric per table + <code>FailedTableCount</code> env-level</li>
+        <li><b>IAM</b>: <code>redshift-data:*</code>, <code>cloudwatch:PutMetricData</code></li>
+      </ul>
+    </div>
+    <div class="panel panel--recessed">
+      <h4>EventBridge Rule → SNS (không cần Lambda)</h4>
+      <ul>
+        <li><b>Source</b>: <code>aws.rds</code>, detail-type <code>RDS Integration Event</code></li>
+        <li><b>Resources</b>: filter theo <code>aws_rds_integration.this.arn</code></li>
+        <li><b>Target</b>: SNS topic <code>alert-chatbot-infra</code> → Slack</li>
+        <li><b>Terraform</b>: <code>aws_cloudwatch_event_rule</code> + <code>event_target</code></li>
+        <li>Zero custom code — route thẳng state change qua SNS</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout callout--key">
+    <div class="callout__title">Nhận định tổng</div>
+    <p><b>S2 nặng code nhất</b>: 374 LOC + 2 invariant phức tạp (N-9, N-10) + identifier security. <b>S1 code ngắn hơn</b> (~40 LOC PySpark) nhưng complexity dời sang MERGE SQL phía Redshift. <b>S3 zero-code cho luồng chính</b> — chỉ SQL bootstrap + optional Python monitor nếu muốn alert per-table silent-fail. Đây là lý do chính team chọn S3 bất chấp cost premium.</p>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    BB-1917 · Aurora → Redshift Pipeline · Code Responsibilities · 2026-04-19<br>
+    DOC · <code>docs/sprints/sprint-21/1917/3-solutions-architecture.md</code>
+  </footer>
+
+</div>
+</body>
+</html>

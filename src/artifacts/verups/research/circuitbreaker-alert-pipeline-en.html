@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CircuitBreaker Alert · How It Works · Verup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'IBM Plex Serif', Georgia, serif;
+    --bg: #f2f4f8; --surface: #ffffff; --surface2: #eaedf3; --surface-elevated: #ffffff;
+    --border: rgba(15,23,42,0.10); --border-bright: rgba(15,23,42,0.22);
+    --text: #0f172a; --text-dim: #475569; --text-bright: #020617;
+    --accent: #1e3a5f; --accent-dim: rgba(30,58,95,0.08);
+    --gold: #b45309; --gold-dim: rgba(180,83,9,0.1);
+    --green: #166534; --green-dim: rgba(22,101,52,0.1);
+    --red: #9f1239; --red-dim: rgba(159,18,57,0.09);
+    --steel: #334155; --steel-dim: rgba(51,65,85,0.08);
+    --grid-line: rgba(15,23,42,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1020; --surface: #111829; --surface2: #161f35; --surface-elevated: #19233b;
+      --border: rgba(226,232,240,0.09); --border-bright: rgba(226,232,240,0.2);
+      --text: #e2e8f0; --text-dim: #94a3b8; --text-bright: #f8fafc;
+      --accent: #7dd3fc; --accent-dim: rgba(125,211,252,0.12);
+      --gold: #fbbf24; --gold-dim: rgba(251,191,36,0.12);
+      --green: #86efac; --green-dim: rgba(134,239,172,0.12);
+      --red: #fb7185; --red-dim: rgba(251,113,133,0.12);
+      --steel: #94a3b8; --steel-dim: rgba(148,163,184,0.12);
+      --grid-line: rgba(226,232,240,0.04);
+    }
+  }
+  * { margin:0; padding:0; box-sizing:border-box; min-width:0; }
+  html, body { overflow-x:hidden; }
+  body {
+    background: var(--bg);
+    background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 24px 24px;
+    color: var(--text); font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+    padding: 40px 32px 80px; overflow-wrap: break-word;
+  }
+  .container { max-width: 1180px; margin: 0 auto; }
+  .grid > *, .flex > * { min-width: 0; }
+  @keyframes fadeUp { from {opacity:0; transform:translateY(12px);} to {opacity:1; transform:translateY(0);} }
+  @keyframes fadeScale { from {opacity:0; transform:scale(0.95);} to {opacity:1; transform:scale(1);} }
+  .anim { animation: fadeUp 0.45s ease-out both; animation-delay: calc(var(--i,0) * 0.05s); }
+  .anim-scale { animation: fadeScale 0.35s ease-out both; animation-delay: calc(var(--i,0) * 0.05s); }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:0.01ms !important; animation-delay:0ms !important; transition-duration:0.01ms !important; } }
+
+  .masthead { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; padding-bottom: 32px; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+  .masthead__coord { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; display: flex; gap: 18px; flex-wrap: wrap; }
+  .masthead__coord span::before { content: '◆'; margin-right: 6px; color: var(--accent); font-size: 9px; vertical-align: middle; }
+  h1 { font-family: var(--font-display); font-size: clamp(32px, 4.5vw, 52px); font-weight: 600; line-height: 1.05; letter-spacing: -1.5px; color: var(--text-bright); margin-bottom: 10px; text-wrap: balance; }
+  .subtitle { font-size: 17px; color: var(--text-dim); max-width: 740px; line-height: 1.55; }
+  .stamp { font-family: var(--font-mono); font-size: 10px; line-height: 1.35; letter-spacing: 1.2px; text-transform: uppercase; padding: 10px 14px; border: 1px solid var(--border-bright); border-radius: 4px; color: var(--accent); background: var(--accent-dim); text-align: right; min-width: 200px; }
+  .stamp strong { display:block; font-size:12px; color: var(--text-bright); letter-spacing: 1.6px; }
+
+  section { margin-bottom: 56px; scroll-margin-top: 80px; }
+  .section-head { display: flex; align-items: baseline; gap: 16px; padding-bottom: 14px; margin-bottom: 22px; border-bottom: 1px solid var(--border); }
+  .section-head__num { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 2px; color: var(--accent); padding: 3px 8px; border: 1px solid var(--border-bright); border-radius: 3px; background: var(--accent-dim); }
+  .section-head__title { font-family: var(--font-display); font-size: 28px; font-weight: 600; letter-spacing: -0.5px; color: var(--text-bright); }
+  .section-head__sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-left: auto; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .kpi { background: var(--surface-elevated); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 18px 22px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); }
+  .kpi--gold { border-left-color: var(--gold); }
+  .kpi--red { border-left-color: var(--red); }
+  .kpi--green { border-left-color: var(--green); }
+  .kpi--steel { border-left-color: var(--steel); }
+  .kpi__label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+  .kpi__value { font-family: var(--font-display); font-size: 32px; font-weight: 600; letter-spacing: -1px; line-height: 1; color: var(--text-bright); font-variant-numeric: tabular-nums; }
+  .kpi__meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.35; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; }
+  .card--elevated { box-shadow: 0 2px 12px rgba(15,23,42,0.05); }
+  .card--recessed { background: var(--surface2); box-shadow: inset 0 1px 3px rgba(15,23,42,0.05); }
+  .card__label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card__label::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .card__title { font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.3px; color: var(--text-bright); margin-bottom: 6px; }
+  .card__sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-bottom: 14px; letter-spacing: 0.5px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .four-col { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 900px) { .two-col, .three-col, .four-col { grid-template-columns: 1fr; } }
+
+  .alert-box { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px; padding: 20px 24px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; color: var(--text); position: relative; }
+  .alert-box::before { content: 'SLACK PAYLOAD'; position: absolute; top: -10px; left: 18px; font-size: 10px; letter-spacing: 1.5px; background: var(--bg); color: var(--red); padding: 2px 10px; font-weight: 600; }
+  .alert-box .k { color: var(--gold); font-weight: 500; }
+  .alert-box .flame { color: var(--red); }
+
+  pre.code { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 16px 20px; overflow-x: auto; white-space: pre; word-break: normal; color: var(--text); margin-top: 8px; }
+  pre.code--inline { font-size: 12px; padding: 12px 16px; }
+  .code__caption { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); margin-top: 14px; margin-bottom: 4px; }
+  code, .inline { font-family: var(--font-mono); font-size: 0.9em; background: var(--accent-dim); color: var(--accent); padding: 1px 6px; border-radius: 3px; }
+
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table thead { position: sticky; top: 0; z-index: 2; }
+  .data-table th { background: var(--surface2); font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-bright); white-space: nowrap; }
+  .data-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .data-table tbody tr:nth-child(even) { background: var(--accent-dim); }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table code { font-size: 11.5px; background: var(--accent-dim); color: var(--accent); }
+  .data-table small { display: block; color: var(--text-dim); font-size: 11px; margin-top: 3px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+  .status { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 3px 10px; border-radius: 3px; white-space: nowrap; }
+  .status--high { background: var(--red-dim); color: var(--red); }
+  .status--med { background: var(--gold-dim); color: var(--gold); }
+  .status--low { background: var(--steel-dim); color: var(--steel); }
+  .status--ok { background: var(--green-dim); color: var(--green); }
+  .status--info { background: var(--accent-dim); color: var(--accent); }
+
+  ul.blueprint { list-style: none; padding: 0; font-size: 13.5px; line-height: 1.35; }
+  ul.blueprint li { padding-left: 18px; position: relative; margin-bottom: 4px; }
+  ul.blueprint li::before { content: '→'; position: absolute; left: 0; color: var(--accent); font-family: var(--font-mono); font-weight: 600; }
+
+  ol.numbered { list-style: none; counter-reset: stepc; padding: 0; }
+  ol.numbered li { padding-left: 38px; position: relative; line-height: 1.35; counter-increment: stepc; margin-bottom: 14px; }
+  ol.numbered li::before { content: counter(stepc, decimal-leading-zero); position: absolute; left: 0; top: 0; font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-dim); padding: 4px 8px; border-radius: 3px; letter-spacing: 1px; }
+
+  /* mermaid-wrap breaks out of the 1180-wide container so diagrams get more horizontal room */
+  .mermaid-wrap { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 36px 28px; overflow: auto; display: flex; justify-content: center; align-items: flex-start; margin-top: 8px; min-height: 700px; box-sizing: border-box; }
+  @media (min-width: 1244px) {
+    .mermaid-wrap { margin-left: calc((1180px + 64px - 100vw) / 2); margin-right: calc((1180px + 64px - 100vw) / 2); }
+  }
+  @media (min-width: 1664px) {
+    .mermaid-wrap { margin-left: -210px; margin-right: -210px; }
+  }
+  .mermaid-wrap .mermaid { transition: transform 0.2s ease; transform-origin: center top; transform: scale(1.35); min-width: 880px; }
+  .mermaid-wrap .mermaid svg { width: 100% !important; max-width: none !important; height: auto !important; }
+  .mermaid .nodeLabel { color: var(--text) !important; font-family: var(--font-body) !important; font-size: 17px !important; font-weight: 500 !important; }
+  .mermaid .edgeLabel { color: var(--text-dim) !important; background-color: var(--surface) !important; font-family: var(--font-mono) !important; font-size: 14px !important; padding: 4px 8px !important; }
+  .mermaid .edgeLabel rect { fill: var(--surface) !important; }
+  .mermaid .actor { stroke-width: 2px; }
+  .mermaid text.actor > tspan { font-size: 17px !important; font-weight: 600 !important; }
+  .mermaid .messageText { font-family: var(--font-mono) !important; font-size: 14px !important; font-weight: 500 !important; }
+  .mermaid .labelText, .mermaid .labelText > tspan { font-family: var(--font-mono) !important; font-size: 13px !important; }
+  .mermaid .noteText, .mermaid .noteText > tspan { font-family: var(--font-mono) !important; font-size: 13px !important; }
+  .mermaid .loopText, .mermaid .loopText > tspan { font-size: 13px !important; }
+  @media (max-width: 1100px) {
+    .mermaid-wrap { padding: 24px 14px; min-height: 480px; margin-left: 0; margin-right: 0; }
+    .mermaid-wrap .mermaid { transform: scale(1.1); min-width: 540px; }
+  }
+
+  .zoom-controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; z-index: 10; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 2px; }
+  .zoom-controls button { width: 28px; height: 28px; border: none; background: transparent; color: var(--text-dim); font-family: var(--font-mono); font-size: 14px; cursor: pointer; border-radius: 3px; }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .mermaid-wrap.is-zoomed { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .stage-grid { display: grid; grid-template-columns: 80px 1fr; gap: 0; margin-top: 8px; }
+  .stage { display: contents; }
+  .stage__rail { background: var(--accent-dim); border-right: 2px solid var(--accent); padding: 18px 12px; text-align: center; font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .stage__rail strong { display: block; font-size: 22px; font-family: var(--font-display); color: var(--text-bright); margin-bottom: 4px; letter-spacing: -0.5px; }
+  .stage__body { padding: 18px 22px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); }
+  .stage:nth-child(odd) .stage__body { background: var(--surface); }
+  .stage:nth-child(even) .stage__body { background: var(--surface2); }
+  .stage__title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 4px; color: var(--text-bright); }
+  .stage__owner { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px; margin-bottom: 10px; }
+  @media (max-width: 700px) {
+    .stage-grid { grid-template-columns: 1fr; }
+    .stage__rail { border-right: none; border-left: 4px solid var(--accent); text-align: left; padding: 10px 14px; }
+    .stage__rail strong { display: inline; margin-right: 8px; font-size: 16px; }
+  }
+
+  .pipeline { display: flex; gap: 0; align-items: stretch; overflow-x: auto; padding: 16px 0 8px; scrollbar-width: thin; }
+  .pipeline-step { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 6px; padding: 14px 16px; min-width: 160px; flex-shrink: 0; }
+  .pipeline-step--gold { border-top-color: var(--gold); }
+  .pipeline-step--green { border-top-color: var(--green); }
+  .pipeline-step--red { border-top-color: var(--red); }
+  .pipeline-step--steel { border-top-color: var(--steel); }
+  .pipeline-step .num { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 6px; }
+  .pipeline-step .name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .pipeline-step .detail { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); line-height: 1.5; }
+  .pipeline-arrow { display: flex; align-items: center; padding: 0 6px; color: var(--border-bright); font-size: 18px; flex-shrink: 0; }
+
+  .diff-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .diff-panel__header { font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; padding: 12px 18px; }
+  .diff-panel__header--verup { background: var(--accent-dim); color: var(--accent); border-bottom: 2px solid var(--accent); }
+  .diff-panel__header--coinbook { background: var(--gold-dim); color: var(--gold); border-bottom: 2px solid var(--gold); }
+  .diff-panel__body { padding: 18px 20px; background: var(--surface); font-size: 13px; line-height: 1.6; min-height: 120px; }
+  .diff-panel__body + .diff-panel__body { border-left: 1px solid var(--border); }
+  @media (max-width: 768px) { .diff-panels { grid-template-columns: 1fr; } }
+
+  .callout { padding: 16px 22px; border-radius: 6px; border-left: 4px solid var(--accent); background: var(--accent-dim); margin: 20px 0; font-size: 14px; line-height: 1.35; }
+  .callout--warn { border-left-color: var(--gold); background: var(--gold-dim); }
+  .callout--danger { border-left-color: var(--red); background: var(--red-dim); }
+  .callout__title { font-weight: 600; font-family: var(--font-mono); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; color: var(--accent); }
+  .callout--warn .callout__title { color: var(--gold); }
+  .callout--danger .callout__title { color: var(--red); }
+
+  nav.toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 22px 26px; margin-bottom: 40px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); }
+  nav.toc h2 { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  nav.toc ol { list-style: none; columns: 2; column-gap: 32px; font-size: 13.5px; counter-reset: toc-item; }
+  nav.toc ol li { padding-left: 26px; position: relative; line-height: 2; counter-increment: toc-item; break-inside: avoid; }
+  nav.toc ol li::before { content: counter(toc-item, decimal-leading-zero); position: absolute; left: 0; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; top: 4px; }
+  nav.toc a { color: var(--text); text-decoration: none; border-bottom: 1px dotted transparent; transition: border-color 0.15s ease; }
+  nav.toc a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  @media (max-width: 768px) { nav.toc ol { columns: 1; } }
+
+  hr.sep { border: none; height: 1px; background: linear-gradient(to right, transparent, var(--border-bright) 20%, var(--border-bright) 80%, transparent); margin: 24px 0; }
+  .hint { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px; margin-top: 4px; }
+
+  .tree { display: flex; flex-direction: column; gap: 8px; }
+  .tree-node { display: grid; grid-template-columns: 36px 1fr; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; }
+  .tree-node--branch { border-left-color: var(--gold); }
+  .tree-node--leaf-allow { border-left-color: var(--green); background: var(--green-dim); }
+  .tree-node--leaf-block { border-left-color: var(--red); background: var(--red-dim); }
+  .tree-node__step { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text-dim); padding-top: 2px; }
+  .tree-node__title { font-weight: 600; margin-bottom: 4px; }
+  .tree-node__detail { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; font-family: var(--font-mono); }
+  .tree-indent { padding-left: 28px; border-left: 1px dashed var(--border-bright); margin-left: 18px; }
+
+  .math { font-family: 'IBM Plex Serif', serif; font-style: italic; font-size: 17px; padding: 16px 24px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; text-align: center; line-height: 1.8; margin: 12px 0; color: var(--text-bright); }
+  .math .var { color: var(--accent); font-weight: 600; }
+  .math .op { color: var(--gold); font-weight: 600; padding: 0 4px; }
+
+  .lang-switch { position: fixed; top: 20px; right: 20px; display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; z-index: 100; box-shadow: 0 2px 8px rgba(15,23,42,0.06); }
+  .lang-switch a { padding: 5px 10px; color: var(--text-dim); text-decoration: none; border-radius: 3px; font-weight: 600; }
+  .lang-switch a.active { background: var(--accent-dim); color: var(--accent); }
+  .lang-switch a:hover:not(.active) { color: var(--text); }
+
+  footer { margin-top: 80px; padding-top: 28px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+</style>
+</head>
+<body>
+
+<div class="lang-switch">
+  <a href="circuitbreaker-alert-pipeline.html">VI</a>
+  <a href="#" class="active">EN</a>
+</div>
+
+<div class="container">
+
+<header class="masthead anim" style="--i:0">
+  <div>
+    <div class="masthead__coord">
+      <span>VERUP · BS-INTEGRATION-SERVER</span>
+      <span>BS-EXCHANGE-INFRA</span>
+      <span>AP-NORTHEAST-1</span>
+    </div>
+    <h1>CircuitBreaker Alert · How It Works</h1>
+    <p class="subtitle">Mechanism-focused explainer covering <strong>how the CircuitBreaker Alert pipeline operates</strong> in the Coinbook (verup) platform: from the trigger condition inside the Java worker, through log shipping → CloudWatch Subscription Filter → Lambda → Slack, to the order-blocking side-effect on the trading layer. The ADA_JPY alert from 2026-04-21 is used as a worked example in §07.</p>
+  </div>
+  <div class="stamp">
+    <strong>EXPLAINER</strong>
+    MECHANISM-FOCUSED<br>
+    SNAPSHOT 2026-04-21<br>
+    2063 SLOC RESEARCH
+  </div>
+</header>
+
+<nav class="toc anim" style="--i:1">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#purpose">Purpose &amp; scope</a></li>
+    <li><a href="#architecture">Five-stage architecture</a></li>
+    <li><a href="#config">Configuration model</a></li>
+    <li><a href="#detection">Detection mechanism</a></li>
+    <li><a href="#delivery">Alert delivery pipeline</a></li>
+    <li><a href="#blocking">Side-effect · order blocking</a></li>
+    <li><a href="#example">Worked example · ADA_JPY</a></li>
+    <li><a href="#runbook">Operator decision tree</a></li>
+    <li><a href="#issues">Issues &amp; severity matrix</a></li>
+    <li><a href="#coinbook">verup vs coinbook</a></li>
+    <li><a href="#reco">Improvement recommendations</a></li>
+  </ol>
+</nav>
+
+<!-- ============ §1 PURPOSE ============ -->
+<section id="purpose">
+  <div class="section-head anim" style="--i:2">
+    <span class="section-head__num">01</span>
+    <span class="section-head__title">Purpose &amp; scope of CircuitBreaker</span>
+    <span class="section-head__sub">why · what · who</span>
+  </div>
+
+  <div class="card anim" style="--i:3">
+    <p><strong>CircuitBreaker</strong> in trading context is fundamentally different from the typical CB pattern (Hystrix/Resilience4j). This is <em>not</em> a fault-tolerance mechanism for RPC — it is a mechanism that detects and reacts to <strong>abnormal price movement</strong> (flash crash or flash spike) on a single trading pair within a short time window.</p>
+    <hr class="sep">
+    <p>When the price move exceeds a threshold (e.g. &gt; 50% over 10 minutes), the system performs two parallel actions: <strong>(a) automatically rejects orders that are vulnerable to slippage</strong> (MARKET, STOP, SIMPLE_MARKET) for a configured duration; and <strong>(b) emits a Slack notification</strong> so the operator can manually inspect or intervene if necessary.</p>
+  </div>
+
+  <div class="three-col anim" style="--i:4" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">Automatic responsibility</div>
+      <p>Protects traders from flash crashes by <strong>automatically blocking</strong> market orders the moment a large move is detected — no manual intervention required.</p>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">Operator responsibility</div>
+      <p>The Slack alert lets the operator <strong>become aware</strong> of what is happening: inspect the orderbook, verify it's not data anomaly, decide whether to extend the block.</p>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">Scope of application</div>
+      <p>Runs in the <strong>Invest environment only</strong> (per <code>scheduler.md:14</code>), against symbols enrolled in <code>worker_master</code>. Verup has <strong>not yet deployed PRD</strong>; DEV and STG currently cover ADA_JPY and NIDT_JPY.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §2 ARCHITECTURE ============ -->
+<section id="architecture">
+  <div class="section-head anim" style="--i:5">
+    <span class="section-head__num">02</span>
+    <span class="section-head__title">Five-stage architecture</span>
+    <span class="section-head__sub">end-to-end flow</span>
+  </div>
+
+  <div class="card anim" style="--i:6">
+    <p>The pipeline consists of five stages owned by five different components. Stages 1-2 are <em>business logic + DB write</em> (App tier); stages 3-5 are <em>log shipping → notification</em> (Infra tier). Every stage is <strong>asynchronous</strong> with respect to the next — no synchronous calls between them.</p>
+  </div>
+
+  <div class="stage-grid anim" style="--i:7" style="margin-top:18px;">
+    <div class="stage">
+      <div class="stage__rail"><strong>1</strong>Detection</div>
+      <div class="stage__body">
+        <div class="stage__title">Java worker computes diffRate &amp; persists state</div>
+        <div class="stage__owner">Owner: <code>bs-integration-server/point-worker</code> · class <code>point.worker.worker.CircuitBreaker</code></div>
+        <p>The worker runs every 1 second per active <code>(tradeType, currencyPair)</code>. Reads two PT1M candlesticks, computes <code>diffRate</code>, compares with <code>circuitBreakPercent</code>. If exceeded → <code>UPDATE currency_pair_config SET circuit_break_updated_at = now()</code>.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>2</strong>Emission</div>
+      <div class="stage__body">
+        <div class="stage__title">Emit INFO log with a fixed prefix</div>
+        <div class="stage__owner">Owner: same worker · EKS container stdout</div>
+        <p>Upon trigger the worker emits an INFO log whose prefix must match <code>"Circuit Breaker symbol:..."</code> exactly. This string is the <strong>contract</strong> that bridges the app tier and the infra tier — the filter pattern matches on it.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>3</strong>Shipping</div>
+      <div class="stage__body">
+        <div class="stage__title">Fluent Bit ships stdout → CloudWatch</div>
+        <div class="stage__owner">Owner: Fluent Bit DaemonSet · namespace <code>amazon-cloudwatch</code></div>
+        <p>The DaemonSet tails <code>/var/log/containers/*.log</code>, batches, and <code>PutLogEvents</code> to log group <code>/aws/containerinsights/point/application</code>.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>4</strong>Filter</div>
+      <div class="stage__body">
+        <div class="stage__title">Subscription filter matches &amp; invokes Lambda</div>
+        <div class="stage__owner">Owner: <code>bs-exchange-infra/cloudwatch_circuitbreaker_lambda</code></div>
+        <p>Each new log event is evaluated against the JSON <code>filter_pattern</code>. If it matches (three AND-ed conditions), CloudWatch invokes the <code>circuitbreaker-to-slack</code> Lambda asynchronously with a gzip+base64 payload.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>5</strong>Notify</div>
+      <div class="stage__body">
+        <div class="stage__title">Lambda decodes &amp; POSTs the Slack webhook</div>
+        <div class="stage__owner">Owner: Python 3.9 Lambda · file <code>lambda_function.py</code></div>
+        <p>The Lambda gunzips → parses the JSON log event → checks the 10-minute rate limit → formats a text payload → POSTs the Slack incoming webhook. The Slack channel renders the message for the operator.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card anim" style="--i:8" style="margin-top:24px;">
+    <div class="card__label">Big-picture sequence diagram</div>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+      </div>
+      <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant W as Java Worker
+  participant DB as Aurora MySQL
+  participant FB as Fluent Bit DS
+  participant CW as CloudWatch Logs
+  participant L as Lambda
+  participant SL as Slack
+  Note over W: Stage 1 Detection every 1s per symbol
+  W->>DB: read currency_pair_config
+  W->>DB: read latest PT1M candlestick
+  W->>DB: read previous PT1M candlestick N min ago
+  Note over W: Compute diffRate
+  alt diffRate greater than threshold
+    W->>DB: UPDATE circuit_break_updated_at
+    Note over W: Stage 2 Emission
+    W-->>FB: stdout INFO Circuit Breaker symbol
+    Note over FB,CW: Stage 3 Shipping
+    FB-->>CW: PutLogEvents
+    Note over CW: Stage 4 Filter
+    CW-->>L: invoke async gzip base64 payload
+    Note over L: Stage 5 Notify
+    L->>L: gunzip parse JSON
+    alt elapsed since last alert greater than 10 min
+      L->>SL: POST webhook text payload
+      L->>L: update last_log_sent_time
+    else suppressed within rate limit window
+      L->>L: skip silently
+    end
+  else diffRate below or equal threshold
+    W-->>W: log debug only no trigger
+  end
+  Note over W,DB: Side effect downstream order layer
+  W->>W: subsequent isCircuitBreaking returns true for stopTimespan minutes
+      </pre>
+    </div>
+    <p class="hint" style="margin-top:14px;">All inter-stage communication is <em>asynchronous</em>. End-to-end latency is typically 5-15 seconds, dominated by Fluent Bit buffer + CloudWatch propagation.</p>
+  </div>
+</section>
+
+<!-- ============ §3 CONFIG ============ -->
+<section id="config">
+  <div class="section-head anim" style="--i:9">
+    <span class="section-head__num">03</span>
+    <span class="section-head__title">Configuration model</span>
+    <span class="section-head__sub">currency_pair_config + worker_master</span>
+  </div>
+
+  <div class="card anim" style="--i:10">
+    <p>CircuitBreaker behaviour is driven by <strong>two configuration tables</strong> in Aurora MySQL. Every threshold, time window, and block duration is changeable at runtime via DB — no redeploy needed.</p>
+  </div>
+
+  <div class="two-col anim" style="--i:11" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__title">currency_pair_config</div>
+      <div class="card__sub">Aurora · 1 row per (tradeType, currencyPair)</div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <colgroup><col style="width:38%"><col></colgroup>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>circuit_break_percent</code></td><td>Threshold percentage as integer (50 = 50%). Triggers when <code>diffRate &gt; percent/100</code>.</td></tr>
+              <tr><td><code>circuit_break_check_timespan</code></td><td>Comparison window in <strong>minutes</strong>. The worker compares the current price to the price <em>N minutes ago</em>.</td></tr>
+              <tr><td><code>circuit_break_stop_timespan</code></td><td>Order-blocking duration after a trigger, in <strong>minutes</strong>. Auto-clears when the window elapses.</td></tr>
+              <tr><td><code>circuit_break_updated_at</code></td><td>Timestamp of the most recent trigger. The worker SETs it; <code>isCircuitBreaking</code> READs it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:10px;">Updated via the admin endpoint <code>PUT /admin/v1/currency-pair-config</code> or directly via DML.</p>
+    </div>
+
+    <div class="card card--elevated">
+      <div class="card__title">worker_master</div>
+      <div class="card__sub">Aurora · 1 row per (env, beanName, tradeType, currencyPair)</div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <colgroup><col style="width:38%"><col></colgroup>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>environment</code></td><td>Env scope: <code>dev</code> · <code>stg</code> · <code>prd</code>. Verup currently has only dev + stg.</td></tr>
+              <tr><td><code>bean_name</code></td><td><code>circuitBreaker</code> (lowerCamelCase of <code>CircuitBreaker.class</code>).</td></tr>
+              <tr><td><code>trade_type</code> · <code>currency_pair</code></td><td>The pair to be checked. Source of truth for "which symbols have CB enabled".</td></tr>
+              <tr><td><code>interval_millis</code></td><td>Tick frequency. Currently <strong>1000 ms = every 1 second</strong> for all active symbols.</td></tr>
+              <tr><td><code>enabled</code></td><td>Toggle the worker without deleting the row.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:10px;">New pairs = <code>INSERT</code> a new row (V*.sql migration or admin tool).</p>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:12">
+    <div class="callout__title">How the two tables relate</div>
+    <code>worker_master</code> determines <strong>who gets checked</strong> (the symbol list + cadence). <code>currency_pair_config</code> determines <strong>the threshold &amp; block duration</strong> for each. A pair can have a row in <code>currency_pair_config</code> but no row in <code>worker_master</code> ⇒ never checked. Conversely, a row in <code>worker_master</code> with <code>circuit_break_percent</code> NULL ⇒ checked, but never triggers.
+  </div>
+</section>
+
+<!-- ============ §4 DETECTION ============ -->
+<section id="detection">
+  <div class="section-head anim" style="--i:13">
+    <span class="section-head__num">04</span>
+    <span class="section-head__title">Detection mechanism</span>
+    <span class="section-head__sub">CircuitBreaker.execute · stages 1+2</span>
+  </div>
+
+  <div class="card anim" style="--i:14">
+    <p>This is the only "decision-making" component of the entire pipeline. Every downstream stage is just transport — none of them participates in the detection logic. The worker runs independently as an SQS subscriber; each tick processes one trading pair.</p>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:15" style="margin-top:20px;">
+    <div class="card__label">Worker lifecycle · SQS to decision</div>
+    <ol class="numbered">
+      <li><strong>Subscriber registration</strong>: <code>Application.java:31</code> registers <code>CircuitBreakerSqsSubscriber</code> in <code>SubscriberGroup.ALL</code>. On pod startup, <code>WorkerDaemon</code> spawns a thread running <code>SqsSubscriber.run()</code>.</li>
+      <li><strong>SQS long-polling</strong>: <code>sqsManager.subscribe(queueName, 10)</code> with <code>WAIT_TIME_SECONDS=20</code> — waits up to 20s per loop. Queue name: <code>&lt;env&gt;-circuitBreaker</code>.</li>
+      <li><strong>Scheduler mode</strong>: when the first message (<code>workerForm.method == null</code>) arrives, <code>SqsCallback</code> reads <code>worker_master</code>, spawns a <code>WorkerMasterRunner</code> that republishes a message every <code>intervalMillis</code> ms for 60 seconds — <em>self-replicating</em>.</li>
+      <li><strong>Execute mode</strong>: when receiving <code>workerForm.method != null</code>, <code>WorkerRunner</code> calls <code>worker.work(form)</code> → acquires Redis lock → invokes <code>CircuitBreaker.execute(symbol, params)</code>.</li>
+      <li><strong>Detection</strong>: read 2 candlesticks + compute diffRate (details below) → decide whether to trigger.</li>
+    </ol>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:16" style="margin-top:20px;">
+    <div class="card__label">Formula &amp; trigger condition</div>
+    <p>The worker reads two PT1M (1-minute period) candlesticks from the <code>candlestick</code> table:</p>
+    <ul class="blueprint">
+      <li><code>latestCandlestick</code> — the latest candlestick at the current moment (top 1 DESC). May still be in formation (<code>fixed=false</code>).</li>
+      <li><code>previousCandlestick</code> — the oldest candlestick at <code>now − N minutes</code> (top 1 ASC). Already fixed (<code>fixed=true</code>).</li>
+    </ul>
+    <p style="margin-top:14px;">Where <code>N = circuitBreakCheckTimespan</code>. Then:</p>
+    <div class="math">
+      <span class="var">diffRate</span> <span class="op">=</span>
+      <span class="op">|</span> latest.open <span class="op">−</span> previous.open <span class="op">|</span>
+      <span class="op">/</span> previous.open
+    </div>
+    <p>The trigger condition is <strong>strict greater-than</strong> (not <code>&gt;=</code>):</p>
+    <div class="math">
+      trigger <span class="op">⟺</span> <span class="var">diffRate</span> <span class="op">&gt;</span> <span class="var">circuitBreakPercent</span> <span class="op">/</span> 100
+    </div>
+    <hr class="sep">
+    <p><strong>Skip conditions</strong> (early return — no trigger):</p>
+    <div class="four-col" style="margin-top:10px;">
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-1</strong>latestCandlestick == null</div>
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-2</strong>checkTimespan null or &lt; 1</div>
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-3</strong>previousCandlestick == null</div>
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-4</strong>previous.open == 0 (avoid div-by-zero)</div>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:17">
+    <div class="callout__title">Insight · candlestick with volume = 0</div>
+    When no trades occur in minute N, that candlestick is still created: <code>open/high/low/close</code> are all inherited from the most recent traded price (<code>CandlestickService.updateByPrevious</code>), <code>volume = 0</code>, <code>fixed = true</code>. As a result, the comparison anchor remains correct: <em>"the most recent actual price ≤ N minutes ago"</em>. The comment at <code>CircuitBreaker.java:122</code> documents this behaviour.
+  </div>
+
+  <div class="card card--elevated anim" style="--i:18" style="margin-top:20px;">
+    <div class="card__label">Trigger actions</div>
+    <div class="two-col">
+      <div>
+        <p><strong>Persist state (for the order layer):</strong></p>
+        <pre class="code code--inline">currencyPairConfig
+  .setCircuitBreakUpdatedAt(date);
+currencyPairConfigService
+  .save(currencyPairConfig);</pre>
+      </div>
+      <div>
+        <p><strong>Emit log (for the alert pipeline):</strong></p>
+        <pre class="code code--inline">log.info("Circuit Breaker symbol: "
+  + JsonUtil.encode(symbol)
+  + ", circuitBreakCheckTimeSpan: ..."
+  + ", latestCandlestick: ..."
+  + ", previousCandlestick: ..."
+  + ", diffRate: ..."
+  + ", cirCuitBreakPercent/100: ..."
+  + ", circuitBreakStopTimespan: ..."
+  + ", circuitBreakUpdatedAt: ...");</pre>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:14px;">Both actions belong to an <strong>implicit unit of work</strong> — the log is emitted right after the save. If the Aurora write fails, the log is not emitted ⇒ no alert.</p>
+  </div>
+</section>
+
+<!-- ============ §5 DELIVERY ============ -->
+<section id="delivery">
+  <div class="section-head anim" style="--i:19">
+    <span class="section-head__num">05</span>
+    <span class="section-head__title">Alert delivery pipeline</span>
+    <span class="section-head__sub">stage 3 → 4 → 5</span>
+  </div>
+
+  <div class="card anim" style="--i:20">
+    <p>After the worker emits the INFO log, the alert must traverse three steps to reach Slack. Each step has its own <strong>contract</strong> and can fail independently — the log must be in the right format to pass the filter; the payload must be gzip for the Lambda to decode; the rate limiter must reset for Slack to accept a fresh message.</p>
+  </div>
+
+  <div class="pipeline anim" style="--i:21" style="margin-top:18px;">
+    <div class="pipeline-step">
+      <div class="num">STAGE 3</div>
+      <div class="name">Fluent Bit ship</div>
+      <div class="detail">container stdout<br>→ Log Group<br>containerinsights<br>/point/application</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--gold">
+      <div class="num">STAGE 4a</div>
+      <div class="name">Filter match</div>
+      <div class="detail">JSON filter pattern<br>3 AND-ed conditions<br>pod prefix · level · msg prefix</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--gold">
+      <div class="num">STAGE 4b</div>
+      <div class="name">Invoke Lambda</div>
+      <div class="detail">async invocation<br>gzip+base64 payload<br>1 invocation per matched event</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--red">
+      <div class="num">STAGE 5a</div>
+      <div class="name">Decode &amp; gate</div>
+      <div class="detail">gunzip → JSON<br>rate-limit gate<br>10-min global var</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--red">
+      <div class="num">STAGE 5b</div>
+      <div class="name">POST Slack</div>
+      <div class="detail">requests.post<br>webhook URL<br>username<br>PointOPECircuitBreaker</div>
+    </div>
+  </div>
+
+  <div class="two-col anim" style="--i:22" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">Stage 4 · Subscription Filter pattern</div>
+      <pre class="code">{ $.kubernetes.pod_name = "point-worker-*"
+  &amp;&amp; $.log_processed.level = "INFO"
+  &amp;&amp; $.log_processed.message = "Circuit Breaker symbol:*" }</pre>
+      <ul class="blueprint" style="margin-top:14px;">
+        <li><strong>Pod prefix</strong> — only accept logs from the <code>point-worker-*</code> deployment</li>
+        <li><strong>Level INFO</strong> — match the level the worker emits (not ERROR)</li>
+        <li><strong>Message prefix</strong> — the <code>Circuit Breaker symbol:*</code> string the worker emits via <code>log.info</code></li>
+      </ul>
+      <p class="hint" style="margin-top:10px;">The filter runs <em>CloudWatch-side</em> before the Lambda is invoked. Saves significant Lambda invocation cost.</p>
+    </div>
+
+    <div class="card card--elevated">
+      <div class="card__label">Stage 5 · Lambda handler</div>
+      <pre class="code">def lambda_handler(event, context):
+  global last_log_sent_time
+  decoded = base64.b64decode(event['awslogs']['data'])
+  if not decoded.startswith(b'\x1f\x8b'): return  # gzip guard
+  payload = json.loads(gzip.decompress(decoded))
+  for ev in payload['logEvents']:
+    msg = json.loads(ev['message'])
+    ts  = msg['log_processed']['@timestamp']
+    err = msg['log_processed']['message'].split('\n')[0]
+    if datetime.strptime(ts, FMT) - last_log_sent_time &gt; timedelta(minutes=10):
+      r = requests.post(webhook_url, data=json.dumps({
+        'text': f'{emoji}{warning_text}{emoji}\n&lt;!channel&gt;\n...{err}\n',
+        'icon_emoji': alert_emoji,
+        'username': 'PointOPECircuitBreaker'}))
+      if r.status_code == 200: last_log_sent_time = ...</pre>
+    </div>
+  </div>
+
+  <div class="callout callout--danger anim" style="--i:23">
+    <div class="callout__title">The rate limiter has five inherent weaknesses</div>
+    The rate-limit mechanism uses <code>last_log_sent_time</code> as a <strong>module-level global variable</strong> in Python — the single biggest design weakness in the current pipeline:
+    <ul class="blueprint" style="margin-top:8px;">
+      <li><strong>Cold-start reset</strong> — every fresh Lambda container initializes <code>last = now − 10′</code> ⇒ the first event always passes</li>
+      <li><strong>Concurrent containers</strong> — AWS may spawn N containers in parallel; each holds its own variable ⇒ N alerts at once</li>
+      <li><strong>Warm container race</strong> — two events arriving close together in the same container may pass the gate concurrently (the Python GIL doesn't protect across I/O)</li>
+      <li><strong>Out-of-order timestamps</strong> — a later event with a smaller <code>@timestamp</code> ⇒ <code>time_diff</code> goes negative ⇒ silently dropped</li>
+      <li><strong>Global gate</strong> — one ADA_JPY trigger suppresses NIDT_JPY alerts for the next 10 minutes; the rate limit is not partitioned by <code>symbolId</code></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ §6 BLOCKING ============ -->
+<section id="blocking">
+  <div class="section-head anim" style="--i:24">
+    <span class="section-head__num">06</span>
+    <span class="section-head__title">Side-effect · order blocking</span>
+    <span class="section-head__sub">isCircuitBreaking · order layer</span>
+  </div>
+
+  <div class="card anim" style="--i:25">
+    <p>This is an <strong>automatic side-effect</strong> of stage 1 — independent of Slack. Once <code>circuit_break_updated_at</code> is set, every order placed into the system must pass the <code>isCircuitBreaking(symbol)</code> check. This behaviour is independent of whether the operator has seen the alert.</p>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:26" style="margin-top:20px;">
+    <div class="card__label">Check formula</div>
+    <pre class="code">return (now - config.getCircuitBreakUpdatedAt().getTime())
+       &lt; config.getCircuitBreakStopTimespan() * MINUTE_MS;</pre>
+    <p class="hint" style="margin-top:10px;">Returns <code>false</code> (do not block) if <code>updatedAt == null</code> or <code>stopTimespan == null</code>. This is a "fail-open" design — prioritizing the ability to trade over over-protective safety.</p>
+  </div>
+
+  <div class="three-col anim" style="--i:27" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">SpotOrderService</div>
+      <p class="hint">SpotOrderService.java:3556</p>
+      <hr class="sep">
+      <p><strong>Blocks:</strong></p>
+      <ul class="blueprint">
+        <li><code>MARKET</code> · market order</li>
+        <li><code>STOP</code> · stop-loss order</li>
+        <li><code>SIMPLE_MARKET</code> · MARKET variant</li>
+      </ul>
+      <p style="margin-top:10px;"><strong>Does not block:</strong></p>
+      <ul class="blueprint">
+        <li><code>LIMIT</code> · user-set price</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">PosOrderService</div>
+      <p class="hint">PosOrderService.java:127</p>
+      <hr class="sep">
+      <p><strong>Blocks:</strong></p>
+      <ul class="blueprint"><li><code>MARKET</code> only</li></ul>
+      <p class="hint" style="margin-top:14px;">Domain: position-of-sale (margin/leverage trading).</p>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">PointPosOrderService</div>
+      <p class="hint">PointPosOrderService.java:133</p>
+      <hr class="sep">
+      <p><strong>Blocks:</strong></p>
+      <ul class="blueprint"><li><code>MARKET</code> only</li></ul>
+      <p class="hint" style="margin-top:14px;">Verup-only extension (coinbook only has Spot + Pos).</p>
+    </div>
+  </div>
+
+  <div class="callout callout--warn anim" style="--i:28">
+    <div class="callout__title">Why are LIMIT orders not blocked?</div>
+    A LIMIT order requires the user to <strong>specify a concrete price</strong>; if the price is far from the market, the order only matches when price returns — the user accepts that risk. MARKET/STOP/SIMPLE_MARKET match <em>immediately</em> at any price in the orderbook ⇒ severe slippage risk during a flash crash. Note that <code>SpotTradeService.java:2309</code> has a similar check for the stop-order matching loop, but it has been <strong>commented out</strong> — meaning stop orders placed before the trigger still match while CB is active; only new orders are rejected.
+  </div>
+
+  <div class="card card--elevated anim" style="--i:29" style="margin-top:20px;">
+    <div class="card__label">State machine for a single symbol</div>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+      </div>
+      <pre class="mermaid">
+stateDiagram-v2
+  [*] --> Trading
+  Trading --> Trading: tick passes diffRate below threshold
+  Trading --> Blocked: trigger UPDATE updatedAt
+  Blocked --> Blocked: tick re-checks within stopTimespan
+  Blocked --> Blocked: re-trigger refresh updatedAt
+  Blocked --> Trading: stopTimespan elapsed
+  state Trading {
+    [*] --> AcceptAll
+    AcceptAll: MARKET STOP LIMIT all accepted
+  }
+  state Blocked {
+    [*] --> RejectMarketStop
+    RejectMarketStop: ORDER_ERROR_CIRCUIT_BREAKER 50031
+    RejectMarketStop: LIMIT still accepted
+  }
+      </pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §7 EXAMPLE ============ -->
+<section id="example">
+  <div class="section-head anim" style="--i:30">
+    <span class="section-head__num">07</span>
+    <span class="section-head__title">Worked example · ADA_JPY alert</span>
+    <span class="section-head__sub">2026-04-21 · STG · stage-by-stage trace</span>
+  </div>
+
+  <div class="card anim" style="--i:31">
+    <p>To see how the mechanism in §04-§06 plays out in practice, we trace the alert that fired on STG on 2026-04-21. This is <strong>just one sample</strong> — the pipeline processes every alert through this same workflow.</p>
+  </div>
+
+  <div class="kpi-row anim" style="--i:32" style="margin-top:20px;">
+    <div class="kpi kpi--red anim-scale"><div class="kpi__label">Observed diffRate</div><div class="kpi__value">51.28%</div><div class="kpi__meta">|39.46 − 81.00| / 81.00</div></div>
+    <div class="kpi kpi--gold anim-scale"><div class="kpi__label">circuitBreakPercent</div><div class="kpi__value">50%</div><div class="kpi__meta">in currency_pair_config</div></div>
+    <div class="kpi anim-scale"><div class="kpi__label">checkTimespan</div><div class="kpi__value">10′</div><div class="kpi__meta">comparison window</div></div>
+    <div class="kpi kpi--steel anim-scale"><div class="kpi__label">stopTimespan</div><div class="kpi__value">10′</div><div class="kpi__meta">order-block duration</div></div>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:33" style="margin-top:24px;">
+    <div class="card__label">Stage-by-stage trace</div>
+    <ol class="numbered">
+      <li><strong>Stage 1.A — SQS tick</strong>: queue <code>stg-circuitBreaker</code> receives <code>WorkerForm{symbolId:4, currencyPair:"ADA_JPY", tradeType:"SPOT", method:"execute"}</code> pushed by <code>WorkerMasterRunner</code> in the previous second.</li>
+      <li><strong>Stage 1.B — Read config</strong>: <code>currencyPairConfigService.findByCondition(SPOT, ADA_JPY)</code> → <code>{ percent: 50, checkTimespan: 10, stopTimespan: 10, updatedAt: null }</code>.</li>
+      <li><strong>Stage 1.C — Read latest candlestick</strong>: PT1M at the current minute → <code>{ open: 39.46, close: 39.46, volume: 10, fixed: false }</code>.</li>
+      <li><strong>Stage 1.D — Read previous candlestick</strong>: PT1M at minute <code>now − 10</code> → <code>{ open: 81.00, close: 81.00, volume: 0, fixed: true }</code>. Volume = 0 because no trades happened 10 minutes ago — the 81.00 price is carry-over from the last trade.</li>
+      <li><strong>Stage 1.E — Compute diffRate</strong>: <code>|39.46 − 81.00| / 81.00 = 41.54 / 81.00 ≈ 0.51283950...</code> = 51.28%. Compared with threshold <code>50/100 = 0.5</code>: <code>0.5128 &gt; 0.5</code> ⇒ <strong>trigger</strong>.</li>
+      <li><strong>Stage 1.F — Persist</strong>: <code>UPDATE currency_pair_config SET circuit_break_updated_at = '2026-04-21 04:23:57.331' WHERE trade_type='SPOT' AND currency_pair='ADA_JPY';</code></li>
+      <li><strong>Stage 2 — Emit log</strong>: <code>log.info(..., "Circuit Breaker symbol: {...}, diffRate: 0.5128..., cirCuitBreakPercent/100: 0.5, ...")</code> is written to stdout of pod <code>point-worker-deployment-8bfbb9bb7-r6drs</code>.</li>
+      <li><strong>Stage 3 — Fluent Bit ships</strong>: in the next batch (~3-5 s later), the DaemonSet pushes the log to log group <code>/aws/containerinsights/point/application</code> as JSON with the <code>kubernetes.*</code> + <code>log_processed.*</code> schema.</li>
+      <li><strong>Stage 4.A — Filter match</strong>: all three conditions hold (<code>pod_name="point-worker-deployment-..."</code>, <code>level="INFO"</code>, <code>message="Circuit Breaker symbol:..."</code>). CloudWatch decides to invoke the Lambda.</li>
+      <li><strong>Stage 4.B — Invoke Lambda</strong>: one record event is gzip + base64-encoded into a payload, AWS calls <code>circuitbreaker-to-slack</code> async.</li>
+      <li><strong>Stage 5.A — Decode</strong>: the Lambda runs base64.b64decode, checks the <code>\x1f\x8b</code> magic, gunzips, and parses JSON. Extracts <code>@timestamp</code> = <code>2026-04-21T04:23:57.343Z</code>, <code>message</code> = <code>"Circuit Breaker symbol:..."</code>, pod &amp; namespace.</li>
+      <li><strong>Stage 5.B — Rate-limit gate</strong>: if the Lambda container is a cold start (because the most recent CB trigger was &gt; 10 minutes ago) ⇒ <code>last_log_sent_time = now − 10′</code> ⇒ <code>time_diff &gt; 10 minutes</code> ⇒ pass.</li>
+      <li><strong>Stage 5.C — POST Slack</strong>: <code>requests.post(webhook_url, ...)</code> with username <code>PointOPECircuitBreaker</code>, icon <code>:fire:</code>, text format <code>:fire:[STG] CircuitBreaker Alert:fire:\n&lt;!channel&gt;\n*namespace_name*: ...</code>.</li>
+      <li><strong>Stage 5.D — Update state</strong>: response 200 ⇒ <code>last_log_sent_time = '2026-04-21T04:23:57.343Z'</code>. The Lambda container holds this value until the next cold start or the next 10-minute window.</li>
+      <li><strong>Side-effect</strong>: any MARKET/STOP/SIMPLE_MARKET order on ADA_JPY/SPOT in the window <code>[04:23:57.331, 04:33:57.331]</code> is rejected by <code>SpotOrderService.placeOrder</code> with <code>ORDER_ERROR_CIRCUIT_BREAKER (50031)</code>.</li>
+    </ol>
+  </div>
+
+  <div class="two-col anim" style="--i:34" style="margin-top:20px;">
+    <div class="card">
+      <div class="card__label">Actual Slack payload</div>
+      <pre class="alert-box"><span class="flame">🔥</span> [STG] CircuitBreaker Alert <span class="flame">🔥</span>
+@channel
+<span class="k">namespace_name</span>: default
+<span class="k">datetime</span>: 2026-04-21T04:23:57.343Z
+<span class="k">pod_name</span>: point-worker-deployment-8bfbb9bb7-r6drs
+<span class="k">circuitbreaker_log</span>: Circuit Breaker symbol:{id:4,currencyPair:ADA_JPY,tradeType:SPOT,...}
+  latestCandlestick:{open:39.46,volume:10,fixed:false,...}
+  previousCandlestick:{open:81.00,volume:0,fixed:true,...}
+  diffRate:0.5128...,  cirCuitBreakPercent/100:0.5
+  circuitBreakStopTimespan:10,  circuitBreakUpdatedAt:1776745437331</pre>
+    </div>
+
+    <div class="card">
+      <div class="card__label">Three lines that matter</div>
+      <ul class="blueprint">
+        <li><strong>previous.volume = 0 + fixed = true</strong> — no real trades happened during minute N. The 81.00 price is carry-over from the last trade. Characteristic of test data in STG.</li>
+        <li><strong>diffRate &gt; threshold</strong> — working as designed, not a bug. The detection logic operates correctly.</li>
+        <li><strong>cirCuitBreakPercent</strong> — typo embedded in the worker's log (missing one <code>c</code>). Fixing it would <em>break the filter pattern</em> in the Lambda and the entire alert pipeline would silently die. <strong>Leave it as is</strong>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §8 RUNBOOK ============ -->
+<section id="runbook">
+  <div class="section-head anim" style="--i:35">
+    <span class="section-head__num">08</span>
+    <span class="section-head__title">Operator decision tree</span>
+    <span class="section-head__sub">when an alert fires</span>
+  </div>
+
+  <div class="card anim" style="--i:36">
+    <p>When an alert lands in Slack, the operator should run through the decision tree below. <strong>Most cases require no intervention</strong> — the pipeline has already auto-blocked orders; the alert is just a notification that lets the operator <em>verify</em> and <em>extend the block</em> if necessary.</p>
+  </div>
+
+  <div class="tree anim" style="--i:37" style="margin-top:20px;">
+    <div class="tree-node">
+      <div class="tree-node__step">Q1</div>
+      <div>
+        <div class="tree-node__title">Which env did the alert come from?</div>
+        <div class="tree-node__detail">Read the warning_text in the message: <code>[DEV]</code> · <code>[STG]</code> · <code>[PRD]</code>.</div>
+      </div>
+    </div>
+    <div class="tree-indent">
+      <div class="tree-node tree-node--leaf-allow">
+        <div class="tree-node__step">→ DEV/STG</div>
+        <div>
+          <div class="tree-node__title">IGNORE — almost certainly test data</div>
+          <div class="tree-node__detail">If there is no related deployment change, ignore. The pipeline has correctly blocked orders — DEV/STG has no real users to be harmed. You can verify by checking whether pod_name corresponds to a test instance.</div>
+        </div>
+      </div>
+      <div class="tree-node tree-node--branch">
+        <div class="tree-node__step">→ PRD</div>
+        <div>
+          <div class="tree-node__title">Continue to Q2</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-node">
+      <div class="tree-node__step">Q2</div>
+      <div>
+        <div class="tree-node__title">Is this a test data anomaly?</div>
+        <div class="tree-node__detail">In the JSON message, inspect <code>previousCandlestick.volume</code>. If volume = 0 and <code>fixed=true</code>, the comparison price is a mere carry-over.</div>
+      </div>
+    </div>
+    <div class="tree-indent">
+      <div class="tree-node tree-node--leaf-allow">
+        <div class="tree-node__step">→ volume = 0</div>
+        <div>
+          <div class="tree-node__title">Likely thin liquidity — verify orderbook</div>
+          <div class="tree-node__detail">Open the exchange admin tool, inspect the recent orderbook for the symbol. If the spread is too wide (bid-ask gap unusually large) ⇒ temporarily increase <code>circuitBreakStopTimespan</code> to keep blocking until liquidity recovers.</div>
+        </div>
+      </div>
+      <div class="tree-node tree-node--branch">
+        <div class="tree-node__step">→ volume &gt; 0</div>
+        <div>
+          <div class="tree-node__title">Continue to Q3</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-node">
+      <div class="tree-node__step">Q3</div>
+      <div>
+        <div class="tree-node__title">Real flash crash, or multiple symbols triggering together?</div>
+        <div class="tree-node__detail">Check the Slack channel for other recent alerts (within the last 30 minutes) on different symbols.</div>
+      </div>
+    </div>
+    <div class="tree-indent">
+      <div class="tree-node tree-node--leaf-block">
+        <div class="tree-node__step">→ multi-symbol</div>
+        <div>
+          <div class="tree-node__title">Possibly a market-wide event — escalate</div>
+          <div class="tree-node__detail">Page on-call. Check recent trades on major exchanges (Binance, Coinbase). Consider pausing trading globally via the admin tool.</div>
+        </div>
+      </div>
+      <div class="tree-node tree-node--leaf-block">
+        <div class="tree-node__step">→ single-symbol</div>
+        <div>
+          <div class="tree-node__title">Possibly fat-finger / market manipulation — verify</div>
+          <div class="tree-node__detail">Check the most recent user(s) who placed orders on this symbol. If the volume is abnormally large vs daily average, escalate to the risk team. Otherwise, let the CB auto-clear (10 minutes) — that's enough.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:38">
+    <div class="callout__title">Standing rule</div>
+    <strong>Do not disable CB</strong> by setting <code>circuitBreakUpdatedAt = NULL</code> on receiving an alert — even if it's a false positive. The pipeline will auto-clear after <code>stopTimespan</code> minutes (default 10′). Manual disabling should only be used when you have 100 % confirmed it's data error <em>and</em> the impact on the user experience is severe.
+  </div>
+</section>
+
+<!-- ============ §9 ISSUES ============ -->
+<section id="issues">
+  <div class="section-head anim" style="--i:39">
+    <span class="section-head__num">09</span>
+    <span class="section-head__title">Issues &amp; severity matrix</span>
+    <span class="section-head__sub">15 findings · prioritized</span>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:40">
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data-table">
+          <colgroup><col style="width:90px"><col style="width:280px"><col></colgroup>
+          <thead><tr><th>Severity</th><th>Issue</th><th>Action / impact</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status status--high">HIGH</span></td><td>IAM policy <code>Resource = "*"</code></td><td>Scope down to the Lambda's own log group. tfsec AWS099, checkov CKV_AWS_111.</td></tr>
+            <tr><td><span class="status status--high">HIGH</span></td><td>Lambda permission <code>source_arn</code> wildcard log-group</td><td>Any log group in the account can invoke the Lambda. Scope to the real EKS application log group.</td></tr>
+            <tr><td><span class="status status--high">HIGH</span></td><td>Slack webhook URL plaintext in tfvars (in Git)</td><td>Move to Secrets Manager / SSM Parameter Store. Rotate the current token.</td></tr>
+            <tr><td><span class="status status--high">HIGH</span></td><td>Python 3.9 runtime (EOL 2024-12-13)</td><td>AWS blocks updates from 2025-03. Upgrade to 3.12/3.13 (coinbook already migrated via UNYO-1058).</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>In-memory global-var rate limit (5 weaknesses)</td><td>Move to DynamoDB with ConditionalWrite or SQS FIFO with deduplication. Rate limit should be per-<code>symbolId</code>.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td><code>lambda_function.zip</code> committed instead of built from <code>src/</code></td><td>Drift risk. Use <code>data.archive_file</code> per BB-1917 convention.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Layer <code>python_module.zip</code> committed with deps from 2023-06-04</td><td>Dependency drift. Missing <code>requirements.txt</code> + <code>build.sh</code>.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Outdated provider pin <code>aws ~&gt; 4.0</code></td><td>Upgrade to <code>~&gt; 5.0</code> per BB-1917 convention.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Slack payload is plain text, no Block Kit</td><td>No runbook link, no structured fields. Operator cannot tell what action to take.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>No <code>prd-ex.tfvars</code></td><td>Verup has not yet deployed PRD. Author this before go-live.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Role name hardcoded without an <code>env</code> suffix</td><td>Cannot deploy two envs in the same account.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Layer name <code>python-module</code> clashes between two components</td><td><code>cloudwatch_errorlog_lambda</code> uses the same name.</td></tr>
+            <tr><td><span class="status status--low">LOW</span></td><td>Typo <code>cirCuitBreakPercent</code> in log output</td><td>Fixing it would <strong>break the alert pipeline</strong>. Leave it.</td></tr>
+            <tr><td><span class="status status--low">LOW</span></td><td><code>posCandlestickService</code> injected but unused in <code>execute()</code></td><td>Dead code or preparation for POS CB. Confirm with the team, then remove.</td></tr>
+            <tr><td><span class="status status--low">LOW</span></td><td>No retry when the Slack POST fails</td><td>A single HTTP 429/503 = lost alert. Add retry with exponential backoff.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §10 COINBOOK ============ -->
+<section id="coinbook">
+  <div class="section-head anim" style="--i:41">
+    <span class="section-head__num">10</span>
+    <span class="section-head__title">verup vs coinbook</span>
+    <span class="section-head__sub">reference implementation</span>
+  </div>
+
+  <div class="card anim" style="--i:42">
+    <p>Both projects use the same two-tier model. The deltas cluster around runtime, build automation, and PRD readiness. <strong>Coinbook is ahead</strong> on four infra items; <strong>verup is ahead</strong> on five app/Lambda code items.</p>
+  </div>
+
+  <div class="diff-panels anim" style="--i:43" style="margin-top:20px;">
+    <div class="diff-panel__header diff-panel__header--verup">VERUP</div>
+    <div class="diff-panel__header diff-panel__header--coinbook">COINBOOK</div>
+    <div class="diff-panel__body">
+      <strong>Package path</strong>
+      <pre class="code">point.worker.worker.CircuitBreaker</pre>
+      <strong style="display:block; margin-top:14px;">Lambda Python runtime</strong>
+      <p><code>python3.9</code> · EOL 2024-12</p>
+      <strong style="display:block; margin-top:14px;">Build automation</strong>
+      <p>No <code>build.sh</code>, <code>requirements.txt</code>, or <code>.gitignore</code></p>
+      <strong style="display:block; margin-top:14px;">PRD tfvars</strong>
+      <p><span class="status status--high">MISSING</span> <code>prd-ex.tfvars</code></p>
+      <strong style="display:block; margin-top:14px;">Order blocking scope</strong>
+      <p>Spot + Pos + PointPos (3 services)</p>
+    </div>
+    <div class="diff-panel__body">
+      <strong>Package path</strong>
+      <pre class="code">exchange.worker.worker.CircuitBreaker</pre>
+      <strong style="display:block; margin-top:14px;">Lambda Python runtime</strong>
+      <p><code>python3.13</code> · migrated via UNYO-1058</p>
+      <strong style="display:block; margin-top:14px;">Build automation</strong>
+      <p>Full set: <code>build.sh</code> (~140 SLOC), <code>requirements.txt</code>, <code>.gitignore</code></p>
+      <strong style="display:block; margin-top:14px;">PRD tfvars</strong>
+      <p><span class="status status--ok">PRESENT</span> <code>prd.tfvars</code> live in production</p>
+      <strong style="display:block; margin-top:14px;">Order blocking scope</strong>
+      <p>Spot only (1 service)</p>
+    </div>
+  </div>
+
+  <div class="two-col anim" style="--i:44" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">Where verup is ahead of coinbook</div>
+      <ul class="blueprint">
+        <li><strong>Gzip magic guard</strong> in the Lambda — prevents crashes on test events that aren't gzip</li>
+        <li><strong>Start/end marker logs</strong> in the worker (BB-1289) — easier latency measurement</li>
+        <li><strong>Typo fix</strong> on the local variable <code>cirCuitBreakPercent</code> → <code>circuitBreakPercent</code> (the log string preserves the typo)</li>
+        <li><strong>Extended CB</strong> to Pos + PointPos services</li>
+        <li><strong>scheduler.md</strong> documents the scope (Invest-only)</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">Where coinbook is ahead of verup</div>
+      <ul class="blueprint">
+        <li><strong>Python 3.13</strong> — no EOL exposure</li>
+        <li><strong>Full build automation</strong> with <code>build.sh</code> auto-detecting runtime</li>
+        <li><strong>PRD tfvars</strong> production-ready</li>
+        <li><code>.gitignore</code> excludes vendored deps</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:45">
+    <div class="callout__title">Things both still carry (unfixed)</div>
+    In-memory rate limit, plaintext webhook in tfvars, IAM <code>Resource = "*"</code>, no Slack retry, plain-text alerts (no Block Kit), no runbook link, parallel Metric Filter Alarm causes noise.
+  </div>
+</section>
+
+<!-- ============ §11 RECO ============ -->
+<section id="reco">
+  <div class="section-head anim" style="--i:46">
+    <span class="section-head__num">11</span>
+    <span class="section-head__title">Improvement recommendations</span>
+    <span class="section-head__sub">three A/B/C scenarios</span>
+  </div>
+
+  <div class="three-col anim" style="--i:47">
+    <div class="card card--elevated">
+      <div class="card__label">A · Minimal (1-2 h)</div>
+      <ul class="blueprint">
+        <li>Write a runbook at <code>docs/guides/circuitbreaker-alert-runbook.md</code></li>
+        <li>Decision tree action (just like §08 of this document)</li>
+        <li>Append the runbook URL to the Slack alert text</li>
+        <li>Outcome: ops team knows exactly what to do after reading</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">B · Medium (0.5-1 day)</div>
+      <ul class="blueprint">
+        <li>Upgrade the Lambda runtime to Python 3.12/3.13</li>
+        <li>Parse symbol/diffRate/percent into structured fields</li>
+        <li>Slack Block Kit + links to CloudWatch + runbook</li>
+        <li>Per-env routing to different Slack channels</li>
+        <li>Move the webhook to Secrets Manager</li>
+        <li>Build the Lambda from <code>src/</code> via <code>archive_file</code></li>
+        <li>Align with BB-1917 convention</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">C · Full (1-2 days)</div>
+      <ul class="blueprint">
+        <li>Replace the log-subscription Lambda with a structured metric + CloudWatch alarm</li>
+        <li>SNS routing by severity</li>
+        <li>Dashboard tracking CB triggers per day per symbol</li>
+        <li>Auto-ack DEV/STG alerts</li>
+        <li>Rate limit backed by DynamoDB + ConditionalWrite</li>
+        <li>Exponential-backoff retry</li>
+        <li>Refactor the two components into a shared module</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout callout--warn anim" style="--i:48">
+    <div class="callout__title">Suggested priority order</div>
+    <strong>P0:</strong> A + upgrade Python 3.9 → 3.12. <strong>P1:</strong> move webhook to Secrets Manager + rotate token. <strong>P2:</strong> scope down IAM + Lambda permission. <strong>P3:</strong> B (alert UX) + scaffold <code>prd-ex.tfvars</code>. <strong>P4:</strong> C (full refactor).
+  </div>
+</section>
+
+<footer class="anim" style="--i:49">
+  <div><strong>Sources</strong> · 2063 SLOC of research · app-verup.md 828 · infra-verup.md 764 · coinbook-comparison.md 471</div>
+  <div>docs/guides/circuitbreaker/research/ · 2026-04-21</div>
+</footer>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: isDark ? '#19233b' : '#e0e7f2',
+      primaryBorderColor: isDark ? '#7dd3fc' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      secondaryColor: isDark ? '#111829' : '#fef3c7',
+      secondaryBorderColor: isDark ? '#fbbf24' : '#b45309',
+      secondaryTextColor: isDark ? '#fef3c7' : '#78350f',
+      tertiaryColor: isDark ? '#1a1f2e' : '#f1f5f9',
+      tertiaryBorderColor: isDark ? '#94a3b8' : '#334155',
+      tertiaryTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      actorBkg: isDark ? '#19233b' : '#ffffff',
+      actorBorder: isDark ? '#7dd3fc' : '#1e3a5f',
+      actorTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      actorLineColor: isDark ? '#64748b' : '#94a3b8',
+      signalColor: isDark ? '#7dd3fc' : '#1e3a5f',
+      signalTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      labelBoxBkgColor: isDark ? '#19233b' : '#ffffff',
+      labelBoxBorderColor: isDark ? '#7dd3fc' : '#1e3a5f',
+      labelTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      noteBkgColor: isDark ? '#161f35' : '#fff7ed',
+      noteTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      noteBorderColor: isDark ? '#fbbf24' : '#b45309',
+      lineColor: isDark ? '#64748b' : '#475569',
+      fontSize: '18px',
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif"
+    },
+    sequence: { actorMargin: 90, width: 180, height: 50, boxMargin: 14, messageMargin: 42, noteMargin: 14, mirrorActors: true }
+  });
+</script>
+<script>
+  function zoomDiagram(btn, factor) {
+    const wrap = btn.closest('.mermaid-wrap');
+    const target = wrap.querySelector('.mermaid');
+    const current = parseFloat(target.dataset.zoom || '1.35');
+    const next = Math.min(Math.max(current * factor, 0.4), 5);
+    target.dataset.zoom = next;
+    target.style.transform = 'scale(' + next + ')';
+    wrap.classList.toggle('is-zoomed', next > 1.35);
+  }
+  function resetZoom(btn) {
+    const wrap = btn.closest('.mermaid-wrap');
+    const target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = '1.35';
+    target.style.transform = 'scale(1.35)';
+    wrap.classList.remove('is-zoomed');
+  }
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap){
+    wrap.addEventListener('wheel', function(e){
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const target = wrap.querySelector('.mermaid');
+      const current = parseFloat(target.dataset.zoom || '1.35');
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const next = Math.min(Math.max(current * factor, 0.4), 5);
+      target.dataset.zoom = next;
+      target.style.transform = 'scale(' + next + ')';
+      wrap.classList.toggle('is-zoomed', next > 1.35);
+    }, {passive: false});
+    let sx, sy, sl, st;
+    wrap.addEventListener('mousedown', function(e){
+      if (e.target.closest('.zoom-controls')) return;
+      const t = wrap.querySelector('.mermaid');
+      if (parseFloat(t.dataset.zoom || '1.35') <= 1.35) return;
+      wrap.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY;
+      sl = wrap.scrollLeft; st = wrap.scrollTop;
+    });
+    window.addEventListener('mousemove', function(e){
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.scrollLeft = sl - (e.clientX - sx);
+      wrap.scrollTop  = st - (e.clientY - sy);
+    });
+    window.addEventListener('mouseup', function(){ wrap.classList.remove('is-panning'); });
+  });
+</script>
+</body>
+</html>

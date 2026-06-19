@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BB-1566 - Đánh giá giới hạn tốc độ WAF Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f7fafc;
+      --bg2: #eef2f7;
+      --surface: rgba(255,255,255,0.9);
+      --border: rgba(17, 24, 39, 0.10);
+      --text: #0b1220;
+      --textDim: rgba(11,18,32,0.70);
+      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      --accent: #0b5cab;
+      --accent2: #0f766e;
+      --warn: #b45309;
+      --danger: #b91c1c;
+      --ok: #047857;
+      --shadow: 0 18px 50px rgba(2, 6, 23, 0.08);
+      --radius: 18px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1020;
+        --bg2: #0f172a;
+        --surface: rgba(15, 23, 42, 0.78);
+        --border: rgba(226, 232, 240, 0.12);
+        --text: #e5e7eb;
+        --textDim: rgba(229,231,235,0.72);
+        --accent: #58a6ff;
+        --accent2: #2dd4bf;
+        --warn: #f59e0b;
+        --danger: #f87171;
+        --ok: #34d399;
+        --shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 12% 10%, rgba(11,92,171,0.14), transparent 60%),
+        radial-gradient(900px 500px at 88% 18%, rgba(15,118,110,0.12), transparent 55%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 18px 50px;
+    }
+
+    .hero {
+      background: linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.10));
+      border: 1px solid var(--border);
+      border-radius: calc(var(--radius) + 6px);
+      box-shadow: var(--shadow);
+      padding: 22px 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .hero {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(15, 23, 42, 0.42));
+      }
+    }
+
+    .kicker {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--textDim);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(11,92,171,0.12);
+    }
+
+    h1 {
+      margin: 10px 0 6px;
+      font-size: 26px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .meta {
+      color: var(--textDim);
+      font-size: 14px;
+      margin: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      background: rgba(255,255,255,0.55);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .badge { background: rgba(15, 23, 42, 0.60); }
+    }
+
+    .grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 16px 14px;
+      box-shadow: 0 10px 35px rgba(2, 6, 23, 0.06);
+      min-width: 0;
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .label {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--textDim);
+      letter-spacing: 0.02em;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.42);
+      white-space: nowrap;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .label { background: rgba(2,6,23,0.22); }
+    }
+
+    .verdict {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .verdict .big {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 0;
+    }
+
+    .verdict p {
+      margin: 0;
+      color: var(--textDim);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18));
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .pill { background: linear-gradient(180deg, rgba(15,23,42,0.62), rgba(15,23,42,0.25)); }
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .status.ok { background: rgba(4, 120, 87, 0.10); color: var(--ok); }
+    .status.warn { background: rgba(180, 83, 9, 0.10); color: var(--warn); }
+    .status.no { background: rgba(185, 28, 28, 0.10); color: var(--danger); }
+    .status.unk { background: rgba(148, 163, 184, 0.14); color: var(--textDim); }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.55);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      table { background: rgba(2,6,23,0.18); }
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background: rgba(255,255,255,0.78);
+      backdrop-filter: blur(8px);
+      font-size: 12px;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--textDim);
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      thead th { background: rgba(15,23,42,0.80); }
+    }
+
+    tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    tbody tr:nth-child(even) td { background: rgba(148,163,184,0.06); }
+
+    code {
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.45);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      code { background: rgba(2,6,23,0.25); }
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--textDim);
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .footer {
+      margin-top: 14px;
+      color: var(--textDim);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .hero, .card { animation: fadeUp 520ms ease-out both; }
+      .card:nth-child(2) { animation-delay: 60ms; }
+      .card:nth-child(3) { animation-delay: 120ms; }
+      .card:nth-child(4) { animation-delay: 180ms; }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="kicker"><span class="dot"></span> Đối chiếu yêu cầu và thay đổi</div>
+      <h1>BB-1566 - Kiểm soát giới hạn tốc độ cho WAF Admin</h1>
+      <p class="meta">
+        <span class="badge">Phạm vi: Terraform diff trong worktree <code>bb-1566-waf-admin-rate-limit</code> (chỉ dựa trên evidence summary)</span>
+        <span class="badge">Thời điểm tạo: 2026-03-03 15:38 UTC</span>
+      </p>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h2>Kết luận <span class="label">Đối chiếu yêu cầu Jira</span></h2>
+        <div class="verdict">
+          <p class="big"><span class="status warn">ĐẠT MỘT PHẦN</span></p>
+          <p>Các rule rate-based cho <code>/admin/login</code>, <code>/admin/auth</code> và <code>/api/</code> đã tồn tại, đồng thời đã được gắn vào ACL theo mẫu rollout an toàn (luôn đếm, tùy chọn chặn). Tuy nhiên, theo <code>tfvars</code> hiện có cho dev/stg (<code>rate_limit_block_enabled=false</code>), cơ chế chặn chưa được bật ở các môi trường này, nên hiện tại mới dừng ở mức quan sát (count-only).</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Bằng chứng chính <span class="label">Thông tin đầu vào</span></h2>
+        <ul>
+          <li><code>rulegroup-rate-limit.tf</code> thêm 3 rule <code>rate_based_statement</code> với scope <code>/admin/login</code>, <code>/admin/auth</code>, <code>/api/</code>; dùng <code>aggregate_key_type=IP</code>.</li>
+          <li><code>acl.tf</code> tham chiếu rule group qua <code>rate_limit_count</code> (luôn có) và <code>rate_limit</code> (chỉ có khi <code>rate_limit_block_enabled=true</code>).</li>
+          <li><code>tfvars</code>: dev/stg đặt <code>rate_limit_block_enabled=false</code>; ngưỡng hiện là 3000/3000/20000.</li>
+          <li>Rule <code>allow_all_ipv4</code> vẫn ở priority 5; <code>rate_limit_count</code> priority 3; <code>rate_limit</code> (tùy chọn) priority 4.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="grid-column: 1 / -1;">
+        <h2>Bảng đối chiếu yêu cầu <span class="label">Trọng tâm BB-1566</span></h2>
+        <div style="overflow-x:auto; border-radius: 14px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 24%;">Yêu cầu</th>
+                <th style="width: 52%;">Bằng chứng trong phần diff</th>
+                <th style="width: 24%;">Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Có kiểm soát rate-based cho <code>/admin/login</code></td>
+                <td>Đã có rule rate-based với scope <code>/admin/login</code>, dùng <code>aggregate_key_type=IP</code>.</td>
+                <td><span class="status ok">ĐẠT (ĐÃ ĐỊNH NGHĨA)</span></td>
+              </tr>
+              <tr>
+                <td>Có kiểm soát rate-based cho <code>/admin/auth</code></td>
+                <td>Đã có rule rate-based với scope <code>/admin/auth</code>, dùng <code>aggregate_key_type=IP</code>.</td>
+                <td><span class="status ok">ĐẠT (ĐÃ ĐỊNH NGHĨA)</span></td>
+              </tr>
+              <tr>
+                <td>Có kiểm soát rate-based cho <code>/api/</code></td>
+                <td>Đã có rule rate-based với scope <code>/api/</code>, dùng <code>aggregate_key_type=IP</code>.</td>
+                <td><span class="status ok">ĐẠT (ĐÃ ĐỊNH NGHĨA)</span></td>
+              </tr>
+              <tr>
+                <td>Rollout an toàn cho WAF admin: đếm trước, chặn sau</td>
+                <td><code>rate_limit_count</code> luôn được gắn; <code>rate_limit</code> chỉ gắn khi <code>rate_limit_block_enabled=true</code>.</td>
+                <td><span class="status ok">ĐẠT (ĐÃ CÓ MẪU TRIỂN KHAI)</span></td>
+              </tr>
+              <tr>
+                <td>Cơ chế bảo vệ đã enforce thực sự (chặn)</td>
+                <td><code>tfvars</code> của dev/stg đang đặt <code>rate_limit_block_enabled=false</code>, nên chưa bật chặn ở các môi trường này.</td>
+                <td><span class="status warn">CHƯA ĐẠT (TRONG CÁC ENV ĐANG CẤU HÌNH)</span></td>
+              </tr>
+              <tr>
+                <td>Allowlist không bypass rate limit</td>
+                <td>Priority hiện tại: rule rate-limit (3/4) chạy trước <code>allow_all_ipv4</code> (5).</td>
+                <td><span class="status ok">ĐẠT (THỨ TỰ ĐÚNG)</span></td>
+              </tr>
+              <tr>
+                <td>Ngưỡng giới hạn khớp chính sách mục tiêu</td>
+                <td>Ngưỡng hiện có: 3000/3000/20000. Chưa có baseline/target threshold đầy đủ trong evidence summary.</td>
+                <td><span class="status unk">CHƯA RÕ</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="footer">Lưu ý: Trạng thái chỉ phản ánh những gì có thể chứng minh từ evidence summary đã cung cấp.</div>
+      </div>
+
+      <div class="card">
+        <h2>Rủi ro <span class="label">Nếu giữ nguyên hiện trạng</span></h2>
+        <ul>
+          <li>Rủi ro chức năng: ở dev/stg hiện vẫn là count-only (chưa chặn), nên hiệu lực bảo vệ chưa đầy đủ.</li>
+          <li>Rủi ro phạm vi: nếu path admin API thực tế không phải <code>/api/</code> (hoặc thực tế cần <code>/admin/api</code>), scope hiện tại có thể bắt thiếu hoặc bắt thừa.</li>
+          <li>Rủi ro vận hành: khi bật cả <code>rate_limit_count</code> và <code>rate_limit</code>, cùng một rule group sẽ được đánh giá hai lần (đổi lại có thêm dữ liệu quan sát + enforce, nhưng tăng chi phí/độ nhiễu).</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Hành động đề xuất <span class="label">Lộ trình tối thiểu</span></h2>
+        <ul>
+          <li>Rollout: giữ <code>rate_limit_block_enabled=false</code> cho đến khi đọc đủ metric count; sau đó bật <code>true</code> trên STG trước để kiểm chứng hành vi chặn.</li>
+          <li>Xác nhận scope: chốt path API mục tiêu của BB-1566; nếu yêu cầu là admin-only API thì điều chỉnh lại scoped path cho khớp.</li>
+          <li>Hiệu chỉnh ngưỡng: tune 3000/3000/20000 theo dữ liệu count thực tế và mức traffic chấp nhận được trước khi bật chặn diện rộng.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

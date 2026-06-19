@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CircuitBreaker Alert · Cơ chế hoạt động · Verup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'IBM Plex Serif', Georgia, serif;
+    --bg: #f2f4f8;
+    --surface: #ffffff;
+    --surface2: #eaedf3;
+    --surface-elevated: #ffffff;
+    --border: rgba(15, 23, 42, 0.10);
+    --border-bright: rgba(15, 23, 42, 0.22);
+    --text: #0f172a;
+    --text-dim: #475569;
+    --text-bright: #020617;
+    --accent: #1e3a5f;
+    --accent-dim: rgba(30, 58, 95, 0.08);
+    --gold: #b45309;
+    --gold-dim: rgba(180, 83, 9, 0.1);
+    --green: #166534;
+    --green-dim: rgba(22, 101, 52, 0.1);
+    --red: #9f1239;
+    --red-dim: rgba(159, 18, 57, 0.09);
+    --steel: #334155;
+    --steel-dim: rgba(51, 65, 85, 0.08);
+    --grid-line: rgba(15, 23, 42, 0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1020; --surface: #111829; --surface2: #161f35; --surface-elevated: #19233b;
+      --border: rgba(226, 232, 240, 0.09); --border-bright: rgba(226, 232, 240, 0.2);
+      --text: #e2e8f0; --text-dim: #94a3b8; --text-bright: #f8fafc;
+      --accent: #7dd3fc; --accent-dim: rgba(125, 211, 252, 0.12);
+      --gold: #fbbf24; --gold-dim: rgba(251, 191, 36, 0.12);
+      --green: #86efac; --green-dim: rgba(134, 239, 172, 0.12);
+      --red: #fb7185; --red-dim: rgba(251, 113, 133, 0.12);
+      --steel: #94a3b8; --steel-dim: rgba(148, 163, 184, 0.12);
+      --grid-line: rgba(226, 232, 240, 0.04);
+    }
+  }
+  * { margin:0; padding:0; box-sizing:border-box; min-width:0; }
+  html, body { overflow-x:hidden; }
+  body {
+    background: var(--bg);
+    background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 24px 24px;
+    color: var(--text); font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+    padding: 40px 32px 80px; overflow-wrap: break-word;
+  }
+  .container { max-width: 1180px; margin: 0 auto; }
+  .grid > *, .flex > * { min-width: 0; }
+  @keyframes fadeUp { from {opacity:0; transform:translateY(12px);} to {opacity:1; transform:translateY(0);} }
+  @keyframes fadeScale { from {opacity:0; transform:scale(0.95);} to {opacity:1; transform:scale(1);} }
+  .anim { animation: fadeUp 0.45s ease-out both; animation-delay: calc(var(--i,0) * 0.05s); }
+  .anim-scale { animation: fadeScale 0.35s ease-out both; animation-delay: calc(var(--i,0) * 0.05s); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration:0.01ms !important; animation-delay:0ms !important; transition-duration:0.01ms !important; }
+  }
+
+  .masthead { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; padding-bottom: 32px; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+  .masthead__coord { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; display: flex; gap: 18px; flex-wrap: wrap; }
+  .masthead__coord span::before { content: '◆'; margin-right: 6px; color: var(--accent); font-size: 9px; vertical-align: middle; }
+  h1 { font-family: var(--font-display); font-size: clamp(32px, 4.5vw, 52px); font-weight: 600; line-height: 1.05; letter-spacing: -1.5px; color: var(--text-bright); margin-bottom: 10px; text-wrap: balance; }
+  .subtitle { font-size: 17px; color: var(--text-dim); max-width: 740px; line-height: 1.55; }
+  .stamp { font-family: var(--font-mono); font-size: 10px; line-height: 1.35; letter-spacing: 1.2px; text-transform: uppercase; padding: 10px 14px; border: 1px solid var(--border-bright); border-radius: 4px; color: var(--accent); background: var(--accent-dim); text-align: right; min-width: 200px; }
+  .stamp strong { display:block; font-size:12px; color: var(--text-bright); letter-spacing: 1.6px; }
+
+  section { margin-bottom: 56px; scroll-margin-top: 80px; }
+  .section-head { display: flex; align-items: baseline; gap: 16px; padding-bottom: 14px; margin-bottom: 22px; border-bottom: 1px solid var(--border); }
+  .section-head__num { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 2px; color: var(--accent); padding: 3px 8px; border: 1px solid var(--border-bright); border-radius: 3px; background: var(--accent-dim); }
+  .section-head__title { font-family: var(--font-display); font-size: 28px; font-weight: 600; letter-spacing: -0.5px; color: var(--text-bright); }
+  .section-head__sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-left: auto; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .kpi { background: var(--surface-elevated); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 18px 22px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); }
+  .kpi--gold { border-left-color: var(--gold); }
+  .kpi--red { border-left-color: var(--red); }
+  .kpi--green { border-left-color: var(--green); }
+  .kpi--steel { border-left-color: var(--steel); }
+  .kpi__label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+  .kpi__value { font-family: var(--font-display); font-size: 32px; font-weight: 600; letter-spacing: -1px; line-height: 1; color: var(--text-bright); font-variant-numeric: tabular-nums; }
+  .kpi__meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.35; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; }
+  .card--elevated { box-shadow: 0 2px 12px rgba(15,23,42,0.05); }
+  .card--recessed { background: var(--surface2); box-shadow: inset 0 1px 3px rgba(15,23,42,0.05); }
+  .card__label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card__label::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .card__title { font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.3px; color: var(--text-bright); margin-bottom: 6px; }
+  .card__sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-bottom: 14px; letter-spacing: 0.5px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .four-col { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 900px) { .two-col, .three-col, .four-col { grid-template-columns: 1fr; } }
+
+  .alert-box { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px; padding: 20px 24px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; color: var(--text); position: relative; }
+  .alert-box::before { content: 'SLACK PAYLOAD'; position: absolute; top: -10px; left: 18px; font-size: 10px; letter-spacing: 1.5px; background: var(--bg); color: var(--red); padding: 2px 10px; font-weight: 600; }
+  .alert-box .k { color: var(--gold); font-weight: 500; }
+  .alert-box .flame { color: var(--red); }
+
+  pre.code { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 16px 20px; overflow-x: auto; white-space: pre; word-break: normal; color: var(--text); margin-top: 8px; }
+  pre.code--inline { font-size: 12px; padding: 12px 16px; }
+  .code__caption { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); margin-top: 14px; margin-bottom: 4px; }
+  code, .inline { font-family: var(--font-mono); font-size: 0.9em; background: var(--accent-dim); color: var(--accent); padding: 1px 6px; border-radius: 3px; }
+
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table thead { position: sticky; top: 0; z-index: 2; }
+  .data-table th { background: var(--surface2); font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-bright); white-space: nowrap; }
+  .data-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .data-table tbody tr:nth-child(even) { background: var(--accent-dim); }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table code { font-size: 11.5px; background: var(--accent-dim); color: var(--accent); }
+  .data-table small { display: block; color: var(--text-dim); font-size: 11px; margin-top: 3px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+  .status { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 3px 10px; border-radius: 3px; white-space: nowrap; }
+  .status--high { background: var(--red-dim); color: var(--red); }
+  .status--med { background: var(--gold-dim); color: var(--gold); }
+  .status--low { background: var(--steel-dim); color: var(--steel); }
+  .status--ok { background: var(--green-dim); color: var(--green); }
+  .status--info { background: var(--accent-dim); color: var(--accent); }
+  .status--block { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+  .status--allow { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+  ul.blueprint { list-style: none; padding: 0; font-size: 13.5px; line-height: 1.35; }
+  ul.blueprint li { padding-left: 18px; position: relative; margin-bottom: 4px; }
+  ul.blueprint li::before { content: '→'; position: absolute; left: 0; color: var(--accent); font-family: var(--font-mono); font-weight: 600; }
+
+  ol.numbered { list-style: none; counter-reset: stepc; padding: 0; }
+  ol.numbered li { padding-left: 38px; position: relative; line-height: 1.35; counter-increment: stepc; margin-bottom: 14px; }
+  ol.numbered li::before { content: counter(stepc, decimal-leading-zero); position: absolute; left: 0; top: 0; font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-dim); padding: 4px 8px; border-radius: 3px; letter-spacing: 1px; }
+
+  /* mermaid-wrap breaks out of the 1180-wide container so diagrams get more horizontal room */
+  .mermaid-wrap { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 36px 28px; overflow: auto; display: flex; justify-content: center; align-items: flex-start; margin-top: 8px; min-height: 700px; box-sizing: border-box; }
+  @media (min-width: 1244px) {
+    .mermaid-wrap { margin-left: calc((1180px + 64px - 100vw) / 2); margin-right: calc((1180px + 64px - 100vw) / 2); }
+  }
+  @media (min-width: 1664px) {
+    .mermaid-wrap { margin-left: -210px; margin-right: -210px; }
+  }
+  .mermaid-wrap .mermaid { transition: transform 0.2s ease; transform-origin: center top; transform: scale(1.35); min-width: 880px; }
+  .mermaid-wrap .mermaid svg { width: 100% !important; max-width: none !important; height: auto !important; }
+  .mermaid .nodeLabel { color: var(--text) !important; font-family: var(--font-body) !important; font-size: 17px !important; font-weight: 500 !important; }
+  .mermaid .edgeLabel { color: var(--text-dim) !important; background-color: var(--surface) !important; font-family: var(--font-mono) !important; font-size: 14px !important; padding: 4px 8px !important; }
+  .mermaid .edgeLabel rect { fill: var(--surface) !important; }
+  .mermaid .actor { stroke-width: 2px; }
+  .mermaid text.actor > tspan { font-size: 17px !important; font-weight: 600 !important; }
+  .mermaid .messageText { font-family: var(--font-mono) !important; font-size: 14px !important; font-weight: 500 !important; }
+  .mermaid .labelText, .mermaid .labelText > tspan { font-family: var(--font-mono) !important; font-size: 13px !important; }
+  .mermaid .noteText, .mermaid .noteText > tspan { font-family: var(--font-mono) !important; font-size: 13px !important; }
+  .mermaid .loopText, .mermaid .loopText > tspan { font-size: 13px !important; }
+  @media (max-width: 1100px) {
+    .mermaid-wrap { padding: 24px 14px; min-height: 480px; margin-left: 0; margin-right: 0; }
+    .mermaid-wrap .mermaid { transform: scale(1.1); min-width: 540px; }
+  }
+
+  .zoom-controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; z-index: 10; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 2px; }
+  .zoom-controls button { width: 28px; height: 28px; border: none; background: transparent; color: var(--text-dim); font-family: var(--font-mono); font-size: 14px; cursor: pointer; border-radius: 3px; }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .mermaid-wrap.is-zoomed { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .stage-grid { display: grid; grid-template-columns: 80px 1fr; gap: 0; margin-top: 8px; }
+  .stage { display: contents; }
+  .stage__rail { background: var(--accent-dim); border-right: 2px solid var(--accent); padding: 18px 12px; text-align: center; font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .stage__rail strong { display: block; font-size: 22px; font-family: var(--font-display); color: var(--text-bright); margin-bottom: 4px; letter-spacing: -0.5px; }
+  .stage__body { padding: 18px 22px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); }
+  .stage:nth-child(odd) .stage__body { background: var(--surface); }
+  .stage:nth-child(even) .stage__body { background: var(--surface2); }
+  .stage__title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 4px; color: var(--text-bright); }
+  .stage__owner { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px; margin-bottom: 10px; }
+  @media (max-width: 700px) {
+    .stage-grid { grid-template-columns: 1fr; }
+    .stage__rail { border-right: none; border-left: 4px solid var(--accent); text-align: left; padding: 10px 14px; }
+    .stage__rail strong { display: inline; margin-right: 8px; font-size: 16px; }
+  }
+
+  .pipeline { display: flex; gap: 0; align-items: stretch; overflow-x: auto; padding: 16px 0 8px; scrollbar-width: thin; }
+  .pipeline-step { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 6px; padding: 14px 16px; min-width: 160px; flex-shrink: 0; }
+  .pipeline-step--gold { border-top-color: var(--gold); }
+  .pipeline-step--green { border-top-color: var(--green); }
+  .pipeline-step--red { border-top-color: var(--red); }
+  .pipeline-step--steel { border-top-color: var(--steel); }
+  .pipeline-step .num { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 6px; }
+  .pipeline-step .name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .pipeline-step .detail { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); line-height: 1.5; }
+  .pipeline-arrow { display: flex; align-items: center; padding: 0 6px; color: var(--border-bright); font-size: 18px; flex-shrink: 0; }
+
+  .diff-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .diff-panel__header { font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; padding: 12px 18px; }
+  .diff-panel__header--verup { background: var(--accent-dim); color: var(--accent); border-bottom: 2px solid var(--accent); }
+  .diff-panel__header--coinbook { background: var(--gold-dim); color: var(--gold); border-bottom: 2px solid var(--gold); }
+  .diff-panel__body { padding: 18px 20px; background: var(--surface); font-size: 13px; line-height: 1.6; min-height: 120px; }
+  .diff-panel__body + .diff-panel__body { border-left: 1px solid var(--border); }
+  @media (max-width: 768px) { .diff-panels { grid-template-columns: 1fr; } }
+
+  .callout { padding: 16px 22px; border-radius: 6px; border-left: 4px solid var(--accent); background: var(--accent-dim); margin: 20px 0; font-size: 14px; line-height: 1.35; }
+  .callout--warn { border-left-color: var(--gold); background: var(--gold-dim); }
+  .callout--danger { border-left-color: var(--red); background: var(--red-dim); }
+  .callout__title { font-weight: 600; font-family: var(--font-mono); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; color: var(--accent); }
+  .callout--warn .callout__title { color: var(--gold); }
+  .callout--danger .callout__title { color: var(--red); }
+
+  nav.toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 22px 26px; margin-bottom: 40px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); }
+  nav.toc h2 { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  nav.toc ol { list-style: none; columns: 2; column-gap: 32px; font-size: 13.5px; counter-reset: toc-item; }
+  nav.toc ol li { padding-left: 26px; position: relative; line-height: 2; counter-increment: toc-item; break-inside: avoid; }
+  nav.toc ol li::before { content: counter(toc-item, decimal-leading-zero); position: absolute; left: 0; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; top: 4px; }
+  nav.toc a { color: var(--text); text-decoration: none; border-bottom: 1px dotted transparent; transition: border-color 0.15s ease; }
+  nav.toc a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  @media (max-width: 768px) { nav.toc ol { columns: 1; } }
+
+  hr.sep { border: none; height: 1px; background: linear-gradient(to right, transparent, var(--border-bright) 20%, var(--border-bright) 80%, transparent); margin: 24px 0; }
+  .hint { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px; margin-top: 4px; }
+
+  dl.terms { display: grid; grid-template-columns: 200px 1fr; gap: 10px 20px; font-size: 13.5px; margin-top: 8px; }
+  dl.terms dt { font-family: var(--font-mono); font-size: 12px; color: var(--accent); font-weight: 500; }
+  dl.terms dd { color: var(--text); line-height: 1.6; }
+  @media (max-width: 768px) { dl.terms { grid-template-columns: 1fr; gap: 2px 0; } dl.terms dd { margin-bottom: 10px; } }
+
+  /* Decision tree */
+  .tree { display: flex; flex-direction: column; gap: 8px; }
+  .tree-node { display: grid; grid-template-columns: 36px 1fr; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; }
+  .tree-node--branch { border-left-color: var(--gold); }
+  .tree-node--leaf-allow { border-left-color: var(--green); background: var(--green-dim); }
+  .tree-node--leaf-block { border-left-color: var(--red); background: var(--red-dim); }
+  .tree-node__step { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text-dim); padding-top: 2px; }
+  .tree-node__title { font-weight: 600; margin-bottom: 4px; }
+  .tree-node__detail { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; font-family: var(--font-mono); }
+  .tree-indent { padding-left: 28px; border-left: 1px dashed var(--border-bright); margin-left: 18px; }
+
+  /* Math callout */
+  .math { font-family: 'IBM Plex Serif', serif; font-style: italic; font-size: 17px; padding: 16px 24px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; text-align: center; line-height: 1.8; margin: 12px 0; color: var(--text-bright); }
+  .math .var { color: var(--accent); font-weight: 600; }
+  .math .op { color: var(--gold); font-weight: 600; padding: 0 4px; }
+
+  .lang-switch { position: fixed; top: 20px; right: 20px; display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; z-index: 100; box-shadow: 0 2px 8px rgba(15,23,42,0.06); }
+  .lang-switch a { padding: 5px 10px; color: var(--text-dim); text-decoration: none; border-radius: 3px; font-weight: 600; }
+  .lang-switch a.active { background: var(--accent-dim); color: var(--accent); }
+  .lang-switch a:hover:not(.active) { color: var(--text); }
+
+  footer { margin-top: 80px; padding-top: 28px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+</style>
+</head>
+<body>
+
+<div class="lang-switch">
+  <a href="#" class="active">VI</a>
+  <a href="circuitbreaker-alert-pipeline-en.html">EN</a>
+</div>
+
+<div class="container">
+
+<header class="masthead anim" style="--i:0">
+  <div>
+    <div class="masthead__coord">
+      <span>VERUP · BS-INTEGRATION-SERVER</span>
+      <span>BS-EXCHANGE-INFRA</span>
+      <span>AP-NORTHEAST-1</span>
+    </div>
+    <h1>CircuitBreaker Alert · Cơ chế hoạt động</h1>
+    <p class="subtitle">Tài liệu giải thích chi tiết <strong>cách CircuitBreaker Alert hoạt động</strong> trong hệ thống Coinbook (verup): từ điều kiện kích hoạt ở worker Java, qua pipeline log shipping → CloudWatch Subscription Filter → Lambda → Slack, đến hiệu ứng phụ chặn lệnh trading. Alert ADA_JPY ngày 2026-04-21 được dùng làm ví dụ minh hoạ trong section §07.</p>
+  </div>
+  <div class="stamp">
+    <strong>EXPLAINER</strong>
+    MECHANISM-FOCUSED<br>
+    SNAPSHOT 2026-04-21<br>
+    2063 SLOC RESEARCH
+  </div>
+</header>
+
+<nav class="toc anim" style="--i:1">
+  <h2>Mục lục</h2>
+  <ol>
+    <li><a href="#purpose">Mục đích &amp; phạm vi</a></li>
+    <li><a href="#architecture">Kiến trúc 5 mắt xích</a></li>
+    <li><a href="#config">Mô hình cấu hình</a></li>
+    <li><a href="#detection">Cơ chế phát hiện (Detection)</a></li>
+    <li><a href="#delivery">Pipeline phân phối alert</a></li>
+    <li><a href="#blocking">Hiệu ứng phụ · chặn lệnh</a></li>
+    <li><a href="#example">Ví dụ minh hoạ · ADA_JPY</a></li>
+    <li><a href="#runbook">Cây quyết định cho Operator</a></li>
+    <li><a href="#issues">Issues &amp; severity matrix</a></li>
+    <li><a href="#coinbook">So sánh verup vs coinbook</a></li>
+    <li><a href="#reco">Khuyến nghị cải thiện</a></li>
+  </ol>
+</nav>
+
+<!-- ============ §1 PURPOSE ============ -->
+<section id="purpose">
+  <div class="section-head anim" style="--i:2">
+    <span class="section-head__num">01</span>
+    <span class="section-head__title">Mục đích &amp; phạm vi của CircuitBreaker</span>
+    <span class="section-head__sub">why · what · who</span>
+  </div>
+
+  <div class="card anim" style="--i:3">
+    <p><strong>CircuitBreaker</strong> trong context trading khác hoàn toàn với CB pattern thông thường (Hystrix/Resilience4j). Đây <em>không phải</em> cơ chế fault-tolerance cho RPC — mà là cơ chế phát hiện và phản ứng với <strong>biến động giá bất thường</strong> (flash crash hoặc flash spike) trên một cặp giao dịch trong cửa sổ thời gian ngắn.</p>
+    <hr class="sep">
+    <p>Khi giá biến động vượt ngưỡng (ví dụ &gt; 50% trong 10 phút), hệ thống sẽ làm 2 việc song song: <strong>(a) chặn các lệnh có khả năng gây tổn thất do trượt giá</strong> (MARKET, STOP, SIMPLE_MARKET) trong một khoảng thời gian nhất định; và <strong>(b) thông báo tới Slack cho operator</strong> để có thể can thiệp thủ công nếu cần.</p>
+  </div>
+
+  <div class="three-col anim" style="--i:4" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">Trách nhiệm tự động</div>
+      <p>Bảo vệ trader khỏi flash crash bằng cách <strong>tự động chặn</strong> lệnh thị trường ngay sau khi phát hiện biến động lớn — không cần action thủ công.</p>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">Trách nhiệm operator</div>
+      <p>Slack alert giúp operator <strong>nhận biết</strong> tình huống đang xảy ra để: kiểm tra orderbook, xác minh không phải data error, đánh giá có cần extend chặn lệnh.</p>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">Phạm vi áp dụng</div>
+      <p>Chỉ chạy ở <strong>môi trường Invest</strong> (per <code>scheduler.md:14</code>), trên các symbol được khai báo trong bảng <code>worker_master</code>. Verup hiện <strong>chưa deploy PRD</strong>; DEV/STG đang chạy cho ADA_JPY và NIDT_JPY.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §2 ARCHITECTURE ============ -->
+<section id="architecture">
+  <div class="section-head anim" style="--i:5">
+    <span class="section-head__num">02</span>
+    <span class="section-head__title">Kiến trúc 5 mắt xích</span>
+    <span class="section-head__sub">end-to-end flow</span>
+  </div>
+
+  <div class="card anim" style="--i:6">
+    <p>Pipeline gồm 5 stage do 5 component khác nhau sở hữu. Stage 1-2 là <em>logic nghiệp vụ + DB write</em> (App tier); stage 3-5 là <em>shipping log → notification</em> (Infra tier). Mỗi stage <strong>bất đồng bộ</strong> với stage kế tiếp — không có call synchronous nào giữa chúng.</p>
+  </div>
+
+  <div class="stage-grid anim" style="--i:7" style="margin-top:18px;">
+    <div class="stage">
+      <div class="stage__rail"><strong>1</strong>Detection</div>
+      <div class="stage__body">
+        <div class="stage__title">Worker Java tính diffRate &amp; persist state</div>
+        <div class="stage__owner">Owner: <code>bs-integration-server/point-worker</code> · Class <code>point.worker.worker.CircuitBreaker</code></div>
+        <p>Worker chạy mỗi 1 giây cho từng <code>(tradeType, currencyPair)</code> active. Đọc 2 candlestick PT1M, tính <code>diffRate</code>, so với <code>circuitBreakPercent</code>. Nếu vượt → <code>UPDATE currency_pair_config SET circuit_break_updated_at = now()</code>.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>2</strong>Emission</div>
+      <div class="stage__body">
+        <div class="stage__title">Phát log INFO theo format cố định</div>
+        <div class="stage__owner">Owner: cùng worker · stdout container EKS</div>
+        <p>Khi trigger, worker emit log INFO với chuỗi prefix bắt buộc <code>"Circuit Breaker symbol:..."</code>. Đây là <strong>contract</strong> bridge giữa app tier và infra tier — chính chuỗi này được match bởi filter pattern.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>3</strong>Shipping</div>
+      <div class="stage__body">
+        <div class="stage__title">Fluent Bit ship stdout → CloudWatch</div>
+        <div class="stage__owner">Owner: Fluent Bit DaemonSet · namespace <code>amazon-cloudwatch</code></div>
+        <p>DaemonSet đọc <code>/var/log/containers/*.log</code> định kỳ, batch và <code>PutLogEvents</code> lên Log Group <code>/aws/containerinsights/point/application</code>.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>4</strong>Filter</div>
+      <div class="stage__body">
+        <div class="stage__title">Subscription Filter match &amp; invoke Lambda</div>
+        <div class="stage__owner">Owner: <code>bs-exchange-infra/cloudwatch_circuitbreaker_lambda</code></div>
+        <p>Mỗi log event mới được CloudWatch test với <code>filter_pattern</code> JSON. Nếu match (3 điều kiện AND), CloudWatch invoke Lambda <code>circuitbreaker-to-slack</code> bất đồng bộ với payload gzip+base64.</p>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__rail"><strong>5</strong>Notify</div>
+      <div class="stage__body">
+        <div class="stage__title">Lambda decode &amp; POST Slack webhook</div>
+        <div class="stage__owner">Owner: Lambda Python 3.9 · file <code>lambda_function.py</code></div>
+        <p>Lambda gunzip → parse JSON log event → check rate-limit 10 phút → format text payload → POST Slack incoming webhook. Slack channel hiện nội dung cho operator.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card anim" style="--i:8" style="margin-top:24px;">
+    <div class="card__label">Sequence diagram tổng quan</div>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+      </div>
+      <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant W as Worker Java
+  participant DB as Aurora MySQL
+  participant FB as Fluent Bit DS
+  participant CW as CloudWatch Logs
+  participant L as Lambda
+  participant SL as Slack
+  Note over W: Stage 1 Detection every 1s per symbol
+  W->>DB: read currency_pair_config
+  W->>DB: read latest PT1M candlestick
+  W->>DB: read previous PT1M candlestick N min ago
+  Note over W: Compute diffRate
+  alt diffRate greater than threshold
+    W->>DB: UPDATE circuit_break_updated_at
+    Note over W: Stage 2 Emission
+    W-->>FB: stdout INFO Circuit Breaker symbol
+    Note over FB,CW: Stage 3 Shipping
+    FB-->>CW: PutLogEvents
+    Note over CW: Stage 4 Filter
+    CW-->>L: invoke async gzip base64 payload
+    Note over L: Stage 5 Notify
+    L->>L: gunzip parse JSON
+    alt elapsed since last alert greater than 10 min
+      L->>SL: POST webhook text payload
+      L->>L: update last_log_sent_time
+    else suppressed within rate limit window
+      L->>L: skip silently
+    end
+  else diffRate below or equal threshold
+    W-->>W: log debug only no trigger
+  end
+  Note over W,DB: Side effect downstream order layer
+  W->>W: subsequent isCircuitBreaking returns true for stopTimespan minutes
+      </pre>
+    </div>
+    <p class="hint" style="margin-top:14px;">Mọi giao tiếp giữa các stage <em>không đồng bộ</em>. Latency end-to-end thường 5-15 giây tùy Fluent Bit buffer + CloudWatch propagation.</p>
+  </div>
+</section>
+
+<!-- ============ §3 CONFIG MODEL ============ -->
+<section id="config">
+  <div class="section-head anim" style="--i:9">
+    <span class="section-head__num">03</span>
+    <span class="section-head__title">Mô hình cấu hình</span>
+    <span class="section-head__sub">currency_pair_config + worker_master</span>
+  </div>
+
+  <div class="card anim" style="--i:10">
+    <p>Hành vi CircuitBreaker được điều khiển bởi <strong>2 bảng cấu hình</strong> trong Aurora MySQL. Mọi tham số ngưỡng, cửa sổ, thời gian chặn đều thay đổi qua DB — không cần redeploy code.</p>
+  </div>
+
+  <div class="two-col anim" style="--i:11" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__title">currency_pair_config</div>
+      <div class="card__sub">Aurora · 1 row per (tradeType, currencyPair)</div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <colgroup><col style="width:38%"><col></colgroup>
+            <thead><tr><th>Field</th><th>Ý nghĩa</th></tr></thead>
+            <tbody>
+              <tr><td><code>circuit_break_percent</code></td><td>Ngưỡng phần trăm dạng số nguyên (50 = 50%). Trigger khi <code>diffRate &gt; percent/100</code>.</td></tr>
+              <tr><td><code>circuit_break_check_timespan</code></td><td>Cửa sổ so sánh, đơn vị <strong>phút</strong>. Worker so giá hiện tại với giá <em>N phút trước</em>.</td></tr>
+              <tr><td><code>circuit_break_stop_timespan</code></td><td>Thời gian chặn lệnh sau khi trigger, đơn vị <strong>phút</strong>. Hết khoảng này tự mở lại.</td></tr>
+              <tr><td><code>circuit_break_updated_at</code></td><td>Mốc thời gian trigger gần nhất. Worker SET; <code>isCircuitBreaking</code> READ.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:10px;">Update qua admin endpoint <code>PUT /admin/v1/currency-pair-config</code> hoặc trực tiếp DML.</p>
+    </div>
+
+    <div class="card card--elevated">
+      <div class="card__title">worker_master</div>
+      <div class="card__sub">Aurora · 1 row per (env, beanName, tradeType, currencyPair)</div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <colgroup><col style="width:38%"><col></colgroup>
+            <thead><tr><th>Field</th><th>Ý nghĩa</th></tr></thead>
+            <tbody>
+              <tr><td><code>environment</code></td><td>Env scope: <code>dev</code> · <code>stg</code> · <code>prd</code>. Verup hiện chỉ có dev + stg.</td></tr>
+              <tr><td><code>bean_name</code></td><td><code>circuitBreaker</code> (lowerCamelCase của <code>CircuitBreaker.class</code>).</td></tr>
+              <tr><td><code>trade_type</code> · <code>currency_pair</code></td><td>Cặp giao dịch cần kiểm tra. SSOT cho danh sách "symbol nào bật CB".</td></tr>
+              <tr><td><code>interval_millis</code></td><td>Tần suất tick. Hiện <strong>1000 ms = mỗi 1 giây</strong> cho mọi symbol active.</td></tr>
+              <tr><td><code>enabled</code></td><td>Tắt/bật worker mà không cần xóa row.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:10px;">Thêm cặp mới = <code>INSERT</code> row mới (V*.sql migration hoặc admin tool).</p>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:12">
+    <div class="callout__title">Mối quan hệ giữa 2 bảng</div>
+    <code>worker_master</code> quyết định <strong>ai được kiểm tra</strong> (danh sách symbol + tần suất). <code>currency_pair_config</code> quyết định <strong>ngưỡng &amp; thời gian chặn</strong> cho từng symbol đó. Một cặp có thể có row trong <code>currency_pair_config</code> nhưng không có row <code>worker_master</code> ⇒ không bao giờ kiểm tra; ngược lại, có <code>worker_master</code> nhưng <code>circuit_break_percent</code> NULL ⇒ kiểm tra nhưng không bao giờ trigger.
+  </div>
+</section>
+
+<!-- ============ §4 DETECTION ============ -->
+<section id="detection">
+  <div class="section-head anim" style="--i:13">
+    <span class="section-head__num">04</span>
+    <span class="section-head__title">Cơ chế phát hiện</span>
+    <span class="section-head__sub">CircuitBreaker.execute · Stage 1+2</span>
+  </div>
+
+  <div class="card anim" style="--i:14">
+    <p>Đây là phần "ra quyết định" duy nhất của toàn bộ pipeline. Mọi stage phía sau chỉ là vận chuyển log — chúng không tham gia logic phát hiện. Worker chạy độc lập theo SQS subscriber, mỗi tick xử lý 1 cặp giao dịch.</p>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:15" style="margin-top:20px;">
+    <div class="card__label">Lifecycle worker · từ SQS đến quyết định</div>
+    <ol class="numbered">
+      <li><strong>Đăng ký subscriber</strong>: <code>Application.java:31</code> đưa <code>CircuitBreakerSqsSubscriber</code> vào <code>SubscriberGroup.ALL</code>. Pod khởi động → <code>WorkerDaemon</code> spawn thread chạy <code>SqsSubscriber.run()</code>.</li>
+      <li><strong>Long-polling SQS</strong>: <code>sqsManager.subscribe(queueName, 10)</code> với <code>WAIT_TIME_SECONDS=20</code> — chờ message tối đa 20 giây mỗi vòng. Queue name: <code>&lt;env&gt;-circuitBreaker</code>.</li>
+      <li><strong>Scheduler mode</strong>: Khi message đầu tiên (<code>workerForm.method == null</code>) tới, <code>SqsCallback</code> đọc <code>worker_master</code>, spawn <code>WorkerMasterRunner</code> tự đẩy message mỗi <code>intervalMillis</code> ms trong 60 giây — <em>self-replicating</em>.</li>
+      <li><strong>Execute mode</strong>: Khi nhận <code>workerForm.method != null</code>, <code>WorkerRunner</code> gọi <code>worker.work(form)</code> → acquire Redis lock → <code>CircuitBreaker.execute(symbol, params)</code>.</li>
+      <li><strong>Detection</strong>: Đọc 2 candlestick + tính diffRate (chi tiết bên dưới) → quyết định trigger hay không.</li>
+    </ol>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:16" style="margin-top:20px;">
+    <div class="card__label">Công thức tính &amp; điều kiện trigger</div>
+    <p>Worker đọc 2 candlestick PT1M (period 1 phút) từ bảng <code>candlestick</code>:</p>
+    <ul class="blueprint">
+      <li><code>latestCandlestick</code> — candlestick mới nhất ở thời điểm hiện tại (top 1 DESC). Có thể đang trong quá trình tạo (<code>fixed=false</code>).</li>
+      <li><code>previousCandlestick</code> — candlestick cũ nhất tại mốc <code>now − N phút</code> (top 1 ASC). Đã được fix (<code>fixed=true</code>).</li>
+    </ul>
+    <p style="margin-top:14px;">Trong đó <code>N = circuitBreakCheckTimespan</code>. Sau đó tính:</p>
+    <div class="math">
+      <span class="var">diffRate</span> <span class="op">=</span>
+      <span class="op">|</span> latest.open <span class="op">−</span> previous.open <span class="op">|</span>
+      <span class="op">/</span> previous.open
+    </div>
+    <p>Trigger điều kiện <strong>strict greater-than</strong> (không phải <code>&gt;=</code>):</p>
+    <div class="math">
+      trigger <span class="op">⟺</span> <span class="var">diffRate</span> <span class="op">&gt;</span> <span class="var">circuitBreakPercent</span> <span class="op">/</span> 100
+    </div>
+    <hr class="sep">
+    <p><strong>Skip conditions</strong> (return sớm, không trigger):</p>
+    <div class="four-col" style="margin-top:10px;">
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-1</strong>latestCandlestick == null</div>
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-2</strong>checkTimespan null hoặc &lt; 1</div>
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-3</strong>previousCandlestick == null</div>
+      <div class="card card--recessed"><strong style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--accent); margin-bottom:6px;">SKIP-4</strong>previous.open == 0 (tránh chia 0)</div>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:17">
+    <div class="callout__title">Insight · Candlestick với volume = 0</div>
+    Khi không có giao dịch trong phút N, candlestick đó vẫn được tạo: <code>open/high/low/close</code> đều kế thừa từ giá khớp cuối cùng trước đó (<code>CandlestickService.updateByPrevious</code>), <code>volume = 0</code>, <code>fixed = true</code>. Nhờ thế <strong>neo so sánh vẫn đúng</strong> "giá thực tế gần nhất ≤ N phút trước". Comment trong <code>CircuitBreaker.java:122</code> giải thích rõ điều này.
+  </div>
+
+  <div class="card card--elevated anim" style="--i:18" style="margin-top:20px;">
+    <div class="card__label">Hành động khi trigger</div>
+    <div class="two-col">
+      <div>
+        <p><strong>Persist state (cho order layer):</strong></p>
+        <pre class="code code--inline">currencyPairConfig
+  .setCircuitBreakUpdatedAt(date);
+currencyPairConfigService
+  .save(currencyPairConfig);</pre>
+      </div>
+      <div>
+        <p><strong>Emit log (cho alert pipeline):</strong></p>
+        <pre class="code code--inline">log.info("Circuit Breaker symbol: "
+  + JsonUtil.encode(symbol)
+  + ", circuitBreakCheckTimeSpan: ..."
+  + ", latestCandlestick: ..."
+  + ", previousCandlestick: ..."
+  + ", diffRate: ..."
+  + ", cirCuitBreakPercent/100: ..."
+  + ", circuitBreakStopTimespan: ..."
+  + ", circuitBreakUpdatedAt: ...");</pre>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:14px;">Hai hành động này thuộc <strong>cùng 1 transaction</strong> ngầm — log emit ngay sau khi save xong. Nếu Aurora write fail, log không emit ⇒ không có alert.</p>
+  </div>
+</section>
+
+<!-- ============ §5 DELIVERY ============ -->
+<section id="delivery">
+  <div class="section-head anim" style="--i:19">
+    <span class="section-head__num">05</span>
+    <span class="section-head__title">Pipeline phân phối alert</span>
+    <span class="section-head__sub">Stage 3 → 4 → 5</span>
+  </div>
+
+  <div class="card anim" style="--i:20">
+    <p>Sau khi worker emit log INFO, alert phải đi qua 3 chặng để tới Slack. Mỗi chặng có <strong>contract</strong> riêng và có thể fail độc lập — log phải đúng format thì mới qua được filter; payload phải gzip thì Lambda mới decode được; rate-limit phải reset thì Slack mới nhận được message mới.</p>
+  </div>
+
+  <div class="pipeline anim" style="--i:21" style="margin-top:18px;">
+    <div class="pipeline-step">
+      <div class="num">STAGE 3</div>
+      <div class="name">Fluent Bit ship</div>
+      <div class="detail">stdout container<br>→ Log Group<br>containerinsights<br>/point/application</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--gold">
+      <div class="num">STAGE 4a</div>
+      <div class="name">Filter match</div>
+      <div class="detail">JSON filter pattern<br>3 điều kiện AND<br>pod prefix · level · msg prefix</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--gold">
+      <div class="num">STAGE 4b</div>
+      <div class="name">Invoke Lambda</div>
+      <div class="detail">Async invocation<br>payload gzip+base64<br>1 invocation per matched event</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--red">
+      <div class="num">STAGE 5a</div>
+      <div class="name">Decode &amp; gate</div>
+      <div class="detail">gunzip → JSON<br>rate-limit gate<br>10 phút global var</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step pipeline-step--red">
+      <div class="num">STAGE 5b</div>
+      <div class="name">POST Slack</div>
+      <div class="detail">requests.post<br>webhook URL<br>username<br>PointOPECircuitBreaker</div>
+    </div>
+  </div>
+
+  <div class="two-col anim" style="--i:22" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">Stage 4 · Subscription Filter pattern</div>
+      <pre class="code">{ $.kubernetes.pod_name = "point-worker-*"
+  &amp;&amp; $.log_processed.level = "INFO"
+  &amp;&amp; $.log_processed.message = "Circuit Breaker symbol:*" }</pre>
+      <ul class="blueprint" style="margin-top:14px;">
+        <li><strong>Pod prefix</strong> — chỉ accept log từ deployment <code>point-worker-*</code></li>
+        <li><strong>Level INFO</strong> — match đúng level worker emit (không phải ERROR)</li>
+        <li><strong>Message prefix</strong> — chuỗi <code>Circuit Breaker symbol:*</code> mà worker phát ra trong <code>log.info</code></li>
+      </ul>
+      <p class="hint" style="margin-top:10px;">Filter chạy <em>CloudWatch-side</em>, trước khi Lambda được invoke. Tiết kiệm chi phí Lambda invocations đáng kể.</p>
+    </div>
+
+    <div class="card card--elevated">
+      <div class="card__label">Stage 5 · Lambda handler</div>
+      <pre class="code">def lambda_handler(event, context):
+  global last_log_sent_time
+  decoded = base64.b64decode(event['awslogs']['data'])
+  if not decoded.startswith(b'\x1f\x8b'): return  # gzip guard
+  payload = json.loads(gzip.decompress(decoded))
+  for ev in payload['logEvents']:
+    msg = json.loads(ev['message'])
+    ts  = msg['log_processed']['@timestamp']
+    err = msg['log_processed']['message'].split('\n')[0]
+    if datetime.strptime(ts, FMT) - last_log_sent_time &gt; timedelta(minutes=10):
+      r = requests.post(webhook_url, data=json.dumps({
+        'text': f'{emoji}{warning_text}{emoji}\n&lt;!channel&gt;\n...{err}\n',
+        'icon_emoji': alert_emoji,
+        'username': 'PointOPECircuitBreaker'}))
+      if r.status_code == 200: last_log_sent_time = ...</pre>
+    </div>
+  </div>
+
+  <div class="callout callout--danger anim" style="--i:23">
+    <div class="callout__title">Rate-limit có 5 lỗ hổng cố hữu</div>
+    Cơ chế rate-limit dùng <code>last_log_sent_time</code> là <strong>module-level global variable</strong> trong Lambda Python — đây là điểm yếu lớn nhất của thiết kế hiện tại:
+    <ul class="blueprint" style="margin-top:8px;">
+      <li><strong>Cold-start reset</strong> — mỗi container Lambda mới khởi tạo <code>last = now − 10′</code> ⇒ event đầu tiên luôn pass</li>
+      <li><strong>Concurrent containers</strong> — AWS có thể spawn N container song song; mỗi container có biến riêng ⇒ N alert cùng lúc</li>
+      <li><strong>Warm container race</strong> — 2 event đến gần nhau trong cùng container có thể qua gate concurrently (Python GIL không bảo vệ giữa I/O)</li>
+      <li><strong>Out-of-order timestamp</strong> — event đến sau với <code>@timestamp</code> nhỏ hơn ⇒ <code>time_diff</code> âm ⇒ skip nhầm</li>
+      <li><strong>Global gate</strong> — 1 trigger ADA_JPY suppress alert NIDT_JPY trong 10 phút kế tiếp; rate-limit không phân theo <code>symbolId</code></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ §6 BLOCKING ============ -->
+<section id="blocking">
+  <div class="section-head anim" style="--i:24">
+    <span class="section-head__num">06</span>
+    <span class="section-head__title">Hiệu ứng phụ · chặn lệnh</span>
+    <span class="section-head__sub">isCircuitBreaking · order layer</span>
+  </div>
+
+  <div class="card anim" style="--i:25">
+    <p>Đây là <strong>side-effect tự động</strong> của Stage 1 — không liên quan tới Slack alert. Sau khi <code>circuit_break_updated_at</code> được set, mọi lệnh đặt vào hệ thống đều phải qua check <code>isCircuitBreaking(symbol)</code>. Hành vi này độc lập với việc operator có thấy alert hay không.</p>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:26" style="margin-top:20px;">
+    <div class="card__label">Công thức check</div>
+    <pre class="code">return (now - config.getCircuitBreakUpdatedAt().getTime())
+       &lt; config.getCircuitBreakStopTimespan() * MINUTE_MS;</pre>
+    <p class="hint" style="margin-top:10px;">Trả <code>false</code> (không chặn) nếu <code>updatedAt == null</code> hoặc <code>stopTimespan == null</code>. Đây là design "fail open" — ưu tiên khả năng giao dịch hơn safety quá mức.</p>
+  </div>
+
+  <div class="three-col anim" style="--i:27" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">SpotOrderService</div>
+      <p class="hint">SpotOrderService.java:3556</p>
+      <hr class="sep">
+      <p><strong>Chặn:</strong></p>
+      <ul class="blueprint">
+        <li><code>MARKET</code> · lệnh thị trường</li>
+        <li><code>STOP</code> · lệnh chốt lỗ</li>
+        <li><code>SIMPLE_MARKET</code> · biến thể MARKET</li>
+      </ul>
+      <p style="margin-top:10px;"><strong>Không chặn:</strong></p>
+      <ul class="blueprint">
+        <li><code>LIMIT</code> · user tự set giá</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">PosOrderService</div>
+      <p class="hint">PosOrderService.java:127</p>
+      <hr class="sep">
+      <p><strong>Chặn:</strong></p>
+      <ul class="blueprint"><li><code>MARKET</code> only</li></ul>
+      <p class="hint" style="margin-top:14px;">Domain: position-of-sale (margin/leverage trading).</p>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">PointPosOrderService</div>
+      <p class="hint">PointPosOrderService.java:133</p>
+      <hr class="sep">
+      <p><strong>Chặn:</strong></p>
+      <ul class="blueprint"><li><code>MARKET</code> only</li></ul>
+      <p class="hint" style="margin-top:14px;">Verup-only extension (coinbook chỉ có Spot + Pos).</p>
+    </div>
+  </div>
+
+  <div class="callout callout--warn anim" style="--i:28">
+    <div class="callout__title">Vì sao không chặn LIMIT?</div>
+    LIMIT order yêu cầu user phải <strong>nhập giá cụ thể</strong>; nếu giá đã cách xa thị trường thì lệnh sẽ chỉ match khi giá quay lại — user chấp nhận rủi ro này. MARKET/STOP/SIMPLE_MARKET match <em>ngay lập tức</em> tại giá bất kỳ trong orderbook ⇒ rủi ro trượt giá lớn khi flash crash. Ngoài ra <code>SpotTradeService.java:2309</code> có check tương tự cho stop-order loop nhưng đã <strong>bị comment out</strong> — nghĩa là lệnh stop user đặt từ trước vẫn match khi CB đang bật; chỉ chặn lệnh mới.
+  </div>
+
+  <div class="card card--elevated anim" style="--i:29" style="margin-top:20px;">
+    <div class="card__label">State machine của 1 symbol</div>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+      </div>
+      <pre class="mermaid">
+stateDiagram-v2
+  [*] --> Trading
+  Trading --> Trading: tick passes diffRate below threshold
+  Trading --> Blocked: trigger UPDATE updatedAt
+  Blocked --> Blocked: tick re-checks within stopTimespan
+  Blocked --> Blocked: re-trigger refresh updatedAt
+  Blocked --> Trading: stopTimespan elapsed
+  state Trading {
+    [*] --> AcceptAll
+    AcceptAll: MARKET STOP LIMIT all accepted
+  }
+  state Blocked {
+    [*] --> RejectMarketStop
+    RejectMarketStop: ORDER_ERROR_CIRCUIT_BREAKER 50031
+    RejectMarketStop: LIMIT still accepted
+  }
+      </pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §7 EXAMPLE ADA_JPY ============ -->
+<section id="example">
+  <div class="section-head anim" style="--i:30">
+    <span class="section-head__num">07</span>
+    <span class="section-head__title">Ví dụ minh hoạ · alert ADA_JPY</span>
+    <span class="section-head__sub">2026-04-21 · STG · trace từng bước</span>
+  </div>
+
+  <div class="card anim" style="--i:31">
+    <p>Để minh hoạ cơ chế ở §04-§06 chạy thực tế ra sao, ta trace alert vừa fire trên STG ngày 2026-04-21. Đây <strong>chỉ là một sample</strong> — pipeline xử lý mọi alert đều theo cùng workflow này.</p>
+  </div>
+
+  <div class="kpi-row anim" style="--i:32" style="margin-top:20px;">
+    <div class="kpi kpi--red anim-scale"><div class="kpi__label">diffRate đo được</div><div class="kpi__value">51.28%</div><div class="kpi__meta">|39.46 − 81.00| / 81.00</div></div>
+    <div class="kpi kpi--gold anim-scale"><div class="kpi__label">circuitBreakPercent</div><div class="kpi__value">50%</div><div class="kpi__meta">trong currency_pair_config</div></div>
+    <div class="kpi anim-scale"><div class="kpi__label">checkTimespan</div><div class="kpi__value">10′</div><div class="kpi__meta">cửa sổ so sánh</div></div>
+    <div class="kpi kpi--steel anim-scale"><div class="kpi__label">stopTimespan</div><div class="kpi__value">10′</div><div class="kpi__meta">thời gian chặn lệnh</div></div>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:33" style="margin-top:24px;">
+    <div class="card__label">Trace từng stage</div>
+    <ol class="numbered">
+      <li><strong>Stage 1.A — SQS tick</strong>: queue <code>stg-circuitBreaker</code> nhận message <code>WorkerForm{symbolId:4, currencyPair:"ADA_JPY", tradeType:"SPOT", method:"execute"}</code> đẩy bởi <code>WorkerMasterRunner</code> ở giây trước.</li>
+      <li><strong>Stage 1.B — Read config</strong>: <code>currencyPairConfigService.findByCondition(SPOT, ADA_JPY)</code> → <code>{ percent: 50, checkTimespan: 10, stopTimespan: 10, updatedAt: null }</code>.</li>
+      <li><strong>Stage 1.C — Read latest candlestick</strong>: PT1M tại phút hiện tại → <code>{ open: 39.46, close: 39.46, volume: 10, fixed: false }</code>.</li>
+      <li><strong>Stage 1.D — Read previous candlestick</strong>: PT1M tại phút <code>now − 10</code> → <code>{ open: 81.00, close: 81.00, volume: 0, fixed: true }</code>. Volume = 0 vì 10 phút trước không có giao dịch — giá 81.00 là carry-over từ trade cuối.</li>
+      <li><strong>Stage 1.E — Tính diffRate</strong>: <code>|39.46 − 81.00| / 81.00 = 41.54 / 81.00 ≈ 0.51283950...</code> = 51.28%. So với threshold <code>50/100 = 0.5</code>: <code>0.5128 &gt; 0.5</code> ⇒ <strong>trigger</strong>.</li>
+      <li><strong>Stage 1.F — Persist</strong>: <code>UPDATE currency_pair_config SET circuit_break_updated_at = '2026-04-21 04:23:57.331' WHERE trade_type='SPOT' AND currency_pair='ADA_JPY';</code></li>
+      <li><strong>Stage 2 — Emit log</strong>: <code>log.info(..., "Circuit Breaker symbol: {...}, diffRate: 0.5128..., cirCuitBreakPercent/100: 0.5, ...")</code> được ghi ra stdout pod <code>point-worker-deployment-8bfbb9bb7-r6drs</code>.</li>
+      <li><strong>Stage 3 — Fluent Bit ship</strong>: trong batch tiếp theo (~3-5s sau), DaemonSet đẩy log lên log group <code>/aws/containerinsights/point/application</code> dưới dạng JSON với schema <code>kubernetes.*</code> + <code>log_processed.*</code>.</li>
+      <li><strong>Stage 4.A — Filter match</strong>: 3 điều kiện đều true (<code>pod_name="point-worker-deployment-..."</code>, <code>level="INFO"</code>, <code>message="Circuit Breaker symbol:..."</code>). CloudWatch quyết định invoke Lambda.</li>
+      <li><strong>Stage 4.B — Invoke Lambda</strong>: 1 record event được gzip + base64-encode thành payload, AWS gọi <code>circuitbreaker-to-slack</code> async.</li>
+      <li><strong>Stage 5.A — Decode</strong>: Lambda base64.b64decode, check magic <code>\x1f\x8b</code>, gunzip, parse JSON. Trích <code>@timestamp</code> = <code>2026-04-21T04:23:57.343Z</code>, <code>message</code> = <code>"Circuit Breaker symbol:..."</code>, pod &amp; namespace.</li>
+      <li><strong>Stage 5.B — Rate-limit gate</strong>: nếu container Lambda là cold start (vì lần CB trigger gần nhất đã &gt; 10 phút) ⇒ <code>last_log_sent_time = now − 10′</code> ⇒ <code>time_diff &gt; 10 phút</code> ⇒ pass.</li>
+      <li><strong>Stage 5.C — POST Slack</strong>: <code>requests.post(webhook_url, ...)</code> với username <code>PointOPECircuitBreaker</code>, icon <code>:fire:</code>, text format <code>:fire:[STG] CircuitBreaker Alert:fire:\n&lt;!channel&gt;\n*namespace_name*: ...</code>.</li>
+      <li><strong>Stage 5.D — Update state</strong>: response 200 ⇒ <code>last_log_sent_time = '2026-04-21T04:23:57.343Z'</code>. Container Lambda giữ giá trị này cho tới khi cold start tiếp theo hoặc 10 phút kế tiếp.</li>
+      <li><strong>Side-effect</strong>: Bất kỳ lệnh MARKET/STOP/SIMPLE_MARKET cho ADA_JPY/SPOT trong khoảng <code>[04:23:57.331, 04:33:57.331]</code> đều bị <code>SpotOrderService.placeOrder</code> reject với <code>ORDER_ERROR_CIRCUIT_BREAKER (50031)</code>.</li>
+    </ol>
+  </div>
+
+  <div class="two-col anim" style="--i:34" style="margin-top:20px;">
+    <div class="card">
+      <div class="card__label">Payload Slack thực tế</div>
+      <pre class="alert-box"><span class="flame">🔥</span> [STG] CircuitBreaker Alert <span class="flame">🔥</span>
+@channel
+<span class="k">namespace_name</span>: default
+<span class="k">datetime</span>: 2026-04-21T04:23:57.343Z
+<span class="k">pod_name</span>: point-worker-deployment-8bfbb9bb7-r6drs
+<span class="k">circuitbreaker_log</span>: Circuit Breaker symbol:{id:4,currencyPair:ADA_JPY,tradeType:SPOT,...}
+  latestCandlestick:{open:39.46,volume:10,fixed:false,...}
+  previousCandlestick:{open:81.00,volume:0,fixed:true,...}
+  diffRate:0.5128...,  cirCuitBreakPercent/100:0.5
+  circuitBreakStopTimespan:10,  circuitBreakUpdatedAt:1776745437331</pre>
+    </div>
+
+    <div class="card">
+      <div class="card__label">Đọc 3 dòng quan trọng</div>
+      <ul class="blueprint">
+        <li><strong>previous.volume = 0 + fixed = true</strong> — không có giao dịch thật ở phút N. Giá 81.00 là carry-over từ trade cuối cùng. Đặc trưng test data trong STG.</li>
+        <li><strong>diffRate &gt; threshold</strong> — đúng thiết kế, không phải bug. Logic phát hiện hoạt động chính xác.</li>
+        <li><strong>cirCuitBreakPercent</strong> — typo cố ý trong log của worker (thiếu chữ <code>c</code>). Nếu sửa, filter pattern Lambda sẽ <em>không match</em> nữa và toàn bộ alert pipeline sẽ đứt. <strong>Giữ nguyên</strong>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §8 RUNBOOK ============ -->
+<section id="runbook">
+  <div class="section-head anim" style="--i:35">
+    <span class="section-head__num">08</span>
+    <span class="section-head__title">Cây quyết định cho Operator</span>
+    <span class="section-head__sub">khi nhận alert</span>
+  </div>
+
+  <div class="card anim" style="--i:36">
+    <p>Khi alert tới Slack, operator cần chạy qua decision tree dưới đây. <strong>Phần lớn trường hợp không cần can thiệp</strong> — pipeline đã tự động chặn lệnh; alert chỉ là thông báo cho phép operator <em>verify</em> và <em>extend chặn lệnh</em> nếu cần.</p>
+  </div>
+
+  <div class="tree anim" style="--i:37" style="margin-top:20px;">
+    <div class="tree-node">
+      <div class="tree-node__step">Q1</div>
+      <div>
+        <div class="tree-node__title">Alert đến từ env nào?</div>
+        <div class="tree-node__detail">Đọc warning_text trong message: <code>[DEV]</code> · <code>[STG]</code> · <code>[PRD]</code>.</div>
+      </div>
+    </div>
+    <div class="tree-indent">
+      <div class="tree-node tree-node--leaf-allow">
+        <div class="tree-node__step">→ DEV/STG</div>
+        <div>
+          <div class="tree-node__title">IGNORE — gần như chắc chắn là test data</div>
+          <div class="tree-node__detail">Nếu không có change deployment liên quan thì bỏ qua. Pipeline đã chặn lệnh đúng — DEV/STG không có user thật chịu thiệt hại. Có thể verify bằng cách check pod_name có phải instance đang test không.</div>
+        </div>
+      </div>
+      <div class="tree-node tree-node--branch">
+        <div class="tree-node__step">→ PRD</div>
+        <div>
+          <div class="tree-node__title">Tiếp tục Q2</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-node">
+      <div class="tree-node__step">Q2</div>
+      <div>
+        <div class="tree-node__title">Có phải test data anomaly không?</div>
+        <div class="tree-node__detail">Trong message JSON, kiểm tra <code>previousCandlestick.volume</code>. Nếu volume = 0 và <code>fixed=true</code>, giá so sánh chỉ là carry-over.</div>
+      </div>
+    </div>
+    <div class="tree-indent">
+      <div class="tree-node tree-node--leaf-allow">
+        <div class="tree-node__step">→ volume = 0</div>
+        <div>
+          <div class="tree-node__title">Likely thin liquidity — verify orderbook</div>
+          <div class="tree-node__detail">Mở exchange admin, xem orderbook gần đây của symbol. Nếu spread quá rộng (giá bid-ask cách nhau quá xa) ⇒ tạm thời tăng <code>circuitBreakStopTimespan</code> để chặn thêm đến khi liquidity hồi phục.</div>
+        </div>
+      </div>
+      <div class="tree-node tree-node--branch">
+        <div class="tree-node__step">→ volume &gt; 0</div>
+        <div>
+          <div class="tree-node__title">Tiếp tục Q3</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-node">
+      <div class="tree-node__step">Q3</div>
+      <div>
+        <div class="tree-node__title">Flash crash thật hay nhiều symbol cùng trigger?</div>
+        <div class="tree-node__detail">Check Slack channel xem có nhiều alert khác nhau symbol trong 30 phút gần nhất không.</div>
+      </div>
+    </div>
+    <div class="tree-indent">
+      <div class="tree-node tree-node--leaf-block">
+        <div class="tree-node__step">→ multi-symbol</div>
+        <div>
+          <div class="tree-node__title">Có thể là sự cố toàn thị trường — escalate</div>
+          <div class="tree-node__detail">Page on-call. Kiểm tra giao dịch gần nhất trên các sàn lớn (Binance, Coinbase). Đề xuất tạm pause toàn bộ trading qua admin tool.</div>
+        </div>
+      </div>
+      <div class="tree-node tree-node--leaf-block">
+        <div class="tree-node__step">→ single-symbol</div>
+        <div>
+          <div class="tree-node__title">Có thể fat-finger / market manipulation — verify</div>
+          <div class="tree-node__detail">Check user gần đây nhất đặt lệnh symbol đó. Nếu volume bất thường lớn so với daily average, escalate tới risk team. Nếu không, để CB tự hết hạn (10 phút) là đủ.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:38">
+    <div class="callout__title">Quy tắc chung</div>
+    <strong>Đừng disable CB</strong> bằng cách set <code>circuitBreakUpdatedAt = NULL</code> ngay khi nhận alert — cho dù alert là false positive. Pipeline đã tự mở lại sau <code>stopTimespan</code> phút (default 10′). Disable thủ công chỉ nên làm khi confirm 100% là data error và có ảnh hưởng nghiêm trọng tới user trải nghiệm.
+  </div>
+</section>
+
+<!-- ============ §9 ISSUES ============ -->
+<section id="issues">
+  <div class="section-head anim" style="--i:39">
+    <span class="section-head__num">09</span>
+    <span class="section-head__title">Issues &amp; severity matrix</span>
+    <span class="section-head__sub">15 findings · prioritized</span>
+  </div>
+
+  <div class="card card--elevated anim" style="--i:40">
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data-table">
+          <colgroup><col style="width:90px"><col style="width:280px"><col></colgroup>
+          <thead><tr><th>Severity</th><th>Issue</th><th>Action / Impact</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status status--high">HIGH</span></td><td>IAM policy <code>Resource = "*"</code></td><td>Scope về log group tự sở hữu. tfsec AWS099, checkov CKV_AWS_111.</td></tr>
+            <tr><td><span class="status status--high">HIGH</span></td><td>Lambda permission <code>source_arn</code> wildcard log-group</td><td>Bất kỳ log group nào trong account cũng invoke được Lambda. Scope về log group EKS application thực.</td></tr>
+            <tr><td><span class="status status--high">HIGH</span></td><td>Slack webhook URL plaintext trong tfvars (commit Git)</td><td>Move sang Secrets Manager / SSM Parameter Store. Rotate token hiện tại.</td></tr>
+            <tr><td><span class="status status--high">HIGH</span></td><td>Python 3.9 runtime (EOL 2024-12-13)</td><td>AWS block updates 2025-03. Upgrade lên 3.12/3.13 (coinbook đã migrate UNYO-1058).</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Rate-limit in-memory global var (5 lỗ hổng)</td><td>Move sang DynamoDB + ConditionalWrite hoặc SQS FIFO deduplication. Rate-limit nên theo <code>symbolId</code>.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td><code>lambda_function.zip</code> commit trực tiếp thay vì build từ <code>src/</code></td><td>Drift risk. Dùng <code>data.archive_file</code> như BB-1917 convention.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Layer <code>python_module.zip</code> commit + deps từ 2023-06-04</td><td>Dependency drift. Thiếu <code>requirements.txt</code> + <code>build.sh</code>.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Provider pin <code>aws ~&gt; 4.0</code> lỗi thời</td><td>Upgrade lên <code>~&gt; 5.0</code> theo BB-1917 convention.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Slack payload chỉ text, không Block Kit</td><td>Không có link runbook, structured fields. Operator không biết phải làm gì.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Không có <code>prd-ex.tfvars</code></td><td>Verup chưa deploy PRD. Cần bổ sung trước go-live.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Role name hardcoded không có <code>env</code> suffix</td><td>Không thể deploy 2 env cùng account.</td></tr>
+            <tr><td><span class="status status--med">MED</span></td><td>Layer name <code>python-module</code> đụng giữa 2 component</td><td><code>cloudwatch_errorlog_lambda</code> dùng cùng tên.</td></tr>
+            <tr><td><span class="status status--low">LOW</span></td><td>Typo <code>cirCuitBreakPercent</code> trong log</td><td>Sửa sẽ <strong>làm đứt pipeline alert</strong>. Giữ nguyên.</td></tr>
+            <tr><td><span class="status status--low">LOW</span></td><td><code>posCandlestickService</code> inject nhưng không dùng</td><td>Dead code hoặc preparation. Confirm với team rồi remove.</td></tr>
+            <tr><td><span class="status status--low">LOW</span></td><td>Không có retry khi POST Slack fail</td><td>1 HTTP 429/503 = mất alert. Nên retry exponential backoff.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §10 COINBOOK ============ -->
+<section id="coinbook">
+  <div class="section-head anim" style="--i:41">
+    <span class="section-head__num">10</span>
+    <span class="section-head__title">So sánh verup vs coinbook</span>
+    <span class="section-head__sub">reference implementation</span>
+  </div>
+
+  <div class="card anim" style="--i:42">
+    <p>Cả 2 project dùng cùng mô hình 2 tầng. Khác biệt tập trung ở runtime, build automation, và PRD readiness. <strong>Coinbook đã tiến bộ hơn</strong> ở 4 điểm infra; <strong>verup đã tiến bộ hơn</strong> ở 5 điểm app/Lambda code.</p>
+  </div>
+
+  <div class="diff-panels anim" style="--i:43" style="margin-top:20px;">
+    <div class="diff-panel__header diff-panel__header--verup">VERUP</div>
+    <div class="diff-panel__header diff-panel__header--coinbook">COINBOOK</div>
+    <div class="diff-panel__body">
+      <strong>Package path</strong>
+      <pre class="code">point.worker.worker.CircuitBreaker</pre>
+      <strong style="display:block; margin-top:14px;">Lambda Python runtime</strong>
+      <p><code>python3.9</code> · EOL 2024-12</p>
+      <strong style="display:block; margin-top:14px;">Build automation</strong>
+      <p>Không có <code>build.sh</code> · <code>requirements.txt</code> · <code>.gitignore</code></p>
+      <strong style="display:block; margin-top:14px;">PRD tfvars</strong>
+      <p><span class="status status--high">CHƯA CÓ</span> <code>prd-ex.tfvars</code></p>
+      <strong style="display:block; margin-top:14px;">Order blocking scope</strong>
+      <p>Spot + Pos + PointPos (3 services)</p>
+    </div>
+    <div class="diff-panel__body">
+      <strong>Package path</strong>
+      <pre class="code">exchange.worker.worker.CircuitBreaker</pre>
+      <strong style="display:block; margin-top:14px;">Lambda Python runtime</strong>
+      <p><code>python3.13</code> · UNYO-1058 migrated</p>
+      <strong style="display:block; margin-top:14px;">Build automation</strong>
+      <p>Đầy đủ: <code>build.sh</code> (~140 SLOC), <code>requirements.txt</code>, <code>.gitignore</code></p>
+      <strong style="display:block; margin-top:14px;">PRD tfvars</strong>
+      <p><span class="status status--ok">CÓ</span> <code>prd.tfvars</code> đang chạy</p>
+      <strong style="display:block; margin-top:14px;">Order blocking scope</strong>
+      <p>Spot only (1 service)</p>
+    </div>
+  </div>
+
+  <div class="two-col anim" style="--i:44" style="margin-top:20px;">
+    <div class="card card--elevated">
+      <div class="card__label">Verup tiến bộ hơn coinbook</div>
+      <ul class="blueprint">
+        <li><strong>Gzip magic guard</strong> Lambda — tránh crash khi test event không phải gzip</li>
+        <li><strong>Start/end log</strong> trong Worker (BB-1289) — đo latency dễ hơn</li>
+        <li><strong>Fix typo</strong> biến <code>cirCuitBreakPercent</code> → <code>circuitBreakPercent</code> (local var; log giữ typo)</li>
+        <li><strong>Mở rộng CB</strong> sang Pos + PointPos services</li>
+        <li><strong>scheduler.md</strong> doc hoá scope (Invest-only)</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">Coinbook tiến bộ hơn verup</div>
+      <ul class="blueprint">
+        <li><strong>Python 3.13</strong> — không còn EOL risk</li>
+        <li><strong>Build automation</strong> đầy đủ với <code>build.sh</code> detect runtime</li>
+        <li><strong>PRD tfvars</strong> sẵn sàng production</li>
+        <li><code>.gitignore</code> tách vendored deps</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:45">
+    <div class="callout__title">Cả 2 cùng chưa fix</div>
+    Rate-limit in-memory, webhook plaintext trong tfvars, IAM <code>Resource = "*"</code>, không retry Slack post, alert text không có Block Kit, không có runbook link, song song Metric Filter Alarm gây noise.
+  </div>
+</section>
+
+<!-- ============ §11 RECO ============ -->
+<section id="reco">
+  <div class="section-head anim" style="--i:46">
+    <span class="section-head__num">11</span>
+    <span class="section-head__title">Khuyến nghị cải thiện</span>
+    <span class="section-head__sub">3 kịch bản A/B/C</span>
+  </div>
+
+  <div class="three-col anim" style="--i:47">
+    <div class="card card--elevated">
+      <div class="card__label">A · Minimal (1-2h)</div>
+      <ul class="blueprint">
+        <li>Viết runbook <code>docs/guides/circuitbreaker-alert-runbook.md</code></li>
+        <li>Decision tree action (như §08 trong tài liệu này)</li>
+        <li>Link runbook URL vào Slack alert text</li>
+        <li>Output: ops team đọc xong biết phải làm gì</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">B · Medium (0.5-1 ngày)</div>
+      <ul class="blueprint">
+        <li>Upgrade Python 3.12/3.13</li>
+        <li>Parse symbol/diffRate/percent structured</li>
+        <li>Slack Block Kit + link CloudWatch + runbook</li>
+        <li>Phân kênh routing theo env</li>
+        <li>Move webhook vào Secrets Manager</li>
+        <li>Build từ <code>src/</code> qua <code>archive_file</code></li>
+        <li>Đồng bộ BB-1917 convention</li>
+      </ul>
+    </div>
+    <div class="card card--elevated">
+      <div class="card__label">C · Full (1-2 ngày)</div>
+      <ul class="blueprint">
+        <li>Thay log-subscription bằng metric + CloudWatch alarm</li>
+        <li>SNS routing theo severity</li>
+        <li>Dashboard track CB trigger/ngày per symbol</li>
+        <li>Auto-ack DEV/STG</li>
+        <li>Rate-limit DynamoDB + ConditionalWrite</li>
+        <li>Retry exponential backoff</li>
+        <li>Refactor 2 component thành shared module</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout callout--warn anim" style="--i:48">
+    <div class="callout__title">Thứ tự ưu tiên</div>
+    <strong>P0:</strong> A + upgrade Python 3.9 → 3.12. <strong>P1:</strong> Move webhook sang Secrets Manager + rotate token. <strong>P2:</strong> Scope IAM + Lambda permission. <strong>P3:</strong> B (UX alert) + scaffold <code>prd-ex.tfvars</code>. <strong>P4:</strong> C (refactor toàn diện).
+  </div>
+</section>
+
+<footer class="anim" style="--i:49">
+  <div><strong>Sources</strong> · 2063 SLOC research · app-verup.md 828 · infra-verup.md 764 · coinbook-comparison.md 471</div>
+  <div>docs/guides/circuitbreaker/research/ · 2026-04-21</div>
+</footer>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: isDark ? '#19233b' : '#e0e7f2',
+      primaryBorderColor: isDark ? '#7dd3fc' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      secondaryColor: isDark ? '#111829' : '#fef3c7',
+      secondaryBorderColor: isDark ? '#fbbf24' : '#b45309',
+      secondaryTextColor: isDark ? '#fef3c7' : '#78350f',
+      tertiaryColor: isDark ? '#1a1f2e' : '#f1f5f9',
+      tertiaryBorderColor: isDark ? '#94a3b8' : '#334155',
+      tertiaryTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      actorBkg: isDark ? '#19233b' : '#ffffff',
+      actorBorder: isDark ? '#7dd3fc' : '#1e3a5f',
+      actorTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      actorLineColor: isDark ? '#64748b' : '#94a3b8',
+      signalColor: isDark ? '#7dd3fc' : '#1e3a5f',
+      signalTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      labelBoxBkgColor: isDark ? '#19233b' : '#ffffff',
+      labelBoxBorderColor: isDark ? '#7dd3fc' : '#1e3a5f',
+      labelTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      noteBkgColor: isDark ? '#161f35' : '#fff7ed',
+      noteTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      noteBorderColor: isDark ? '#fbbf24' : '#b45309',
+      lineColor: isDark ? '#64748b' : '#475569',
+      fontSize: '18px',
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif"
+    },
+    sequence: { actorMargin: 90, width: 180, height: 50, boxMargin: 14, messageMargin: 42, noteMargin: 14, mirrorActors: true }
+  });
+</script>
+<script>
+  function zoomDiagram(btn, factor) {
+    const wrap = btn.closest('.mermaid-wrap');
+    const target = wrap.querySelector('.mermaid');
+    const current = parseFloat(target.dataset.zoom || '1.35');
+    const next = Math.min(Math.max(current * factor, 0.4), 5);
+    target.dataset.zoom = next;
+    target.style.transform = 'scale(' + next + ')';
+    wrap.classList.toggle('is-zoomed', next > 1.35);
+  }
+  function resetZoom(btn) {
+    const wrap = btn.closest('.mermaid-wrap');
+    const target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = '1.35';
+    target.style.transform = 'scale(1.35)';
+    wrap.classList.remove('is-zoomed');
+  }
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap){
+    wrap.addEventListener('wheel', function(e){
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const target = wrap.querySelector('.mermaid');
+      const current = parseFloat(target.dataset.zoom || '1.35');
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const next = Math.min(Math.max(current * factor, 0.4), 5);
+      target.dataset.zoom = next;
+      target.style.transform = 'scale(' + next + ')';
+      wrap.classList.toggle('is-zoomed', next > 1.35);
+    }, {passive: false});
+    let sx, sy, sl, st;
+    wrap.addEventListener('mousedown', function(e){
+      if (e.target.closest('.zoom-controls')) return;
+      const t = wrap.querySelector('.mermaid');
+      if (parseFloat(t.dataset.zoom || '1.35') <= 1.35) return;
+      wrap.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY;
+      sl = wrap.scrollLeft; st = wrap.scrollTop;
+    });
+    window.addEventListener('mousemove', function(e){
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.scrollLeft = sl - (e.clientX - sx);
+      wrap.scrollTop  = st - (e.clientY - sy);
+    });
+    window.addEventListener('mouseup', function(){ wrap.classList.remove('is-panning'); });
+  });
+</script>
+</body>
+</html>

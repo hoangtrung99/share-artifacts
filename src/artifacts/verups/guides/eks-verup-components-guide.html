@@ -1,0 +1,2591 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EKS verup — Các thành phần Cluster (point)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — Blueprint ============ */
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --font-serif: 'IBM Plex Serif', Georgia, serif;
+
+    --bg: #f4f6fa;
+    --surface: #ffffff;
+    --surface2: #eef2f8;
+    --surface-elevated: #e3eaf3;
+    --border: rgba(15, 30, 54, 0.10);
+    --border-strong: rgba(15, 30, 54, 0.20);
+    --text: #0f1e36;
+    --text-dim: #4a5e7a;
+    --text-dimmer: #7e8fa6;
+
+    --primary: #1e3a5f;
+    --primary-dim: rgba(30, 58, 95, 0.08);
+    --accent: #b8862a;
+    --accent-dim: rgba(184, 134, 42, 0.10);
+    --secondary: #0e7490;
+    --secondary-dim: rgba(14, 116, 144, 0.10);
+    --tertiary: #b45309;
+    --tertiary-dim: rgba(180, 83, 9, 0.10);
+    --danger: #991b1b;
+    --danger-dim: rgba(153, 27, 27, 0.10);
+    --success: #166534;
+    --success-dim: rgba(22, 101, 52, 0.10);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a1628;
+      --surface: #112038;
+      --surface2: #162947;
+      --surface-elevated: #1d3556;
+      --border: rgba(200, 212, 224, 0.10);
+      --border-strong: rgba(200, 212, 224, 0.22);
+      --text: #d8e2ee;
+      --text-dim: #8ea3bf;
+      --text-dimmer: #5d728c;
+
+      --primary: #5b9bd5;
+      --primary-dim: rgba(91, 155, 213, 0.14);
+      --accent: #e2bd65;
+      --accent-dim: rgba(226, 189, 101, 0.14);
+      --secondary: #38bdf8;
+      --secondary-dim: rgba(56, 189, 248, 0.14);
+      --tertiary: #f59e0b;
+      --tertiary-dim: rgba(245, 158, 11, 0.14);
+      --danger: #f87171;
+      --danger-dim: rgba(248, 113, 113, 0.14);
+      --success: #4ade80;
+      --success-dim: rgba(74, 222, 128, 0.14);
+    }
+  }
+
+  /* ============ RESET + BASE ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: -1px -1px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 40px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--accent-dim); color: var(--text); }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.04s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .wrap {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 0 40px;
+  }
+  .main { min-width: 0; }
+
+  /* ============ TOC ============ */
+  .toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    padding: 14px 0;
+    grid-row: 1 / -1;
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+  }
+  .toc::-webkit-scrollbar { width: 3px; }
+  .toc::-webkit-scrollbar-thumb { background: var(--surface-elevated); border-radius: 2px; }
+
+  .toc-title {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    padding: 0 0 10px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toc a {
+    display: block;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    line-height: 1.4;
+    margin-bottom: 1px;
+    font-family: var(--font-mono);
+  }
+  .toc a:hover { color: var(--text); background: var(--surface2); }
+  .toc a.active { color: var(--text); border-left-color: var(--accent); background: var(--accent-dim); }
+
+  /* ============ HERO ============ */
+  .hero-strip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: var(--text-dimmer);
+  }
+  .hero-strip::before {
+    content: '';
+    width: 28px;
+    height: 1px;
+    background: var(--accent);
+  }
+  .hero-strip::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  h1 {
+    font-family: var(--font-body);
+    font-size: 42px;
+    font-weight: 600;
+    letter-spacing: -1px;
+    line-height: 1.1;
+    margin-bottom: 12px;
+    text-wrap: balance;
+  }
+  h1 .accent { color: var(--accent); }
+
+  .lede {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    max-width: 760px;
+    margin-bottom: 32px;
+  }
+
+  .lede code {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 14px;
+    background: var(--accent-dim);
+    color: var(--text);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* ============ KPI STRIP (Quick Reference) ============ */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 36px;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    border-left: 3px solid var(--accent);
+  }
+  .kpi {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .kpi-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dimmer);
+  }
+  .kpi-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  .kpi-value.lg { font-size: 18px; }
+  .kpi-sub {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+
+  /* ============ SECTION HEADS ============ */
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin: 56px 0 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    scroll-margin-top: 24px;
+  }
+  .sec-head__num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--accent);
+    padding: 2px 8px;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .sec-head__title {
+    font-family: var(--font-body);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text);
+    line-height: 1.2;
+  }
+  .sec-head__sub {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+
+  .sub-head {
+    font-family: var(--font-body);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 32px 0 12px;
+    padding-left: 12px;
+    border-left: 2px solid var(--accent);
+  }
+  .sub-head .pin {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-dim);
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  /* ============ PROSE ============ */
+  p {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    max-width: 78ch;
+  }
+  p strong { color: var(--text); font-weight: 600; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--surface2);
+    color: var(--text);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  a {
+    color: var(--secondary);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--secondary);
+  }
+  a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  ul, ol { padding-left: 24px; margin-bottom: 14px; color: var(--text-dim); }
+  li { margin-bottom: 6px; line-height: 1.6; }
+
+  /* ============ CARDS ============ */
+  .grid {
+    display: grid;
+    gap: 16px;
+    margin: 16px 0 24px;
+  }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid-4 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .ve-card:hover { border-color: var(--border-strong); }
+
+  .ve-card--accent { border-left: 3px solid var(--accent); }
+  .ve-card--primary { border-left: 3px solid var(--primary); }
+  .ve-card--secondary { border-left: 3px solid var(--secondary); }
+  .ve-card--danger { border-left: 3px solid var(--danger); background: var(--danger-dim); }
+  .ve-card--warning { border-left: 3px solid var(--tertiary); background: var(--tertiary-dim); }
+  .ve-card--success { border-left: 3px solid var(--success); background: var(--success-dim); }
+
+  .ve-card h3 {
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .ve-card h3 .label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 2px 6px;
+    border-radius: 2px;
+  }
+  .ve-card p { font-size: 13px; line-height: 1.6; margin-bottom: 8px; }
+  .ve-card p:last-child { margin-bottom: 0; }
+  .ve-card ul { padding-left: 18px; font-size: 13px; }
+  .ve-card ul li { margin-bottom: 4px; }
+
+  .ve-card__meta {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .ve-card__meta span { display: block; }
+  .ve-card__meta strong { color: var(--text); font-weight: 600; }
+
+  /* ============ TABLES ============ */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 16px 0 24px;
+    background: var(--surface);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    background: var(--surface-elevated);
+    z-index: 1;
+  }
+
+  th {
+    text-align: left;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border-strong);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.55;
+    color: var(--text);
+  }
+
+  td.mono, td.num { font-family: var(--font-mono); font-size: 12px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td small { display: block; color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .badge--ok { color: var(--success); border-color: var(--success); background: var(--success-dim); }
+  .badge--warn { color: var(--tertiary); border-color: var(--tertiary); background: var(--tertiary-dim); }
+  .badge--err { color: var(--danger); border-color: var(--danger); background: var(--danger-dim); }
+  .badge--info { color: var(--secondary); border-color: var(--secondary); background: var(--secondary-dim); }
+  .badge--neutral { color: var(--text-dim); border-color: var(--border-strong); background: var(--surface2); }
+  .badge--accent { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+
+  /* ============ MERMAID ============ */
+  .diagram-shell { position: relative; margin: 20px 0 28px; }
+  .diagram-shell__hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dimmer);
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 32px 24px 24px;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 360px;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .zoom-controls button:hover { background: var(--surface2); color: var(--text); }
+
+  .mermaid-wrap { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .mermaid-viewport {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    min-height: 300px;
+  }
+
+  .mermaid-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .zoom-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 14px !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 11.5px !important; }
+  .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.4px !important; }
+  .mermaid .edge-pattern-solid { stroke-width: 1.4px !important; }
+  .mermaid .cluster rect {
+    stroke-dasharray: 4 3 !important;
+    stroke-width: 1px !important;
+  }
+
+  /* ============ LEGEND ============ */
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin: 8px 0 24px;
+    padding: 8px 0;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid var(--border-strong);
+  }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin: 16px 0 20px;
+  }
+  .callout strong { color: var(--text); }
+  .callout--warn { border-left-color: var(--tertiary); background: var(--tertiary-dim); }
+  .callout--err { border-left-color: var(--danger); background: var(--danger-dim); }
+  .callout--info { border-left-color: var(--secondary); background: var(--secondary-dim); }
+  .callout--success { border-left-color: var(--success); background: var(--success-dim); }
+
+  .callout__label {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text);
+    margin-right: 8px;
+    padding: 1px 6px;
+    background: var(--surface);
+    border-radius: 2px;
+    border: 1px solid var(--border-strong);
+  }
+
+  /* ============ CODE BLOCKS ============ */
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text);
+    margin: 12px 0;
+    white-space: pre;
+  }
+  pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+  }
+
+  .ref-line {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dimmer);
+    margin: 6px 0 14px;
+    padding-left: 16px;
+    border-left: 1px dotted var(--border-strong);
+  }
+  .ref-line a { font-size: 11px; }
+
+  /* ============ FOOTER ============ */
+  .footer {
+    margin-top: 80px;
+    padding: 24px 0;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dimmer);
+    line-height: 1.6;
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 1000px) {
+    .wrap { grid-template-columns: 1fr; }
+    body { padding: 20px; padding-top: 0; }
+
+    .toc {
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      max-height: none;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 0;
+      margin: 0 -20px 12px;
+      padding-left: 20px;
+      padding-right: 20px;
+      grid-row: auto;
+    }
+    .toc::-webkit-scrollbar { display: none; }
+    .toc-title { display: none; }
+
+    .toc a {
+      white-space: nowrap;
+      flex-shrink: 0;
+      border-left: none;
+      border-bottom: 2px solid transparent;
+      border-radius: 4px 4px 0 0;
+      padding: 6px 10px;
+      font-size: 10.5px;
+    }
+    .toc a.active {
+      border-left: none;
+      border-bottom-color: var(--accent);
+      background: var(--surface);
+    }
+
+    .main { padding-top: 8px; }
+    .sec-head { scroll-margin-top: 56px; }
+
+    h1 { font-size: 28px; }
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    .mermaid-wrap { padding: 18px 12px; min-height: 280px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <nav class="toc" id="toc">
+    <div class="toc-title">Mục lục</div>
+    <a href="#s-quick">0 · Quick Reference</a>
+    <a href="#s-overview">1 · Tổng quan kiến trúc</a>
+    <a href="#s-control-plane">2 · Control Plane</a>
+    <a href="#s-data-plane">3 · Data Plane</a>
+    <a href="#s-addons">4 · Managed Add-ons</a>
+    <a href="#s-self-managed">5 · Self-managed</a>
+    <a href="#s-lb-controller">6 · AWS LB Controller</a>
+    <a href="#s-irsa">7 · IRSA Matrix</a>
+    <a href="#s-rbac">8 · NetworkPolicy &amp; RBAC</a>
+    <a href="#s-caveats">9 · Caveats &amp; TODO</a>
+    <a href="#s-refs">10 · References</a>
+  </nav>
+
+  <div class="main">
+
+    <!-- ============ HERO ============ -->
+    <div class="hero-strip animate" style="--i:0">verup &middot; cluster point &middot; ap-northeast-1</div>
+    <h1 class="animate" style="--i:1">EKS verup — Các thành phần <span class="accent">Cluster</span></h1>
+    <p class="lede animate" style="--i:2">
+      Tài liệu kiến trúc tổng hợp cho cluster Amazon EKS của project verup (tên cluster <code>point</code>,
+      Kubernetes <code>1.34</code>). Mỗi mục giải thích vai trò, cách hoạt động, cấu hình thực tế trong
+      verup, cách kiểm tra trạng thái, và những lưu ý vận hành — kèm tham chiếu trực tiếp tới file
+      Terraform / k8s manifest để bạn đối chiếu.
+    </p>
+
+    <!-- ============ §0 QUICK REFERENCE ============ -->
+    <div id="s-quick" class="sec-head animate" style="--i:3">
+      <span class="sec-head__num">00</span>
+      <span class="sec-head__title">Quick Reference</span>
+      <span class="sec-head__sub">eks/terraform.tfvars · tfvars/{dev,stg}-ex.tfvars</span>
+    </div>
+
+    <div class="kpi-strip animate" style="--i:4">
+      <div class="kpi">
+        <div class="kpi-label">Cluster</div>
+        <div class="kpi-value">point</div>
+        <div class="kpi-sub">eks/terraform.tfvars#L5</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">K8s Version</div>
+        <div class="kpi-value">1.34</div>
+        <div class="kpi-sub">control + node plane</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Region</div>
+        <div class="kpi-value lg">ap-northeast-1</div>
+        <div class="kpi-sub">Tokyo (primary)</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Node Groups</div>
+        <div class="kpi-value">5</div>
+        <div class="kpi-sub">admin · api · app · worker · mmh</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Managed Add-ons</div>
+        <div class="kpi-value">4</div>
+        <div class="kpi-sub">vpc-cni · kube-proxy · coredns · secrets-csi</div>
+      </div>
+    </div>
+
+    <div class="grid grid-3 animate" style="--i:5">
+      <div class="ve-card ve-card--accent">
+        <h3>Authentication <span class="label">API mode</span></h3>
+        <p>Sử dụng <strong>EKS Access Entries</strong> (auth mode <code>API</code>) — KHÔNG dùng <code>aws-auth</code> ConfigMap legacy.</p>
+        <div class="ve-card__meta">
+          <span><strong>Roles:</strong> cicd, administrator, operator, viewer, bastion, cd_runner</span>
+          <span><strong>Groups:</strong> admin, cicd, operator, viewer</span>
+        </div>
+      </div>
+      <div class="ve-card ve-card--primary">
+        <h3>Endpoint Access <span class="label">env-aware</span></h3>
+        <p><strong>dev-ex</strong>: private = <code>true</code> · public = <code>true</code>.
+           <strong>stg-ex</strong>: private = <code>true</code> · public = <code>false</code>.</p>
+        <div class="ve-card__meta">
+          <span><strong>Note:</strong> STG đóng public endpoint — kubectl phải đi qua bastion / SSM port-forward.</span>
+        </div>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Control Plane Logging <span class="label">5 types</span></h3>
+        <p>Bật cả 5 loại: <code>api</code>, <code>audit</code>, <code>authenticator</code>, <code>controllerManager</code>, <code>scheduler</code>.</p>
+        <div class="ve-card__meta">
+          <span><strong>Retention:</strong> 731 ngày (~2 năm)</span>
+          <span><strong>Log Group:</strong> /aws/eks/point/cluster</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ §1 OVERVIEW ============ -->
+    <div id="s-overview" class="sec-head animate" style="--i:6">
+      <span class="sec-head__num">01</span>
+      <span class="sec-head__title">Tổng quan kiến trúc EKS verup</span>
+      <span class="sec-head__sub">control plane · data plane · add-ons</span>
+    </div>
+
+    <p>
+      Cluster <code>point</code> chia thành 3 lớp:
+      <strong>(1) Control Plane</strong> do AWS quản lý (API server, etcd, controller-manager, scheduler — bạn không SSH/exec vào),
+      <strong>(2) Data Plane</strong> gồm 5 nhóm EC2 worker nodes (managed node groups, AL2023),
+      <strong>(3) Cluster Components</strong> chia thành <em>EKS Managed Add-ons</em> (AWS quản lý version, deploy qua Terraform <code>cluster_addons</code>)
+      và <em>Self-managed manifests</em> (team tự apply YAML lên cluster).
+    </p>
+
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">Ctrl/Cmd + scroll = zoom · drag = pan · click ⛶ = mở full size.</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Mở full size">&#x26F6;</button>
+          <span class="zoom-label">Loading...</span>
+        </div>
+        <div class="mermaid-viewport">
+          <div class="mermaid mermaid-canvas"></div>
+        </div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        graph TB
+          subgraph CP["AWS-managed Control Plane (account 845131030484 dev / 520411743393 stg)"]
+            APISVR["kube-apiserver<br/>+ etcd"]:::aws
+            CTRL["controller-manager<br/>scheduler"]:::aws
+            OIDC["OIDC issuer<br/>(IRSA)"]:::aws
+            LOG["CloudWatch Logs<br/>/aws/eks/point/cluster"]:::log
+            APISVR --> LOG
+            CTRL --> LOG
+          end
+
+          AUTH["IAM Access Entries<br/>(API auth mode)"]:::auth
+          AUTH -->|principal_arn| APISVR
+
+          subgraph DP["Data Plane — 5 Managed Node Groups (AL2023 x86_64)"]
+            NG_ADMIN["admin<br/>point-admin"]:::ng
+            NG_API["api<br/>point-api"]:::ng
+            NG_APP["app<br/>point-app"]:::ng
+            NG_WORKER["worker<br/>point-worker"]:::ng
+            NG_MMH["mmh<br/>point-mmh"]:::ng
+          end
+
+          subgraph ADDON["EKS Managed Add-ons (cluster_addons)"]
+            CNI["vpc-cni<br/>v1.21.1"]:::addon
+            KPROXY["kube-proxy<br/>v1.34.6"]:::addon
+            COREDNS["coredns<br/>v1.13.2"]:::addon
+            SCSI["secrets-store-csi<br/>v3.0.0"]:::addon
+          end
+
+          subgraph SELF["Self-managed Cluster Components"]
+            CA["cluster-autoscaler<br/>v1.28.7"]:::self
+            MS["metrics-server<br/>v0.6.3"]:::self
+            FB["fluent-bit<br/>aws-for-fluent-bit"]:::self
+            CWA["cloudwatch-agent<br/>Container Insights"]:::self
+            ALBC["aws-load-balancer-controller"]:::self
+          end
+
+          APISVR --> NG_ADMIN
+          APISVR --> NG_API
+          APISVR --> NG_APP
+          APISVR --> NG_WORKER
+          APISVR --> NG_MMH
+
+          CNI -.IRSA.-> OIDC
+          CA -.IRSA.-> OIDC
+          CWA -.IRSA.-> OIDC
+          ALBC -.IRSA.-> OIDC
+
+          CA -->|scale up/down ASG| DP
+          FB -->|logs| LOG
+          CWA -->|metrics| LOG
+
+          classDef aws fill:#1e3a5f,stroke:#5b9bd5,color:#fff
+          classDef ng fill:#0e7490,stroke:#22d3ee,color:#fff
+          classDef addon fill:#b8862a,stroke:#e2bd65,color:#fff
+          classDef self fill:#b45309,stroke:#fbbf24,color:#fff
+          classDef log fill:#374151,stroke:#9ca3af,color:#fff
+          classDef auth fill:#7c2d12,stroke:#fb923c,color:#fff
+      </script>
+    </section>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#1e3a5f"></div>AWS-managed</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#0e7490"></div>Node Group</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#b8862a"></div>EKS Managed Add-on</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#b45309"></div>Self-managed</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#7c2d12"></div>Authentication</div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vì sao chia 2 nhóm add-on?</h3>
+        <p><strong>Managed Add-ons</strong> (Terraform <code>cluster_addons</code>): AWS chịu trách nhiệm package, version, upgrade — bạn chỉ chọn version pin. Khi <code>preserve=false</code>, addon được xóa khi destroy cluster.</p>
+        <p><strong>Self-managed</strong>: team apply YAML manifest qua <code>kubectl</code>/Kustomize. Toàn quyền tuỳ biến nhưng phải tự maintain version + IAM + RBAC.</p>
+      </div>
+      <div class="ve-card ve-card--accent">
+        <h3>OIDC + IRSA — cốt lõi của bảo mật</h3>
+        <p>Cluster bật <code>enable_irsa = true</code>. Mỗi ServiceAccount nhạy cảm được liên kết với một IAM Role qua OIDC trust policy (xem §7). Pod gọi AWS API bằng credential tạm thời (STS), <strong>không cần</strong> attach quyền lên node role.</p>
+      </div>
+    </div>
+
+    <div class="ref-line">
+      Tham chiếu: <code>bs-exchange-infra/terraform/components/eks/main.tf</code> · <code>terraform.tfvars</code> · <code>vpc-cni-role.tf</code>
+    </div>
+
+    <!-- ============ §2 CONTROL PLANE ============ -->
+    <div id="s-control-plane" class="sec-head">
+      <span class="sec-head__num">02</span>
+      <span class="sec-head__title">Control Plane</span>
+      <span class="sec-head__sub">module &quot;eks&quot; · terraform-aws-modules/eks/aws v21.1</span>
+    </div>
+
+    <p>
+      Control plane do AWS quản lý hoàn toàn. Project verup tạo cluster qua module
+      <code>terraform-aws-modules/eks/aws ~&gt; 21.1.0</code> với các đặc điểm sau:
+    </p>
+
+    <div class="grid grid-3">
+      <div class="ve-card ve-card--primary">
+        <h3>Cluster Config</h3>
+        <ul>
+          <li><strong>Name:</strong> <code>point</code></li>
+          <li><strong>K8s version:</strong> <code>1.34</code></li>
+          <li><strong>VPC:</strong> <code>point</code> (private subnets)</li>
+          <li><strong>Encryption:</strong> <code>null</code> (không bật KMS envelope encryption)</li>
+          <li><strong>Deletion protection:</strong> <code>true</code> ở dev/stg tfvars</li>
+          <li><strong>Cluster creator admin:</strong> <code>false</code> — chỉ access qua Access Entries</li>
+        </ul>
+        <div class="ve-card__meta">
+          <span><strong>File:</strong> eks/main.tf#L129-160</span>
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--secondary">
+        <h3>Control Plane Logging</h3>
+        <ul>
+          <li><code>api</code> — mọi gọi tới kube-apiserver</li>
+          <li><code>audit</code> — log audit chi tiết</li>
+          <li><code>authenticator</code> — auth events</li>
+          <li><code>controllerManager</code> — controller loop</li>
+          <li><code>scheduler</code> — pod scheduling decisions</li>
+        </ul>
+        <div class="ve-card__meta">
+          <span><strong>Retention:</strong> 731 ngày</span>
+          <span><strong>Log Group:</strong> <code>/aws/eks/point/cluster</code></span>
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--accent">
+        <h3>Endpoint &amp; SG</h3>
+        <ul>
+          <li><strong>Private endpoint:</strong> luôn bật</li>
+          <li><strong>Public endpoint:</strong> dev = bật, stg = tắt</li>
+          <li><strong>Cluster SG:</strong> dùng SG có sẵn <code>eks-cluster-sg</code> (<code>create_security_group = false</code>)</li>
+          <li><strong>Node SG:</strong> <code>eks-worker-sg</code> (cũng pre-existing)</li>
+        </ul>
+        <div class="ve-card__meta">
+          <span><strong>Note:</strong> SG tự tạo bên ngoài module → tránh churn khi upgrade module.</span>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="sub-head">Access Entries (auth mode <code style="font-size:14px">API</code>) <span class="pin">terraform.tfvars#L32-53</span></h3>
+
+    <p>
+      EKS từ 1.27+ hỗ trợ <strong>Access Entries</strong> thay cho <code>aws-auth</code> ConfigMap. verup
+      dùng <code>authentication_mode = "API"</code> (pure API mode, không có fallback ConfigMap). Mỗi
+      entry map một IAM principal (role hoặc user) tới một danh sách <code>kubernetes_groups</code>,
+      sau đó RBAC ClusterRoleBinding bind các group này tới ClusterRole.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Access Entry</th>
+            <th>IAM Principal</th>
+            <th>Kubernetes Group</th>
+            <th>RBAC ClusterRole</th>
+            <th>Mục đích</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">cicd</td>
+            <td class="mono">role/custodian-CICDRole</td>
+            <td><span class="badge badge--accent">cicd</span></td>
+            <td class="mono">cicd</td>
+            <td>Pipeline CI/CD deploy app · apply manifest</td>
+          </tr>
+          <tr>
+            <td class="mono">administrator</td>
+            <td class="mono">role/custodian-AdministratorRole</td>
+            <td><span class="badge badge--err">admin</span></td>
+            <td class="mono">cluster-admin (binding)</td>
+            <td>Full quyền cluster</td>
+          </tr>
+          <tr>
+            <td class="mono">operator</td>
+            <td class="mono">role/custodian-OperatorRole</td>
+            <td><span class="badge badge--info">operator</span></td>
+            <td class="mono">operator</td>
+            <td>Đọc + restart deployment, exec vào pod (xem rbac/clusterrole-operator.yaml)</td>
+          </tr>
+          <tr>
+            <td class="mono">viewer</td>
+            <td class="mono">role/custodian-ViewerRole</td>
+            <td><span class="badge badge--ok">viewer</span></td>
+            <td class="mono">viewer</td>
+            <td>Read-only toàn cluster (no secrets)</td>
+          </tr>
+          <tr>
+            <td class="mono">bastion</td>
+            <td class="mono">role/point-bastion-role</td>
+            <td><span class="badge badge--err">admin</span></td>
+            <td class="mono">cluster-admin (binding)</td>
+            <td>Bastion EC2 instance profile → kubectl từ bastion</td>
+          </tr>
+          <tr>
+            <td class="mono">cd_runner</td>
+            <td class="mono">role/point-cd-runner-role</td>
+            <td><span class="badge badge--accent">cicd</span></td>
+            <td class="mono">cicd</td>
+            <td>GitHub Actions self-hosted runner (deploy)</td>
+          </tr>
+          <tr>
+            <td class="mono">named_user <small>(optional, env-specific)</small></td>
+            <td class="mono">user/bs-operator <small>(dev)</small><br>user/temp-cyberzeal <small>(stg)</small></td>
+            <td><span class="badge badge--err">admin</span> <small>(dev)</small><br><span class="badge badge--ok">viewer</span> <small>(stg)</small></td>
+            <td class="mono">varies</td>
+            <td>IAM user trực tiếp (tạm hoặc named developer)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout--info">
+      <span class="callout__label">Why API mode</span>
+      <strong>API-only</strong> tránh được race condition giữa Terraform (quản lý Access Entries) và
+      controller chạy <code>aws-auth</code> ConfigMap (thường bị edit thủ công). Trade-off: <strong>không thể</strong> dùng
+      <code>kubectl edit cm aws-auth -n kube-system</code> để fix khi out-of-band.
+    </div>
+
+    <div class="ref-line">
+      Tham chiếu: <code>eks/main.tf#L41-76</code> (locals.eks_access_entries) · <code>eks/main.tf#L141-142</code> · <code>terraform.tfvars#L32-53</code>
+    </div>
+
+    <!-- ============ §3 DATA PLANE ============ -->
+    <div id="s-data-plane" class="sec-head">
+      <span class="sec-head__num">03</span>
+      <span class="sec-head__title">Data Plane — 5 Managed Node Groups</span>
+      <span class="sec-head__sub">eks_managed_node_groups · module-launch-template</span>
+    </div>
+
+    <p>
+      verup chia worker thành <strong>5 node groups riêng biệt</strong>, mỗi nhóm dành cho một ứng dụng
+      cụ thể (label <code>app=&lt;name&gt;</code>). Pod tương ứng dùng <code>nodeSelector</code> để pin vào node
+      group đúng, giúp tách isolation, sizing, autoscaling và rollout per-app.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Node Group</th>
+            <th>App Label</th>
+            <th>Instance (dev)</th>
+            <th>Instance (stg)</th>
+            <th class="num">Min/Desired/Max (dev)</th>
+            <th class="num">Min/Desired/Max (stg)</th>
+            <th>AMI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">admin</td>
+            <td class="mono">point-admin</td>
+            <td class="mono">t3.medium</td>
+            <td class="mono">r5.xlarge <small>4 vCPU / 32 GB</small></td>
+            <td class="num">1 / 1 / 3</td>
+            <td class="num">2 / 2 / 7</td>
+            <td class="mono">AL2023_x86_64</td>
+          </tr>
+          <tr>
+            <td class="mono">api</td>
+            <td class="mono">point-api</td>
+            <td class="mono">t3.medium</td>
+            <td class="mono">r5.xlarge</td>
+            <td class="num">1 / 1 / 3</td>
+            <td class="num">2 / 2 / 7</td>
+            <td class="mono">AL2023_x86_64</td>
+          </tr>
+          <tr>
+            <td class="mono">app</td>
+            <td class="mono">point-app</td>
+            <td class="mono">t3.medium</td>
+            <td class="mono">r5.xlarge</td>
+            <td class="num">1 / 1 / 3</td>
+            <td class="num">2 / 2 / 7</td>
+            <td class="mono">AL2023_x86_64</td>
+          </tr>
+          <tr>
+            <td class="mono">worker</td>
+            <td class="mono">point-worker</td>
+            <td class="mono">c6i.xlarge <small>4 vCPU / 8 GB</small></td>
+            <td class="mono">c6i.2xlarge <small>8 vCPU / 16 GB</small></td>
+            <td class="num">1 / 1 / 3</td>
+            <td class="num">2 / 2 / 7</td>
+            <td class="mono">AL2023_x86_64</td>
+          </tr>
+          <tr>
+            <td class="mono">mmh</td>
+            <td class="mono">point-mmh</td>
+            <td class="mono">c6i.xlarge</td>
+            <td class="mono">c6i.2xlarge</td>
+            <td class="num">1 / 1 / 3</td>
+            <td class="num">2 / 2 / 5</td>
+            <td class="mono">AL2023_x86_64</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Tất cả node groups chia sẻ một <code>local.eks_managed_node_group_common</code> block định nghĩa: K8s
+      version 1.34, <code>create_iam_role = false</code> (dùng role có sẵn <code>eks-worker-role</code>),
+      <code>create_launch_template = false</code> (dùng custom launch template trong
+      <code>module-launch-template</code>), và <code>update_config.max_unavailable = 1</code> (rolling update
+      từng node một).
+    </p>
+
+    <h3 class="sub-head">Launch Template — bảo mật node <span class="pin">module-launch-template/main.tf</span></h3>
+
+    <div class="grid grid-3">
+      <div class="ve-card ve-card--secondary">
+        <h3>IMDSv2 enforced</h3>
+        <p><code>http_tokens = "required"</code> + <code>http_put_response_hop_limit = 1</code> → chặn pod gọi vào IMDS để steal credential node role (SSRF-style attack).</p>
+        <div class="ve-card__meta">
+          <span><strong>File:</strong> module-launch-template/main.tf#L31-36</span>
+        </div>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>No public IP</h3>
+        <p><code>associate_public_ip_address = false</code> — node luôn private. NAT Gateway xử lý egress.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>EBS encrypted off</h3>
+        <p>Hiện tại <code>encrypted = false</code> (default trong module variables, có thể override) — <strong>điểm cải thiện được</strong>.</p>
+        <div class="ve-card__meta">
+          <span><strong>Volume size:</strong> 20 GB (AL2023 minimum)</span>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="sub-head">Worker IAM Role <span class="pin">worker-role.tf · worker-role-attach.tf</span></h3>
+
+    <p>
+      Role <code>eks-worker-role</code> attach các managed policy sau (tham chiếu
+      <code>worker-role-attach.tf</code>):
+    </p>
+
+    <div class="grid grid-2">
+      <div class="ve-card">
+        <h3>Policies đang attach</h3>
+        <ul>
+          <li><code>AmazonEKSWorkerNodePolicy</code> — quyền tối thiểu để node join cluster</li>
+          <li><code>AmazonEC2ContainerRegistryReadOnly</code> — pull image từ ECR</li>
+          <li><code>CloudWatchAgentServerPolicy</code> — fluent-bit / cwagent gửi logs &amp; metrics</li>
+          <li><code>AmazonEKSClusterAutoscalerPolicy</code> — backstop cho autoscaler (đã có IRSA riêng)</li>
+          <li><code>AmazonSQSFullAccess</code>, <code>AmazonS3FullAccess</code>, <code>AmazonSESFullAccess</code>, <code>AmazonSNSFullAccess</code>, <code>AmazonKinesisFullAccess</code> — backstop quyền cho app (đã có IRSA point-app riêng)</li>
+        </ul>
+      </div>
+      <div class="ve-card ve-card--warning">
+        <h3>Vì sao thiếu AmazonEKS_CNI_Policy?</h3>
+        <p>Trong <code>worker-role-attach.tf#L16</code> có comment giải thích:</p>
+        <pre><code># AmazonEKS_CNI_Policy is attached via IRSA
+# to kube-system/aws-node (see vpc-cni-role.tf),
+# not the worker role.</code></pre>
+        <p>→ Đây là <strong>best practice bảo mật</strong>: granted CNI policy chỉ cho <code>aws-node</code> DaemonSet thay vì cho mọi pod chạy trên node.</p>
+      </div>
+    </div>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Tech debt</span>
+      Worker role hiện được attach <code>*FullAccess</code> cho SQS/S3/SES/SNS/Kinesis như "backstop" cho app —
+      thực tế <code>point-app-irsa-role</code> đã grant đầy đủ qua IRSA. Sau khi confirm pod chạy
+      OK với IRSA-only credential, nên gỡ FullAccess khỏi worker role để siết blast radius.
+    </div>
+
+    <h3 class="sub-head">Cluster Autoscaler discovery <span class="pin">main.tf#L162-262</span></h3>
+
+    <p>
+      Mỗi node group được tag với:
+    </p>
+    <pre><code>"k8s.io/cluster-autoscaler/enabled"     = "true"
+"k8s.io/cluster-autoscaler/point"       = "owned"
+"App"                                   = &lt;app_name&gt;</code></pre>
+    <p>
+      Cluster Autoscaler dùng flag <code>--node-group-auto-discovery</code> để tìm ASG có 2 tag này (xem §5.1). Không cần khai báo ASG ARN trong autoscaler config — thêm node group mới chỉ cần đảm bảo có tag.
+    </p>
+
+    <!-- ============ §4 MANAGED ADD-ONS ============ -->
+    <div id="s-addons" class="sec-head">
+      <span class="sec-head__num">04</span>
+      <span class="sec-head__title">EKS Managed Add-ons</span>
+      <span class="sec-head__sub">cluster_addons · 4 add-ons</span>
+    </div>
+
+    <p>
+      Quản lý qua block <code>local.cluster_addons</code> trong <code>eks/main.tf#L78-115</code>, truyền vào
+      module EKS qua <code>addons = local.cluster_addons</code>. Mỗi add-on có flag boolean (<code>addon_create_*</code>)
+      cho phép bật/tắt qua tfvars, và version pin tách rời để upgrade từng cái.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Add-on</th>
+            <th>Version (terraform.tfvars)</th>
+            <th>preserve</th>
+            <th>IRSA</th>
+            <th>Configuration</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">vpc-cni</td>
+            <td class="mono">v1.21.1-eksbuild.7</td>
+            <td><span class="badge badge--neutral">false</span></td>
+            <td><span class="badge badge--ok">point-vpc-cni-aws-node</span></td>
+            <td class="mono">enableNetworkPolicy=true</td>
+          </tr>
+          <tr>
+            <td class="mono">kube-proxy</td>
+            <td class="mono">v1.34.6-eksbuild.2</td>
+            <td><span class="badge badge--neutral">false</span></td>
+            <td><span class="badge badge--neutral">—</span></td>
+            <td class="mono">default (iptables mode)</td>
+          </tr>
+          <tr>
+            <td class="mono">coredns</td>
+            <td class="mono">v1.13.2-eksbuild.4</td>
+            <td><span class="badge badge--neutral">false</span></td>
+            <td><span class="badge badge--neutral">—</span></td>
+            <td class="mono">default</td>
+          </tr>
+          <tr>
+            <td class="mono">aws-secrets-store-csi-driver-provider</td>
+            <td class="mono">v3.0.0-eksbuild.1</td>
+            <td><span class="badge badge--warn">true</span></td>
+            <td><span class="badge badge--neutral">— (per-pod IRSA)</span></td>
+            <td class="mono">default</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout--info">
+      <span class="callout__label">preserve flag</span>
+      <code>preserve=false</code> nghĩa là addon được <strong>xóa</strong> khi cluster destroy (3 addons đầu).
+      <code>preserve=true</code> cho secrets-csi giữ lại resources (CRD, SecretProviderClass) — vì
+      destroy CRD có thể làm app khác đang dùng bị broken state.
+    </div>
+
+    <!-- §4.1 VPC CNI -->
+    <h3 class="sub-head">4.1 · vpc-cni — Amazon VPC CNI Plugin <span class="pin">eks/vpc-cni-role.tf</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>Cấp <strong>IP VPC thật</strong> cho từng pod (mỗi pod = một secondary IP trên ENI của node). Khác với CNI overlay (Flannel, Calico VXLAN), pod có IP đi thẳng vào subnet — performance tốt + dễ tích hợp với Security Group, VPC Flow Logs, ALB target group.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cách hoạt động</h3>
+        <ul>
+          <li>DaemonSet <code>aws-node</code> chạy trên mọi node (namespace kube-system)</li>
+          <li>L-IPAMD pre-warm pool secondary IP/ENI để pod start nhanh</li>
+          <li>Khi pod schedule → CNI binding 1 IP từ pool</li>
+          <li>Số pod/node giới hạn theo ENI quota của instance type (xem AWS docs)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h4 style="font-family:var(--font-body);font-size:15px;margin:20px 0 10px;color:var(--text);">Network Policy enforcement</h4>
+
+    <p>
+      verup bật <code>configuration_values = jsonencode({ enableNetworkPolicy = "true" })</code> →
+      VPC CNI 1.14+ dùng <strong>eBPF datapath</strong> để enforce Kubernetes <code>NetworkPolicy</code>
+      resource (không cần Calico/Cilium riêng). Hai policy mặc định đang active:
+    </p>
+    <ul>
+      <li><code>networkpolicy-allow-egress-vpc</code> — pod chỉ được egress tới CIDR trong VPC</li>
+      <li><code>networkpolicy-allow-ingress-vpc</code> — pod chỉ accept ingress từ CIDR VPC</li>
+    </ul>
+
+    <h4 style="font-family:var(--font-body);font-size:15px;margin:20px 0 10px;color:var(--text);">IRSA cho aws-node</h4>
+
+    <p>
+      Đây là pattern <strong>quan trọng</strong>: thay vì attach <code>AmazonEKS_CNI_Policy</code> lên worker
+      role (sẽ áp dụng cho mọi pod chạy trên node), verup tạo IRSA role riêng:
+    </p>
+
+    <pre><code># vpc-cni-role.tf
+resource "aws_iam_role" "vpc_cni_aws_node" {
+  name = "point-vpc-cni-aws-node"
+  # Trust policy: chỉ ServiceAccount kube-system/aws-node mới assume được
+  # OIDC sub: system:serviceaccount:kube-system:aws-node
+}
+resource "aws_iam_role_policy_attachment" "vpc_cni_aws_node" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}</code></pre>
+
+    <p>
+      Module dùng <code>data.aws_eks_cluster</code> + <code>data.aws_iam_openid_connect_provider</code> để
+      lookup OIDC issuer thay vì reference <code>module.eks.oidc_provider_arn</code> — vì
+      <strong>tránh circular dependency</strong> (addon cần role ARN ngay từ khi cluster vừa tạo, role
+      cần OIDC từ cluster đã tồn tại).
+    </p>
+
+    <h4 style="font-family:var(--font-body);font-size:15px;margin:20px 0 10px;color:var(--text);">Cách check &amp; debug</h4>
+
+    <pre><code># Check version + addon status
+kubectl describe addon vpc-cni -n kube-system  # nếu dùng EKS CLI managed view
+aws eks describe-addon --cluster-name point --addon-name vpc-cni \
+  --profile point-operator-dev --region ap-northeast-1
+
+# Check DaemonSet
+kubectl get ds aws-node -n kube-system
+kubectl logs -n kube-system -l k8s-app=aws-node --tail=50
+
+# Pod IP allocation
+kubectl exec -n kube-system &lt;aws-node-pod&gt; -- cat /host/etc/cni/net.d/10-aws.conflist
+
+# IP pool stats
+kubectl exec -n kube-system &lt;aws-node-pod&gt; -- curl -s localhost:61678/v1/enis
+kubectl exec -n kube-system &lt;aws-node-pod&gt; -- curl -s localhost:61678/v1/pods</code></pre>
+
+    <h4 style="font-family:var(--font-body);font-size:15px;margin:20px 0 10px;color:var(--text);">Troubleshooting thường gặp</h4>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Triệu chứng</th>
+            <th>Nguyên nhân thường gặp</th>
+            <th>Cách xử lý</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Pod stuck <code>ContainerCreating</code> + error <code>failed to assign an IP address</code></td>
+            <td>ENI quota đã max trên node</td>
+            <td>Scale up node (autoscaler), hoặc dùng instance lớn hơn, hoặc bật prefix delegation</td>
+          </tr>
+          <tr>
+            <td>Pod không access được Internet/RDS</td>
+            <td>NetworkPolicy chặn (sau khi bật <code>enableNetworkPolicy=true</code>)</td>
+            <td>Kiểm tra <code>kubectl get networkpolicy -A</code>, đảm bảo có policy cho phép egress</td>
+          </tr>
+          <tr>
+            <td>aws-node pod CrashLoop</td>
+            <td>IRSA role thiếu, OIDC trust policy sai SA name</td>
+            <td>Verify <code>aws iam get-role --role-name point-vpc-cni-aws-node</code> trust policy có đúng <code>system:serviceaccount:kube-system:aws-node</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ref-line">
+      Reference: <a href="https://docs.aws.amazon.com/eks/latest/userguide/managing-vpc-cni.html">AWS docs · Amazon VPC CNI</a> ·
+      <a href="https://github.com/aws/amazon-vpc-cni-k8s">amazon-vpc-cni-k8s</a> ·
+      verup: <code>eks/main.tf#L80-89</code>, <code>eks/vpc-cni-role.tf</code>
+    </div>
+
+    <!-- §4.2 kube-proxy -->
+    <h3 class="sub-head">4.2 · kube-proxy <span class="pin">eks/main.tf#L91-97</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>Cài đặt <strong>iptables/ipvs rules</strong> trên mỗi node để route traffic Service ClusterIP tới Pod IP. Khi pod gọi <code>http://service-name</code>, CoreDNS trả về ClusterIP, kube-proxy biến ClusterIP đó thành Pod IP thực tế (load-balanced).</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cấu hình verup</h3>
+        <ul>
+          <li>Version: <code>v1.34.6-eksbuild.2</code> (khớp K8s 1.34)</li>
+          <li>Mode: <strong>iptables</strong> (default EKS — không bật ipvs)</li>
+          <li>Không có IRSA — chạy với host-level networking</li>
+          <li>DaemonSet trong <code>kube-system</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      kube-proxy version <strong>phải khớp</strong> hoặc nằm trong skew policy với cluster version (±1 minor).
+      Khi upgrade K8s 1.34 → 1.35, kube-proxy phải upgrade theo. verup pin chính xác build EKS
+      tương ứng để tránh skew.
+    </p>
+
+    <pre><code># Check status
+kubectl get ds kube-proxy -n kube-system
+kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=20
+
+# Xem iptables rule do kube-proxy tạo
+kubectl exec -n kube-system &lt;kube-proxy-pod&gt; -- iptables-save | grep KUBE-SVC</code></pre>
+
+    <!-- §4.3 CoreDNS -->
+    <h3 class="sub-head">4.3 · coredns — Cluster DNS <span class="pin">eks/main.tf#L99-105</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>Phục vụ DNS cho mọi pod. Resolve service name (e.g. <code>aurora-master.default.svc.cluster.local</code>) thành ClusterIP, forward request external (e.g. <code>secretsmanager.ap-northeast-1.amazonaws.com</code>) tới VPC resolver.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cấu hình verup</h3>
+        <ul>
+          <li>Version: <code>v1.13.2-eksbuild.4</code></li>
+          <li>Deployment 2 replicas (default EKS)</li>
+          <li>Service: <code>kube-dns</code> (ClusterIP 10.100.0.10 — convention)</li>
+          <li>ConfigMap: <code>coredns</code> (xem analysis chi tiết trong link bên dưới)</li>
+        </ul>
+      </div>
+    </div>
+
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">Sequence: Pod resolve một service name.</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Mở full size">&#x26F6;</button>
+          <span class="zoom-label">Loading...</span>
+        </div>
+        <div class="mermaid-viewport">
+          <div class="mermaid mermaid-canvas"></div>
+        </div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        sequenceDiagram
+          autonumber
+          participant Pod as Pod (point-api)
+          participant Resolv as /etc/resolv.conf<br/>nameserver 10.100.0.10
+          participant KubeProxy as kube-proxy<br/>(iptables NAT)
+          participant CoreDNS as CoreDNS Pod<br/>(kube-system)
+          participant VPCResolver as VPC Resolver<br/>(172.18.0.2)
+
+          Pod->>Resolv: gethostbyname("aurora.default.svc.cluster.local")
+          Resolv->>KubeProxy: UDP 53 → 10.100.0.10
+          KubeProxy->>CoreDNS: DNAT to CoreDNS Pod IP
+          CoreDNS->>CoreDNS: kubernetes plugin: lookup Service
+          CoreDNS-->>Pod: A record (ClusterIP)
+
+          Note over Pod,VPCResolver: External name (e.g. secretsmanager.ap-northeast-1.amazonaws.com)
+
+          Pod->>CoreDNS: query external FQDN
+          CoreDNS->>VPCResolver: forward (forward . /etc/resolv.conf)
+          VPCResolver-->>CoreDNS: A record (RDS endpoint / AWS API)
+          CoreDNS-->>Pod: cached response
+      </script>
+    </section>
+
+    <div class="callout callout--info">
+      <span class="callout__label">Deep dive</span>
+      Phân tích ConfigMap CoreDNS chi tiết của verup đã có sẵn:
+      <a href="./coredns-configmap-analysis.html">docs/guides/coredns-configmap-analysis.html</a>.
+      Xem để hiểu các plugin <code>kubernetes</code>, <code>forward</code>, <code>cache</code>, <code>errors</code>,
+      <code>health</code>, <code>ready</code>, <code>prometheus</code> và options NDOTS.
+    </div>
+
+    <h4 style="font-family:var(--font-body);font-size:15px;margin:20px 0 10px;color:var(--text);">Pitfall điển hình</h4>
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--warning">
+        <h3>NXDOMAIN flood do <code>ndots:5</code></h3>
+        <p>Mặc định Kubernetes set <code>ndots:5</code> trong <code>/etc/resolv.conf</code> → mọi domain &lt;5 dot sẽ thử search qua các suffix (<code>.default.svc.cluster.local</code>, <code>.svc.cluster.local</code>, <code>.cluster.local</code>) trước khi query thật.</p>
+        <p>Với app gọi nhiều external (S3, RDS endpoint), điều này gây N×4 query không cần thiết. Mitigation: dùng FQDN có trailing dot (<code>s3.amazonaws.com.</code>) hoặc set <code>dnsConfig.options ndots=2</code> trong pod spec.</p>
+      </div>
+      <div class="ve-card ve-card--warning">
+        <h3>CoreDNS OOMKilled khi cluster lớn</h3>
+        <p>Default request 70Mi memory, 100m CPU — đủ cho cluster nhỏ. Khi node groups scale up, có thể cần điều chỉnh resource hoặc bật autoscaling cho CoreDNS (HPA based on CPU). Theo dõi qua metric <code>coredns_dns_request_count_total</code>.</p>
+      </div>
+    </div>
+
+    <pre><code># Check
+kubectl get pods -n kube-system -l k8s-app=kube-dns
+kubectl logs -n kube-system -l k8s-app=kube-dns --tail=30
+kubectl get cm coredns -n kube-system -o yaml
+
+# Test DNS từ pod bất kỳ
+kubectl run -it --rm dnsutils --image=registry.k8s.io/e2e-test-images/jessie-dnsutils:1.3 --restart=Never -- nslookup kubernetes.default</code></pre>
+
+    <!-- §4.4 secrets-csi -->
+    <h3 class="sub-head">4.4 · aws-secrets-store-csi-driver-provider <span class="pin">eks/main.tf#L107-114</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>Mount secrets từ <strong>AWS Secrets Manager</strong> hoặc <strong>SSM Parameter Store</strong> vào pod như volume hoặc env var, thay vì copy giá trị secret vào Kubernetes Secret. App đọc <code>/mnt/secrets/aurora-password</code> như file thông thường.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cấu hình verup</h3>
+        <ul>
+          <li>Version: <code>v3.0.0-eksbuild.1</code></li>
+          <li><code>preserve = true</code> (khác 3 add-on còn lại) — bảo vệ CRD <code>SecretProviderClass</code></li>
+          <li>Per-pod IRSA: pod gọi SecretsManager bằng IRSA của ServiceAccount (e.g. <code>point-app-sa</code> có quyền <code>SecretsManagerReadWrite</code>)</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      Cách dùng (yêu cầu <code>SecretProviderClass</code> CR và mount vào pod):
+    </p>
+
+    <pre><code>apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: point-aurora-secrets
+spec:
+  provider: aws
+  parameters:
+    region: ap-northeast-1
+    objects: |
+      - objectName: "point/aurora/editor_user"
+        objectType: "secretsmanager"
+---
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: point-app-sa   # IRSA pulls secret
+  containers:
+  - name: app
+    volumeMounts:
+    - name: secrets
+      mountPath: /mnt/secrets
+      readOnly: true
+  volumes:
+  - name: secrets
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: point-aurora-secrets</code></pre>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Status</span>
+      <strong>Chưa thấy SecretProviderClass nào được apply thật</strong> trong <code>k8s-manifests/</code> hiện tại
+      (search <code>SecretProviderClass</code>). Add-on được cài sẵn nhưng app đang dùng pattern
+      khác (env var inject từ K8s Secret hoặc trực tiếp gọi Secrets Manager qua AWS SDK).
+      → cần làm rõ: có plan migrate sang CSI mount không?
+    </div>
+
+    <!-- ============ §5 SELF-MANAGED ============ -->
+    <div id="s-self-managed" class="sec-head">
+      <span class="sec-head__num">05</span>
+      <span class="sec-head__title">Self-managed Cluster Components</span>
+      <span class="sec-head__sub">k8s-manifests/{kube-system,amazon-cloudwatch,point}/</span>
+    </div>
+
+    <div class="callout callout--info">
+      <span class="callout__label">Active path</span>
+      Các file <code>k8s-manifests/kube-system/cluster-autoscaler-autodiscover.yaml</code>,
+      <code>metrics-server.yaml</code>, và <code>amazon-cloudwatch/{cwagent,fluent-bit}*.yaml</code>
+      hiện đã được đánh dấu <strong>DEPRECATED</strong> trong comment đầu file. Manifests đang được
+      apply thật sự nằm tại <code>k8s-manifests/point/{dev-ex,stg-ex}/</code> (env-specific overlay).
+      Tài liệu này mô tả theo nội dung tham chiếu chung — luôn check env-specific khi deploy.
+    </div>
+
+    <p>
+      Log pipeline tổng thể: pod stdout/stderr → kubelet ghi vào <code>/var/log/containers/*.log</code> →
+      Fluent Bit DaemonSet đọc → CloudWatch Logs. Song song, CloudWatch Agent đo metrics
+      (CPU/mem/network/disk) qua kubelet API → CloudWatch Metrics.
+    </p>
+
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">Log + metrics flow từ pod tới CloudWatch.</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Mở full size">&#x26F6;</button>
+          <span class="zoom-label">Loading...</span>
+        </div>
+        <div class="mermaid-viewport">
+          <div class="mermaid mermaid-canvas"></div>
+        </div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        graph LR
+          POD["Application Pod<br/>(point-api / point-app / ...)"]:::pod
+          KUBELET["kubelet<br/>(node-local)"]:::sys
+          LOGS["/var/log/containers/*.log<br/>(host filesystem)"]:::file
+          SYSD["systemd journal<br/>(kubelet / containerd)"]:::file
+          HOST["/var/log/{messages,secure,dmesg}<br/>(host syslog)"]:::file
+
+          FB["Fluent Bit DaemonSet<br/>aws-for-fluent-bit"]:::fb
+          CWA["CloudWatch Agent<br/>DaemonSet"]:::cwa
+
+          CW_APP["/aws/containerinsights/point/application"]:::cw
+          CW_DP["/aws/containerinsights/point/dataplane"]:::cw
+          CW_HOST["/aws/containerinsights/point/host"]:::cw
+          CW_METRIC["CloudWatch Metrics<br/>(ContainerInsights namespace)"]:::cw
+
+          POD -->|stdout/stderr| KUBELET
+          KUBELET -->|writes| LOGS
+
+          LOGS -->|tail input| FB
+          SYSD -->|systemd input| FB
+          HOST -->|tail input| FB
+
+          FB -->|application.*| CW_APP
+          FB -->|dataplane.*<br/>aws-node/kube-proxy| CW_DP
+          FB -->|host.*<br/>dmesg/syslog| CW_HOST
+
+          KUBELET -->|metrics-api<br/>port 10250| CWA
+          CWA -->|metrics| CW_METRIC
+
+          classDef pod fill:#1e3a5f,stroke:#5b9bd5,color:#fff
+          classDef sys fill:#374151,stroke:#9ca3af,color:#fff
+          classDef file fill:#0e7490,stroke:#22d3ee,color:#fff
+          classDef fb fill:#b45309,stroke:#fbbf24,color:#fff
+          classDef cwa fill:#b8862a,stroke:#e2bd65,color:#fff
+          classDef cw fill:#166534,stroke:#4ade80,color:#fff
+      </script>
+    </section>
+
+    <!-- §5.1 Cluster Autoscaler -->
+    <h3 class="sub-head">5.1 · Cluster Autoscaler <span class="pin">k8s-manifests/point/&lt;env&gt;/kube-system/cluster-autoscaler.yaml</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>Tự động scale node group khi có pod <code>Pending</code> do thiếu resource. Khi node idle, gom workload và terminate node để tiết kiệm chi phí.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cấu hình verup</h3>
+        <ul>
+          <li>Image: <code>registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.7</code></li>
+          <li>Deployment 1 replica trong <code>kube-system</code></li>
+          <li>Expander: <code>least-waste</code> (chọn node group có ít waste resource nhất)</li>
+          <li>Skip nodes with local storage: <code>false</code> → có quyền evict pod có emptyDir</li>
+          <li>Discovery: tag <code>k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/point</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">Flow scale-up khi pod stuck Pending.</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Mở full size">&#x26F6;</button>
+          <span class="zoom-label">Loading...</span>
+        </div>
+        <div class="mermaid-viewport">
+          <div class="mermaid mermaid-canvas"></div>
+        </div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        graph TD
+          SCHED["kube-scheduler<br/>tìm node cho pod mới"]:::sys
+          PENDING["Pod ở trạng thái Pending<br/>(FailedScheduling: Insufficient cpu)"]:::warn
+          CA["Cluster Autoscaler<br/>(watch pending pods every 10s)"]:::ca
+          SIM["Simulate scheduling<br/>cho từng ASG candidate"]:::ca
+          EXPAND["Expander = least-waste<br/>chọn ASG tối ưu"]:::ca
+          STS["AssumeRoleWithWebIdentity<br/>(IRSA)"]:::auth
+          ASG["AWS Auto Scaling Group<br/>SetDesiredCapacity +1"]:::aws
+          NODE["EC2 instance launched<br/>(launch template + AL2023)"]:::aws
+          KUBELET["kubelet join cluster<br/>register node"]:::sys
+          BIND["Pod bound to new node"]:::ok
+
+          SCHED --> PENDING
+          PENDING -.observed.-> CA
+          CA --> SIM
+          SIM --> EXPAND
+          EXPAND --> STS
+          STS --> ASG
+          ASG --> NODE
+          NODE --> KUBELET
+          KUBELET --> BIND
+
+          classDef sys fill:#374151,stroke:#9ca3af,color:#fff
+          classDef warn fill:#b45309,stroke:#fbbf24,color:#fff
+          classDef ca fill:#1e3a5f,stroke:#5b9bd5,color:#fff
+          classDef auth fill:#7c2d12,stroke:#fb923c,color:#fff
+          classDef aws fill:#0e7490,stroke:#22d3ee,color:#fff
+          classDef ok fill:#166534,stroke:#4ade80,color:#fff
+      </script>
+    </section>
+
+    <h4 style="font-family:var(--font-body);font-size:15px;margin:20px 0 10px;color:var(--text);">IRSA</h4>
+    <p>
+      ServiceAccount <code>kube-system/cluster-autoscaler</code> assume role
+      <code>point-cluster-autoscaler-irsa-role</code> (managed policy
+      <code>AmazonEKSClusterAutoscalerPolicy</code>). Trust policy bind cứng SA + audience
+      <code>sts.amazonaws.com</code> (xem <code>cluster-autoscaler-irsa-role.tf</code>).
+    </p>
+
+    <div class="callout callout--err">
+      <span class="callout__label">Version skew</span>
+      Cluster Autoscaler <code>v1.28.7</code> trong khi cluster K8s là <code>1.34</code>.
+      Theo <a href="https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/README.md#releases">Autoscaler release notes</a>,
+      khuyến nghị dùng autoscaler khớp cluster minor version (autoscaler 1.34.x cho K8s 1.34). Skew quá lớn
+      có thể bỏ sót API mới (e.g. PodSchedulingContext) hoặc không hiểu một số deprecated field.
+      → cần upgrade lên <code>v1.34.x</code> hoặc gần nhất.
+    </div>
+
+    <!-- §5.2 Metrics Server -->
+    <h3 class="sub-head">5.2 · Metrics Server <span class="pin">k8s-manifests/point/&lt;env&gt;/kube-system/metrics-server.yaml</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>Aggregate CPU/memory metric từ kubelet thành API <code>metrics.k8s.io/v1beta1</code>. Là <strong>input cho HPA</strong> (Horizontal Pod Autoscaler) và lệnh <code>kubectl top {nodes|pods}</code>.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cấu hình verup</h3>
+        <ul>
+          <li>Image: <code>registry.k8s.io/metrics-server/metrics-server:v0.6.3</code></li>
+          <li>Deployment trong <code>kube-system</code></li>
+          <li>APIService <code>v1beta1.metrics.k8s.io</code> registered với <code>insecureSkipTLSVerify: true</code></li>
+          <li><code>--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname</code></li>
+          <li><code>--metric-resolution=15s</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Outdated</span>
+      Metrics Server <code>v0.6.3</code> ra mắt từ 2023. Phiên bản hiện tại đã là <code>v0.7.x</code>+ với
+      nhiều cải thiện về scaling và security. K8s 1.34 không strict-require version mới hơn nhưng nên
+      cập nhật khi có cơ hội. Cần đánh giá compatibility test trước upgrade.
+    </div>
+
+    <pre><code>kubectl top nodes
+kubectl top pods -A --sort-by=memory
+kubectl get apiservice v1beta1.metrics.k8s.io -o yaml   # phải show Available=True</code></pre>
+
+    <!-- §5.3 Fluent Bit -->
+    <h3 class="sub-head">5.3 · Fluent Bit <span class="pin">k8s-manifests/point/&lt;env&gt;/amazon-cloudwatch/fluent-bit.yaml</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>DaemonSet thu thập log từ pod (<code>/var/log/containers/*.log</code>), systemd journal (kubelet, containerd), host log (dmesg, /var/log/messages) → push lên CloudWatch Logs.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cấu hình verup</h3>
+        <ul>
+          <li>Image: <code>public.ecr.aws/aws-observability/aws-for-fluent-bit:stable</code></li>
+          <li>Namespace <code>amazon-cloudwatch</code></li>
+          <li><code>hostNetwork: true</code> + <code>dnsPolicy: ClusterFirstWithHostNet</code></li>
+          <li>Init container <code>wait-for-kubelet-tls</code> chờ kubelet port 10250 ready (30 attempts, 2s mỗi attempt)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h4 style="font-family:var(--font-body);font-size:15px;margin:20px 0 10px;color:var(--text);">CloudWatch Log Groups output</h4>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Log Group</th>
+            <th>Source</th>
+            <th>Match tag</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">/aws/containerinsights/point/application</td>
+            <td>Container stdout/stderr (exclude aws-node, kube-proxy, cloudwatch-agent, fluent-bit)</td>
+            <td class="mono">application.*</td>
+          </tr>
+          <tr>
+            <td class="mono">/aws/containerinsights/point/dataplane</td>
+            <td>systemd: docker/containerd/kubelet · container: aws-node, kube-proxy</td>
+            <td class="mono">dataplane.*</td>
+          </tr>
+          <tr>
+            <td class="mono">/aws/containerinsights/point/host</td>
+            <td>/var/log/dmesg, /var/log/messages, /var/log/secure</td>
+            <td class="mono">host.*</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      ConfigMap <code>fluent-bit-cluster-info</code> chứa biến chung: <code>cluster.name=point</code>,
+      <code>logs.region=ap-northeast-1</code>, <code>http.server=On</code>, <code>http.port=2020</code>.
+    </p>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Quan trọng</span>
+      <strong>Fluent Bit KHÔNG có IRSA riêng</strong> trong verup. ServiceAccount <code>fluent-bit</code>
+      (namespace <code>amazon-cloudwatch</code>) không annotation <code>eks.amazonaws.com/role-arn</code>.
+      Quyền PutLogEvents/CreateLogGroup được lấy qua <strong>worker node IAM role</strong> (đã attach
+      <code>CloudWatchAgentServerPolicy</code> trong <code>worker-role-attach.tf</code>).
+      → Best practice: tạo IRSA <code>point-fluent-bit-irsa-role</code> tương tự cwagent, rồi gỡ
+      <code>CloudWatchAgentServerPolicy</code> khỏi worker role.
+    </div>
+
+    <div class="ref-line">
+      Deep dive: <a href="./fluent-bit-explained.md">docs/guides/fluent-bit-explained.md</a>
+    </div>
+
+    <!-- §5.4 CloudWatch Agent -->
+    <h3 class="sub-head">5.4 · CloudWatch Agent (Container Insights) <span class="pin">k8s-manifests/point/&lt;env&gt;/amazon-cloudwatch/cwagent.yaml</span></h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>DaemonSet đo <strong>metrics</strong> (KHÔNG phải logs — đó là Fluent Bit) gửi tới CloudWatch Metrics namespace <code>ContainerInsights</code>. Gồm CPU/mem/network/disk per node + per pod + per container.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Cấu hình verup</h3>
+        <ul>
+          <li>Image: <code>amazon/cloudwatch-agent:1.300061.0b1289</code></li>
+          <li>Resources: 200m CPU, 200Mi mem (limits = requests)</li>
+          <li>Mount: rootfs, sys, devdisk, dockersock, containerdsock — đọc metrics từ host</li>
+          <li>ConfigMap <code>cwagentconfig</code>: <code>metrics_collection_interval=60s</code></li>
+          <li>IRSA: <code>point-cloudwatch-agent-irsa-role</code> qua SA <code>amazon-cloudwatch/cloudwatch-agent</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <pre><code># cwagentconfig.json (rút gọn)
+{
+  "logs": {
+    "metrics_collected": {
+      "kubernetes": {
+        "cluster_name": "point",
+        "metrics_collection_interval": 60
+      }
+    },
+    "force_flush_interval": 5
+  }
+}</code></pre>
+
+    <p>
+      Metrics xuất hiện trong CloudWatch Console → Metrics → <code>ContainerInsights</code> namespace.
+      Dashboard <em>Container Insights → Performance monitoring → EKS clusters</em> dùng các metric này.
+    </p>
+
+    <!-- ============ §6 AWS LB CONTROLLER ============ -->
+    <div id="s-lb-controller" class="sec-head">
+      <span class="sec-head__num">06</span>
+      <span class="sec-head__title">AWS Load Balancer Controller</span>
+      <span class="sec-head__sub">k8s-manifests/point/aws-load-balancer-controller.yaml</span>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>Vai trò</h3>
+        <p>Watch <code>Ingress</code> + <code>Service type=LoadBalancer</code> resources, tự động provision <strong>ALB</strong> (Application LB) hoặc <strong>NLB</strong> (Network LB) tương ứng. Quản lý target group binding tới pod IP (thanks to VPC CNI, pod IP là route-able trong VPC).</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>Triển khai</h3>
+        <ul>
+          <li>Deployment trong <code>kube-system</code> (2 replicas)</li>
+          <li>ServiceAccount: <code>aws-load-balancer-controller</code></li>
+          <li>IRSA role: <code>point-aws-load-balancer-controller</code></li>
+          <li>2 IAM policy attach: <code>AWSLoadBalancerControllerIAMPolicy</code> + <code>AWSLoadBalancerControllerAdditionalIAMPolicy</code></li>
+        </ul>
+        <div class="ve-card__meta">
+          <span><strong>File:</strong> eks/aws-load-balancer-controller-role.tf</span>
+        </div>
+      </div>
+    </div>
+
+    <p>
+      Ingress thông thường (file <code>k8s-manifests/point/ingress.yaml</code>) dùng annotations để control
+      ALB:
+    </p>
+    <pre><code>annotations:
+  alb.ingress.kubernetes.io/scheme: internet-facing       # hoặc internal
+  alb.ingress.kubernetes.io/target-type: ip                # IP mode = pod IP trực tiếp
+  alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+  alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+  alb.ingress.kubernetes.io/group.name: point-public      # multiple Ingress share 1 ALB</code></pre>
+
+    <div class="callout callout--info">
+      <span class="callout__label">Note</span>
+      <code>target-type: ip</code> (chứ không phải <code>instance</code>) cho phép ALB route traffic
+      thẳng tới pod IP, bỏ qua bước NodePort + kube-proxy → giảm 1 hop, hỗ trợ session stickiness
+      based on pod.
+    </div>
+
+    <!-- ============ §7 IRSA MATRIX ============ -->
+    <div id="s-irsa" class="sec-head">
+      <span class="sec-head__num">07</span>
+      <span class="sec-head__title">IRSA Mapping Matrix</span>
+      <span class="sec-head__sub">5 roles · 5 service accounts</span>
+    </div>
+
+    <p>
+      Bảng tổng hợp IAM Roles for Service Accounts. Mỗi role có trust policy bind chính xác tới
+      một (OIDC sub, audience) pair — tức là chỉ pod chạy với đúng ServiceAccount đúng namespace
+      mới có thể assume.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>IAM Role</th>
+            <th>K8s ServiceAccount</th>
+            <th>Namespace</th>
+            <th>OIDC sub</th>
+            <th>Policies</th>
+            <th>Mục đích</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">point-vpc-cni-aws-node</td>
+            <td class="mono">aws-node</td>
+            <td class="mono">kube-system</td>
+            <td class="mono">system:serviceaccount:kube-system:aws-node</td>
+            <td><span class="badge badge--info">AmazonEKS_CNI_Policy</span></td>
+            <td>VPC CNI DaemonSet gọi EC2 API (assign IP/ENI)</td>
+          </tr>
+          <tr>
+            <td class="mono">point-aws-load-balancer-controller</td>
+            <td class="mono">aws-load-balancer-controller</td>
+            <td class="mono">kube-system</td>
+            <td class="mono">system:serviceaccount:kube-system:aws-load-balancer-controller</td>
+            <td>
+              <span class="badge badge--info">AWSLoadBalancerControllerIAMPolicy</span><br>
+              <span class="badge badge--info">AWSLoadBalancerControllerAdditionalIAMPolicy</span>
+            </td>
+            <td>Tạo/sửa/xóa ALB, NLB, target group, listener rule</td>
+          </tr>
+          <tr>
+            <td class="mono">point-cluster-autoscaler-irsa-role</td>
+            <td class="mono">cluster-autoscaler</td>
+            <td class="mono">kube-system</td>
+            <td class="mono">system:serviceaccount:kube-system:cluster-autoscaler</td>
+            <td><span class="badge badge--info">AmazonEKSClusterAutoscalerPolicy</span></td>
+            <td>Đọc/sửa desired capacity của ASG</td>
+          </tr>
+          <tr>
+            <td class="mono">point-cloudwatch-agent-irsa-role</td>
+            <td class="mono">cloudwatch-agent</td>
+            <td class="mono">amazon-cloudwatch</td>
+            <td class="mono">system:serviceaccount:amazon-cloudwatch:cloudwatch-agent</td>
+            <td><span class="badge badge--info">CloudWatchAgentServerPolicy</span></td>
+            <td>PutMetricData để gửi metrics</td>
+          </tr>
+          <tr>
+            <td class="mono">point-app-irsa-role</td>
+            <td class="mono">point-app-sa</td>
+            <td class="mono">default</td>
+            <td class="mono">system:serviceaccount:default:point-app-sa</td>
+            <td>
+              <span class="badge badge--info">AmazonSQSFullAccess</span>
+              <span class="badge badge--info">AmazonS3FullAccess</span>
+              <span class="badge badge--info">AmazonSESFullAccess</span>
+              <span class="badge badge--info">AmazonSNSFullAccess</span>
+              <span class="badge badge--info">AmazonKinesisFullAccess</span>
+              <span class="badge badge--info">CloudWatchAgentServerPolicy</span>
+              <span class="badge badge--info">SecretsManagerReadWrite</span>
+              <span class="badge badge--accent">inline: AthenaWafQueryAccess</span>
+            </td>
+            <td>Mọi pod ứng dụng (point-api/admin/app/worker/mmh) gọi AWS API</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Tech debt — least privilege</span>
+      <code>point-app-irsa-role</code> đang giữ nhiều <code>*FullAccess</code> managed policy. Hướng cải thiện:
+      tách thành policy custom theo từng resource ARN (bucket cụ thể, queue cụ thể, topic cụ thể).
+      Hiện tại Athena access đã được scope cụ thể qua inline <code>AthenaWafQueryAccess</code>
+      (chỉ workgroup <code>waf-logs-*</code>) — đây là pattern đúng cần áp dụng cho các service còn lại.
+    </div>
+
+    <h3 class="sub-head">Cách verify IRSA hoạt động</h3>
+    <pre><code># Pod-side: check ServiceAccount có annotation đúng
+kubectl get sa point-app-sa -n default -o yaml | grep eks.amazonaws.com/role-arn
+
+# Pod-side: check pod đã có env var token
+kubectl exec &lt;pod&gt; -- env | grep AWS_
+# Phải có: AWS_ROLE_ARN, AWS_WEB_IDENTITY_TOKEN_FILE, AWS_REGION
+
+# Test gọi AWS SDK từ pod
+kubectl exec &lt;pod&gt; -- aws sts get-caller-identity
+# Phải trả về AssumedRole/<role-name>/<pod-id>, KHÔNG phải worker node role
+
+# AWS-side: xem trust policy
+aws iam get-role --role-name point-app-irsa-role \
+  --profile point-operator-dev --region ap-northeast-1 \
+  --query 'Role.AssumeRolePolicyDocument'</code></pre>
+
+    <!-- ============ §8 NETWORK POLICY + RBAC ============ -->
+    <div id="s-rbac" class="sec-head">
+      <span class="sec-head__num">08</span>
+      <span class="sec-head__title">NetworkPolicy &amp; RBAC</span>
+      <span class="sec-head__sub">k8s-manifests/point/ · k8s-manifests/rbac/</span>
+    </div>
+
+    <h3 class="sub-head">NetworkPolicy (enforced bởi VPC CNI eBPF)</h3>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--primary">
+        <h3>networkpolicy-allow-egress-vpc</h3>
+        <p>Cho phép pod egress tới <strong>chỉ CIDR trong VPC</strong>. Chặn pod gọi Internet trực tiếp (đi qua NAT vẫn được, vì NAT IP nằm trong VPC). Mục đích: giảm risk pod malicious phone-home ra Internet.</p>
+      </div>
+      <div class="ve-card ve-card--primary">
+        <h3>networkpolicy-allow-ingress-vpc</h3>
+        <p>Pod chỉ accept connection từ source IP nằm trong VPC CIDR. Chặn external traffic đến pod (trừ qua ALB/NLB target group binding — đó là Pod IP nhưng source là client thật của ALB).</p>
+      </div>
+    </div>
+
+    <p>
+      Để NetworkPolicy work, VPC CNI phải bật <code>enableNetworkPolicy=true</code> (đã setup trong
+      <code>eks/main.tf#L87</code>). Verify:
+    </p>
+    <pre><code>kubectl get networkpolicy -A
+kubectl describe networkpolicy &lt;name&gt; -n &lt;ns&gt;</code></pre>
+
+    <h3 class="sub-head">RBAC ClusterRoles</h3>
+
+    <div class="grid grid-3">
+      <div class="ve-card ve-card--secondary">
+        <h3>cicd <span class="label">k8s-manifests/rbac/clusterrole-cicd.yaml</span></h3>
+        <p>Quyền cho pipeline deploy: tạo/sửa Deployment, Service, ConfigMap, ... — không có quyền delete namespace, không xem secrets cross-namespace.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>operator <span class="label">k8s-manifests/rbac/clusterrole-operator.yaml</span></h3>
+        <p>Read toàn cluster + tạo pod (debug) + exec vào pod + patch deployment (rollout restart) + patch HPA. Không xem secrets.</p>
+      </div>
+      <div class="ve-card ve-card--secondary">
+        <h3>viewer <span class="label">k8s-manifests/rbac/clusterrole-viewer.yaml</span></h3>
+        <p>Read-only toàn cluster (trừ secrets). Cho stakeholder / on-call quan sát.</p>
+      </div>
+    </div>
+
+    <h3 class="sub-head">ClusterRoleBinding cho admin</h3>
+    <p>
+      File <code>k8s-manifests/rbac/clusterrolebinding-admin.yaml</code> bind group <code>admin</code>
+      tới <code>cluster-admin</code> built-in ClusterRole. Group này được Access Entries map cho
+      <code>administrator</code>, <code>bastion</code>, và (env dev) <code>named_user</code>.
+    </p>
+
+    <div class="callout callout--info">
+      <span class="callout__label">Auth flow tóm tắt</span>
+      <code>kubectl</code> dùng AWS IAM credential → IAM Authenticator gọi cluster API → cluster check
+      Access Entry tìm principal_arn → trả về list <code>kubernetes_groups</code> → cluster check RBAC
+      ClusterRoleBinding/RoleBinding cho các group đó → kết hợp các Rule áp dụng → allow/deny request.
+    </div>
+
+    <div class="ref-line">
+      Deep dive: <a href="./k8s-rbac-guide.en.md">docs/guides/k8s-rbac-guide.en.md</a> ·
+      <a href="./k8s-irsa-guide.en.md">docs/guides/k8s-irsa-guide.en.md</a>
+    </div>
+
+    <!-- ============ §9 CAVEATS ============ -->
+    <div id="s-caveats" class="sec-head">
+      <span class="sec-head__num">09</span>
+      <span class="sec-head__title">Caveats &amp; TODO</span>
+      <span class="sec-head__sub">điểm cần follow up</span>
+    </div>
+
+    <p>
+      Các vấn đề phát hiện khi audit. Mỗi mục có link tới file/line cụ thể để bạn verify hoặc fix.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mức độ</th>
+            <th>Caveat</th>
+            <th>Bằng chứng</th>
+            <th>Hướng xử lý</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge--warn">MED</span></td>
+            <td><code>addon_csi_version</code> được declare nhưng không dùng</td>
+            <td><code>variables.tf#L66</code> declare; <code>main.tf#L78-115</code> <code>cluster_addons</code> không có entry CSI</td>
+            <td>Quyết định: bổ sung <code>aws-ebs-csi-driver</code> addon (cần thiết cho StatefulSet PV) hoặc xóa biến nếu không có plan dùng</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--warn">MED</span></td>
+            <td>EBS CSI Driver chưa có trong <code>cluster_addons</code></td>
+            <td>Không tìm thấy block <code>aws-ebs-csi-driver</code> trong <code>main.tf</code></td>
+            <td>Nếu app cần PVC (e.g. cache, mmh stateful) — phải cài thêm; nếu không cần, document rõ "EBS-less cluster"</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--warn">MED</span></td>
+            <td>Fluent Bit không có IRSA riêng</td>
+            <td>SA <code>amazon-cloudwatch/fluent-bit</code> không có annotation <code>eks.amazonaws.com/role-arn</code>; quyền lấy qua worker role</td>
+            <td>Tạo <code>point-fluent-bit-irsa-role</code> (pattern giống cwagent), annotate SA, gỡ <code>CloudWatchAgentServerPolicy</code> khỏi worker role</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--err">HIGH</span></td>
+            <td>Cluster Autoscaler version skew lớn</td>
+            <td>Autoscaler <code>v1.28.7</code> vs cluster <code>1.34</code> (skew 6 minor)</td>
+            <td>Upgrade lên <code>v1.34.x</code> (xem K8s autoscaler release matrix)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--warn">MED</span></td>
+            <td>Metrics Server <code>v0.6.3</code> đã cũ</td>
+            <td><code>metrics-server.yaml</code></td>
+            <td>Upgrade lên <code>v0.7.x</code> khi có cycle</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--warn">MED</span></td>
+            <td>Worker role attach nhiều <code>*FullAccess</code> trùng với point-app IRSA</td>
+            <td><code>worker-role-attach.tf#L22-46</code></td>
+            <td>Sau khi confirm IRSA work, gỡ S3/SQS/SES/SNS/Kinesis FullAccess khỏi worker role</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--warn">MED</span></td>
+            <td><code>point-app-irsa-role</code> còn dùng nhiều <code>*FullAccess</code></td>
+            <td><code>point-app-irsa-role.tf#L25-53</code></td>
+            <td>Tách thành policy custom theo resource ARN; tham khảo <code>AthenaWafQueryAccess</code> trong <code>athena-policy.tf</code> làm template</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--info">LOW</span></td>
+            <td>EBS volume <code>encrypted = false</code> mặc định</td>
+            <td><code>module-launch-template/main.tf#L17</code> (variable default)</td>
+            <td>Override <code>encrypted = true</code> trong launch template (sử dụng default AWS managed key, không cần KMS custom)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--info">LOW</span></td>
+            <td>Cluster encryption envelope chưa bật</td>
+            <td><code>main.tf#L146</code>: <code>encryption_config = null</code></td>
+            <td>Cân nhắc bật KMS envelope encryption cho secrets ở mức cluster (defense-in-depth)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--info">LOW</span></td>
+            <td>Secrets Store CSI Driver cài nhưng chưa thấy SecretProviderClass</td>
+            <td>grep <code>SecretProviderClass</code> trong <code>k8s-manifests/</code> không có kết quả</td>
+            <td>Xác định: cài để dự phòng cho migration, hay đã quên không apply?</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--info">LOW</span></td>
+            <td>userdata.sh.tpl tham chiếu awslogs (Amazon Linux 2 pattern) — đã không còn dùng</td>
+            <td><code>module-launch-template/main.tf#L1,38-41</code> commented out; userdata không inject vào launch template</td>
+            <td>Xóa <code>userdata.sh.tpl</code> nếu không có plan reuse; AL2023 dùng cloud-init khác</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge--info">LOW</span></td>
+            <td>aws-auth ConfigMap (<code>k8s-manifests/point/aws-auth-cm.yaml</code>) vẫn tồn tại trong repo</td>
+            <td>Tồn tại physical file dù dùng <code>authentication_mode = "API"</code></td>
+            <td>Xóa file để tránh nhầm lẫn — auth mode <code>API</code> không đọc ConfigMap này</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============ §10 REFERENCES ============ -->
+    <div id="s-refs" class="sec-head">
+      <span class="sec-head__num">10</span>
+      <span class="sec-head__title">References</span>
+      <span class="sec-head__sub">tài liệu liên quan trong verup &amp; AWS docs</span>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="ve-card ve-card--accent">
+        <h3>verup local docs (docs/guides/)</h3>
+        <ul>
+          <li><a href="./K8S_OPERATIONS_GUIDE.md">K8S_OPERATIONS_GUIDE.md</a> — vận hành cluster (kubectl, troubleshooting, daily ops)</li>
+          <li><a href="./eks-upgrade-runbook.en.md">eks-upgrade-runbook.en.md</a> — runbook upgrade K8s version</li>
+          <li><a href="./k8s-irsa-guide.en.md">k8s-irsa-guide.en.md</a> — chi tiết IRSA, OIDC trust policy</li>
+          <li><a href="./k8s-rbac-guide.en.md">k8s-rbac-guide.en.md</a> — RBAC ClusterRole/RoleBinding chi tiết</li>
+          <li><a href="./coredns-configmap-analysis.html">coredns-configmap-analysis.html</a> — phân tích Corefile, plugins</li>
+          <li><a href="./fluent-bit-explained.md">fluent-bit-explained.md</a> — Fluent Bit config deep dive</li>
+          <li><a href="./K8S_TROUBLESHOOTING.md">K8S_TROUBLESHOOTING.md</a> — incidents lessons learned</li>
+        </ul>
+      </div>
+
+      <div class="ve-card ve-card--primary">
+        <h3>Terraform source files</h3>
+        <ul>
+          <li><code>bs-exchange-infra/terraform/components/eks/main.tf</code> — module &quot;eks&quot; instantiation</li>
+          <li><code>terraform.tfvars</code> — shared defaults (addon versions, cluster name)</li>
+          <li><code>tfvars/{dev,stg}-ex.tfvars</code> — per-env node group sizing + endpoint access</li>
+          <li><code>variables.tf</code> — full variable schema</li>
+          <li><code>vpc-cni-role.tf</code>, <code>cluster-autoscaler-irsa-role.tf</code>, <code>aws-load-balancer-controller-role.tf</code>, <code>cloudwatch-agent-irsa-role.tf</code>, <code>point-app-irsa-role.tf</code> — IRSA roles</li>
+          <li><code>worker-role.tf</code>, <code>worker-role-attach.tf</code> — node IAM role</li>
+          <li><code>athena-policy.tf</code> — inline Athena policy cho point-app</li>
+          <li><code>module-launch-template/</code> — launch template module</li>
+        </ul>
+      </div>
+
+      <div class="ve-card ve-card--secondary">
+        <h3>K8s manifests</h3>
+        <ul>
+          <li><code>k8s-manifests/point/&lt;env&gt;/kube-system/cluster-autoscaler.yaml</code></li>
+          <li><code>k8s-manifests/point/&lt;env&gt;/kube-system/metrics-server.yaml</code></li>
+          <li><code>k8s-manifests/point/&lt;env&gt;/amazon-cloudwatch/{cwagent,fluent-bit}.yaml</code></li>
+          <li><code>k8s-manifests/point/aws-load-balancer-controller.yaml</code></li>
+          <li><code>k8s-manifests/point/networkpolicy-*.yaml</code></li>
+          <li><code>k8s-manifests/point/ingress.yaml</code></li>
+          <li><code>k8s-manifests/rbac/*.yaml</code></li>
+        </ul>
+      </div>
+
+      <div class="ve-card">
+        <h3>AWS &amp; upstream docs</h3>
+        <ul>
+          <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/managing-vpc-cni.html">Amazon VPC CNI</a></li>
+          <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/managing-coredns.html">CoreDNS on EKS</a></li>
+          <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/managing-kube-proxy.html">kube-proxy on EKS</a></li>
+          <li><a href="https://docs.aws.amazon.com/secretsmanager/latest/userguide/integrating_csi_driver.html">Secrets Store CSI Driver — AWS provider</a></li>
+          <li><a href="https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler/cloudprovider/aws">Cluster Autoscaler — AWS provider</a></li>
+          <li><a href="https://github.com/kubernetes-sigs/metrics-server">metrics-server</a></li>
+          <li><a href="https://github.com/aws/aws-for-fluent-bit">aws-for-fluent-bit</a></li>
+          <li><a href="https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/">AWS Load Balancer Controller</a></li>
+          <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/access-entries.html">EKS Access Entries</a></li>
+          <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html">IAM Roles for Service Accounts (IRSA)</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Generated: <span id="gen-date"></span> · Working directory: /Users/hoangtrung/Work/solashi/verup</div>
+      <div>Source-of-truth: <code>bs-exchange-infra/terraform/components/eks/</code> + <code>bs-exchange-infra/k8s-manifests/</code></div>
+      <div>Project context: verup (Coinbook BSE) · cluster name <code>point</code> (verup branch dùng tên giống Point dù khác account)</div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /wrap -->
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const config = {
+    fitPadding: 24,
+    minHeight: 360,
+    maxHeightPx: 960,
+    maxHeightVh: 0.84,
+    maxInitialZoom: 1.8,
+    minZoom: 0.08,
+    maxZoom: 6.5,
+    zoomStep: 0.14,
+    readabilityFloor: 0.58
+  };
+
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => {
+    activeDrag?.onEnd();
+    activeDrag = null;
+  });
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+      fontSize: '14px',
+      primaryColor: isDark ? '#1d3556' : '#eef2f8',
+      primaryBorderColor: isDark ? '#5b9bd5' : '#1e3a5f',
+      primaryTextColor: isDark ? '#d8e2ee' : '#0f1e36',
+      secondaryColor: isDark ? '#162947' : '#e3eaf3',
+      secondaryBorderColor: isDark ? '#38bdf8' : '#0e7490',
+      secondaryTextColor: isDark ? '#d8e2ee' : '#0f1e36',
+      tertiaryColor: isDark ? '#2a1a08' : '#fef5e7',
+      tertiaryBorderColor: isDark ? '#e2bd65' : '#b8862a',
+      tertiaryTextColor: isDark ? '#d8e2ee' : '#0f1e36',
+      lineColor: isDark ? '#8ea3bf' : '#4a5e7a',
+      noteBkgColor: isDark ? '#1d3556' : '#fef5e7',
+      noteTextColor: isDark ? '#d8e2ee' : '#0f1e36',
+      noteBorderColor: isDark ? '#e2bd65' : '#b8862a',
+      actorBkg: isDark ? '#1d3556' : '#eef2f8',
+      actorBorder: isDark ? '#5b9bd5' : '#1e3a5f',
+      actorTextColor: isDark ? '#d8e2ee' : '#0f1e36',
+      activationBkgColor: isDark ? '#162947' : '#e3eaf3',
+      activationBorderColor: isDark ? '#5b9bd5' : '#1e3a5f',
+      sequenceNumberColor: isDark ? '#0a1628' : '#ffffff',
+      clusterBkg: 'transparent',
+      clusterBorder: isDark ? '#8ea3bf' : '#7e8fa6'
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    let zoom = 1;
+    let fitMode = 'contain';
+    let panX = 0;
+    let panY = 0;
+    let svgW = 0;
+    let svgH = 0;
+
+    let sx = 0, sy = 0, spx = 0, spy = 0;
+    let touchDist = 0, touchCx = 0, touchCy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth;
+      const vpH = viewport.clientHeight;
+      const rW = svgW * zoom;
+      const rH = svgH * zoom;
+      const pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+
+    function applyTransform() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% — ' + fitMode;
+    }
+
+    function canPan() {
+      const rW = svgW * zoom;
+      const rH = svgH * zoom;
+      return rW + config.fitPadding * 2 > viewport.clientWidth
+          || rH + config.fitPadding * 2 > viewport.clientHeight;
+    }
+
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth;
+      const vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding * 2);
+      const aH = Math.max(80, vpH - config.fitPadding * 2);
+      const contain = Math.min(aW / svgW, aH / svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH / svgW;
+        const vpR = vpH / Math.max(vpW, 1);
+        if (chartR >= vpR) { z = aW / svgW; mode = 'width-priority'; }
+        else { z = aH / svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit();
+      zoom = fit.zoom;
+      fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+
+    function setOneToOne() {
+      zoom = clamp(1, config.minZoom, config.maxZoom);
+      fitMode = '1:1';
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom * factor, config.minZoom, config.maxZoom);
+      const ratio = next / zoom;
+      panX = cx - ratio * (cx - panX);
+      panY = cy - ratio * (cy - panY);
+      zoom = next;
+      fitMode = 'custom';
+      applyTransform();
+    }
+
+    function readSvgNaturalSize(svg) {
+      let w = 0, h = 0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width || 1000; h = r.height || 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true);
+      clone.style.width = '';
+      clone.style.height = '';
+      const bg = isDark ? '#0a1628' : '#f4f6fa';
+      const html = `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>EKS verup diagram</title><style>
+      body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:${bg};padding:40px;box-sizing:border-box}
+      svg{max-width:100%;max-height:90vh;height:auto}
+      </style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+
+    async function render() {
+      try {
+        const code = source.textContent.trim();
+        if (!code) { label.textContent = 'Error: Empty source'; return; }
+        const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, code);
+        canvas.innerHTML = svg;
+        const svgNode = canvas.querySelector('svg');
+        if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
+        const size = readSvgNaturalSize(svgNode);
+        svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width');
+        svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none';
+        svgNode.style.display = 'block';
+        setAdaptiveHeight();
+        fitDiagram();
+      } catch (err) {
+        console.error('Mermaid render failed:', err);
+        label.textContent = 'Error: ' + (err.message || 'Render failed');
+      }
+    }
+
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fitDiagram,
+      'zoom-one': setOneToOne,
+      'zoom-expand': openInNewTab
+    };
+
+    Object.entries(actions).forEach(([action, handler]) => {
+      wrap.querySelector(`[data-action="${action}"]`)?.addEventListener('click', handler);
+    });
+
+    viewport.addEventListener('dblclick', fitDiagram);
+
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const factor = e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep);
+        zoomAround(factor, e.clientX - rect.left, e.clientY - rect.top);
+        return;
+      }
+      if (canPan()) {
+        e.preventDefault();
+        panX -= e.deltaX;
+        panY -= e.deltaY;
+        applyTransform();
+      }
+    }, { passive: false });
+
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY; spx = panX; spy = panY;
+      e.preventDefault();
+      activeDrag = {
+        onMove: (ev) => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); },
+        onEnd: () => { wrap.classList.remove('is-panning'); }
+      };
+    });
+
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; }
+      else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchDist = Math.sqrt(dx*dx + dy*dy);
+        const r = viewport.getBoundingClientRect();
+        touchCx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        touchCy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+      }
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && canPan()) {
+        if (touchDist > 0) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; touchDist = 0; }
+        e.preventDefault();
+        panX = spx + (e.touches[0].clientX - sx);
+        panY = spy + (e.touches[0].clientY - sy);
+        applyTransform();
+      } else if (e.touches.length === 2 && touchDist > 0) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        zoomAround(d / touchDist, touchCx, touchCy);
+        touchDist = d;
+      }
+    }, { passive: false });
+
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+
+    render();
+  }
+
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+
+<script>
+  // Scroll spy for TOC
+  (function() {
+    const toc = document.getElementById('toc');
+    if (!toc) return;
+    const links = toc.querySelectorAll('a');
+    const sections = [];
+    links.forEach(link => {
+      const id = link.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) sections.push({ id, el, link });
+    });
+
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          links.forEach(l => l.classList.remove('active'));
+          const match = sections.find(s => s.el === entry.target);
+          if (match) {
+            match.link.classList.add('active');
+            if (window.innerWidth <= 1000) {
+              match.link.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+          }
+        }
+      });
+    }, { rootMargin: '-10% 0px -80% 0px' });
+
+    sections.forEach(s => observer.observe(s.el));
+
+    links.forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        const id = link.getAttribute('href').slice(1);
+        const el = document.getElementById(id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          history.replaceState(null, '', '#' + id);
+        }
+      });
+    });
+
+    // Generated date
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const el = document.getElementById('gen-date');
+    if (el) el.textContent = `${yyyy}-${mm}-${dd}`;
+  })();
+</script>
+
+</body>
+</html>
