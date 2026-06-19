@@ -1,12 +1,11 @@
 ---
-// Gallery (home) — every artifact grouped by project.
+// Home — lists PROJECT FOLDERS only (never individual files).
 //
-// Data + protected-set come from src/lib/artifacts.mjs (the same enumeration the viewer
-// uses, so titles match). Full-text search is Pagefind: the UI mounts into #search at runtime
-// from the index built into /pagefind after `astro build`. Indexing scope is controlled by
-// data-pagefind-body, which is emitted ONLY on public viewer pages (see [...path].astro), so
-// protected artifact bodies never enter the public index — fail-closed.
-// Protected projects show title + lock badge but NOT their description (see card markup).
+// Privacy: protected projects must not reveal their file names/titles on the public home.
+// So the home enumerates projects (folder + lock badge) and links into /<project>/; the actual
+// file list lives on the per-project page, which the first-segment middleware gates for protected
+// projects. File count is shown only for PUBLIC projects (a count would hint at protected size).
+// Pagefind search stays (public-only index — protected viewers carry no data-pagefind-body).
 import Base from '../layouts/Base.astro';
 import { loadArtifacts, protectedProjects } from '../lib/artifacts.mjs';
 
@@ -14,92 +13,51 @@ const mdModules = import.meta.glob('../artifacts/**/*.md', { eager: true });
 const artifacts = await loadArtifacts(mdModules);
 const locked = protectedProjects();
 
-// Group by project; sort artifacts within a group by date desc (undated last), then title.
-const byProject = new Map();
-for (const a of artifacts) {
-  if (!byProject.has(a.project)) byProject.set(a.project, []);
-  byProject.get(a.project).push(a);
-}
-const sortArtifacts = (list) =>
-  list.sort((x, y) => {
-    if (x.date && y.date && x.date !== y.date) return y.date.localeCompare(x.date);
-    if (x.date && !y.date) return -1;
-    if (!x.date && y.date) return 1;
-    return x.title.localeCompare(y.title);
-  });
+const counts = new Map();
+for (const a of artifacts) counts.set(a.project, (counts.get(a.project) ?? 0) + 1);
 
-// Project sections sorted alphabetically; public projects before locked is not required,
-// alpha keeps it predictable.
-const groups = [...byProject.entries()]
-  .map(([project, list]) => ({
-    project,
-    locked: locked.has(project),
-    items: sortArtifacts(list),
-  }))
-  .sort((a, b) => a.project.localeCompare(b.project));
-
-const total = artifacts.length;
+// Public projects first, then locked; alpha within each.
+const projects = [...counts.entries()]
+  .map(([project, count]) => ({ project, count, locked: locked.has(project) }))
+  .sort((a, b) => (a.locked === b.locked ? a.project.localeCompare(b.project) : a.locked ? 1 : -1));
 ---
 
-<Base title="Artifacts" description="Shared artifacts — rendered reports, investigations, and explainers.">
+<Base title="Artifacts" description="Shared artifacts — browse by project.">
   <header class="gallery-head">
     <h1>Artifacts</h1>
-    <p class="lede">Shared reports, investigations, and explainers — every link stays stable.</p>
-    <div id="search" class="search" aria-label="Search artifacts"></div>
-    <noscript>
-      <p class="search-fallback">Search needs JavaScript. Browse the projects below.</p>
-    </noscript>
-    <p class="count">{total} artifact{total === 1 ? '' : 's'} across {groups.length} project{groups.length === 1 ? '' : 's'}</p>
+    <p class="lede">Browse by project. Protected projects need a password to open their files.</p>
+    <div id="search" class="search" aria-label="Search public artifacts"></div>
+    <noscript><p class="search-fallback">Search needs JavaScript. Browse the projects below.</p></noscript>
+    <p class="count">{projects.length} project{projects.length === 1 ? '' : 's'}</p>
   </header>
 
-  {groups.map((group) => (
-    <section class="project" aria-labelledby={`proj-${group.project}`}>
-      <h2 id={`proj-${group.project}`} class="project-title">
-        {group.project}
-        {group.locked && (
-          <span class="lock" title="Protected — password required" aria-label="Protected project">
-            <span aria-hidden="true">🔒</span> Protected
-          </span>
-        )}
-      </h2>
-      <ul class="cards">
-        {group.items.map((a) => (
-          <li class="card">
-            <a class="card-link" href={`/${a.routePath}`}>
-              <div class="card-top">
-                <span class={`badge badge-${a.type}`}>{a.type.toUpperCase()}</span>
-                {a.date && <span class="card-date">{a.date}</span>}
-              </div>
-              <h3 class="card-title">{a.title}</h3>
-              {/* Description is withheld for protected projects so private infra/incident
-                  summaries never render on the public home page. Title + lock badge only. */}
-              {!group.locked && a.description && <p class="card-desc">{a.description}</p>}
-              {a.tags.length > 0 && (
-                <p class="card-tags">
-                  {a.tags.map((t) => <span class="tag">{t}</span>)}
-                </p>
-              )}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </section>
-  ))}
+  <ul class="cards">
+    {projects.map((p) => (
+      <li class="card">
+        <a class="card-link" href={`/${encodeURIComponent(p.project)}`} aria-label={`Open project ${p.project}`}>
+          <div class="card-top">
+            <span class="proj-icon" aria-hidden="true">{p.locked ? '🔒' : '📁'}</span>
+            {!p.locked && <span class="card-date">{p.count} file{p.count === 1 ? '' : 's'}</span>}
+          </div>
+          <h3 class="card-title proj-name">{p.project}</h3>
+          <p class="card-desc">{p.locked ? 'Protected — password required to view files.' : 'Open — click to view files.'}</p>
+        </a>
+      </li>
+    ))}
+  </ul>
 
-  {/* Pagefind UI. Assets are generated by `pagefind --site dist` AFTER `astro build`, so they
-      live at /pagefind/* in the deployed output (absent during dev). Reference them by absolute
-      path — never through Vite — and mount the UI into #search on load. */}
+  {/* Pagefind UI (assets generated by `pagefind --site dist` after astro build). Public-only index. */}
   <link slot="head" rel="stylesheet" href="/pagefind/pagefind-ui.css" />
   <script is:inline src="/pagefind/pagefind-ui.js"></script>
   <script is:inline>
     window.addEventListener('DOMContentLoaded', () => {
-      if (typeof PagefindUI === 'undefined') return; // dev server has no index yet
+      if (typeof PagefindUI === 'undefined') return; // no index on dev server
       new PagefindUI({
         element: '#search',
         showSubResults: true,
         showImages: false,
         resetStyles: false,
-        translations: { placeholder: 'Search artifacts…' },
+        translations: { placeholder: 'Search public artifacts…' },
       });
     });
   </script>

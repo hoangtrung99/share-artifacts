@@ -1,88 +1,149 @@
 ---
-// Viewer route — one page per artifact at /<project>/<path> (no extension).
+// Catch-all route serving TWO kinds of page (one file avoids dynamic-route collisions):
+//   1. kind:'project' at /<project>      — lists the files inside a project (gated by the
+//      first-segment middleware for protected projects, so you must log in to even see the list).
+//   2. kind:'artifact' at /<project>/<file> — the viewer:
+//        - html: full-bleed iframe of the raw artifact + a floating action overlay (Fab).
+//        - md:   rendered markdown + the same floating overlay.
 //
-// Data comes from src/lib/artifacts.mjs (shared with the gallery so titles never drift).
-// Markdown is rendered inline; HTML is iframed from the raw copy that prepare-static.mjs
-// places at /<project>/<path>.html (kept off Vite's asset graph — see the lib comment).
-//
-// import.meta.glob must live HERE: it only resolves relative to the importing file. We
-// pass the result into loadArtifacts() which does the rest of the enumeration.
+// Data + protected-set come from src/lib/artifacts.mjs (shared with the home so titles match).
+// Pagefind selective indexing via data-pagefind-body is emitted ONLY on public pages — protected
+// project listings and protected viewers carry none, so nothing protected enters the public index.
 import Base from '../layouts/Base.astro';
-import { loadArtifacts } from '../lib/artifacts.mjs';
+import Fab from '../components/Fab.astro';
+import { loadArtifacts, protectedProjects } from '../lib/artifacts.mjs';
 
 export async function getStaticPaths() {
   const mdModules = import.meta.glob('../artifacts/**/*.md', { eager: true });
   const artifacts = await loadArtifacts(mdModules);
-  return artifacts.map((a) => ({
-    params: { path: a.routePath },
-    props: a,
+  const locked = protectedProjects();
+
+  // Per-project listing entries (lean items only — no compiled html / search text).
+  const byProject = new Map();
+  for (const a of artifacts) {
+    if (!byProject.has(a.project)) byProject.set(a.project, []);
+    const group = a.routePath.split('/').slice(1, -1).join('/'); // subpath between project and file
+    byProject.get(a.project).push({
+      title: a.title,
+      routePath: a.routePath,
+      type: a.type,
+      date: a.date ?? null,
+      group,
+    });
+  }
+  const projectPaths = [...byProject.entries()].map(([project, items]) => ({
+    params: { path: project },
+    props: { kind: 'project', project, locked: locked.has(project), items },
   }));
+
+  const artifactPaths = artifacts.map((a) => ({
+    params: { path: a.routePath },
+    props: { kind: 'artifact', ...a },
+  }));
+
+  return [...projectPaths, ...artifactPaths];
 }
 
-const { type, project, rawUrl, downloadName, title, description, tags, date, html, headings, searchText } = Astro.props;
-const isProtected = Astro.props.protected;
-const ogUrl = new URL(Astro.url.pathname, Astro.site).href;
+const props = Astro.props;
+const kind = props.kind;
 
-// Only h2/h3 make a useful table of contents; skip the page's own h1.
-const toc = (headings ?? []).filter((h) => h.depth === 2 || h.depth === 3);
+const isArtifact = kind === 'artifact';
+const isHtml = isArtifact && props.type === 'html';
+const isMd = isArtifact && props.type === 'md';
+const isProtected = isArtifact ? props.protected : props.locked;
+const ogUrl = isArtifact ? new URL(Astro.url.pathname, Astro.site).href : '';
+const toc = isMd ? (props.headings ?? []).filter((h) => h.depth === 2 || h.depth === 3) : [];
+const pagefindBody = isArtifact && !isProtected ? true : undefined;
 
-// Pagefind selective indexing: tag the content region with data-pagefind-body ONLY on public
-// pages. Protected pages carry no such attribute, so Pagefind (which indexes default-exclude
-// once any page uses data-pagefind-body) drops them from the public index entirely — fail-closed.
-const pagefindBody = isProtected ? undefined : true;
+const pageTitle = kind === 'project' ? props.project : props.title;
+const pageDesc = kind === 'project' ? `Files in ${props.project}` : props.description;
+
+// Group a project's files by sub-folder for the listing.
+let groups = [];
+if (kind === 'project') {
+  const m = new Map();
+  for (const it of props.items) {
+    if (!m.has(it.group)) m.set(it.group, []);
+    m.get(it.group).push(it);
+  }
+  groups = [...m.entries()]
+    .map(([group, items]) => ({
+      group,
+      items: items.sort((x, y) =>
+        x.date && y.date && x.date !== y.date ? y.date.localeCompare(x.date) : x.title.localeCompare(y.title)
+      ),
+    }))
+    .sort((a, b) => a.group.localeCompare(b.group));
+}
 ---
 
-<Base title={title} description={description}>
-  <article class="viewer" data-type={type} data-pagefind-body={pagefindBody} data-pagefind-meta={pagefindBody ? `title:${title}` : undefined}>
-    <nav class="toolbar" aria-label="Artifact actions">
-      <div class="toolbar-left">
-        <a class="btn btn-ghost" href="/" aria-label="Back to gallery">
-          <span aria-hidden="true">←</span> Back
-        </a>
-        <span class="toolbar-crumb">
-          <span class="crumb-project">{project}</span>
-          <span class="crumb-sep" aria-hidden="true">/</span>
-          <span class="crumb-title">{title}</span>
-        </span>
-      </div>
-      <div class="toolbar-right">
-        <a class="btn" href={rawUrl} download={downloadName} aria-label={`Download ${downloadName}`}>
-          <span aria-hidden="true">⬇</span> Download
-        </a>
-        <button class="btn" type="button" data-copy-link aria-label="Copy link to this artifact">
-          <span aria-hidden="true">🔗</span> <span data-copy-label>Copy link</span>
-        </button>
-        {type === 'md' && (
-          <button class="btn" type="button" data-print aria-label="Print or save as PDF">
-            <span aria-hidden="true">🖨</span> Print
-          </button>
+{kind === 'project' && (
+  <Base title={pageTitle} description={pageDesc}>
+    <header class="proj-head">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">🏠 Artifacts</a>
+        <span class="crumb-sep" aria-hidden="true">/</span>
+        <span class="proj-name">{props.project}</span>
+        {props.locked && <span class="lock"><span aria-hidden="true">🔒</span> Protected</span>}
+        {props.locked && (
+          <a class="signout" href={`/logout?project=${encodeURIComponent(props.project)}`}>⎋ Sign out</a>
         )}
-        <a class="btn" href={rawUrl} target="_blank" rel="noopener" aria-label="Open raw file in a new tab">
-          <span aria-hidden="true">⤢</span> Open raw
-        </a>
-        {isProtected && (
-          <a class="btn" href={`/logout?project=${encodeURIComponent(project)}`} aria-label="Sign out of this project">
-            <span aria-hidden="true">⎋</span> Sign out
-          </a>
-        )}
-      </div>
-    </nav>
-
-    <header class="viewer-head">
-      <p class="type-line">
-        <span class={`badge badge-${type}`}>{type.toUpperCase()}</span>
-        {date && <span class="date">{date}</span>}
-      </p>
-      <h1>{title}</h1>
-      {description && <p class="lede">{description}</p>}
-      {tags.length > 0 && (
-        <p class="tags" aria-label="Tags">
-          {tags.map((t) => <span class="tag">{t}</span>)}
-        </p>
-      )}
+      </nav>
+      <h1 class="proj-h1">{props.project}</h1>
+      <p class="count">{props.items.length} file{props.items.length === 1 ? '' : 's'}</p>
     </header>
 
-    {type === 'md' && (
+    {groups.map((g) => (
+      <section class="proj-group">
+        {g.group && <h2 class="proj-group-title">{g.group}</h2>}
+        <ul class="file-list">
+          {g.items.map((it) => (
+            <li>
+              <a class="file-link" href={`/${it.routePath}`}>
+                <span class={`badge badge-${it.type}`}>{it.type.toUpperCase()}</span>
+                <span class="file-title">{it.title}</span>
+                {it.date && <span class="file-date">{it.date}</span>}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
+  </Base>
+)}
+
+{isHtml && (
+  <Base title={pageTitle} description={pageDesc} fullBleed>
+    <div class="viewer-bleed">
+      <iframe class="bleed-frame" src={props.rawUrl} title={props.title}></iframe>
+    </div>
+    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="html" isProtected={isProtected} />
+    {/* Public-only: mirror iframed body text into an indexed, screen-reader-only region so
+        full-text search works. Protected pages emit nothing -> never in the public index. */}
+    {pagefindBody && props.searchText && (
+      <div class="sr-only" data-pagefind-body data-pagefind-meta={`title:${props.title}`}>{props.searchText}</div>
+    )}
+    <meta slot="head" property="og:title" content={props.title} />
+    {props.description && <meta slot="head" property="og:description" content={props.description} />}
+    <meta slot="head" property="og:type" content="article" />
+    <meta slot="head" property="og:url" content={ogUrl} />
+  </Base>
+)}
+
+{isMd && (
+  <Base title={pageTitle} description={pageDesc}>
+    <article class="md-view" data-pagefind-body={pagefindBody} data-pagefind-meta={pagefindBody ? `title:${props.title}` : undefined}>
+      <header class="viewer-head">
+        <p class="type-line">
+          <span class="badge badge-md">MD</span>
+          {props.date && <span class="date">{props.date}</span>}
+        </p>
+        <h1>{props.title}</h1>
+        {props.description && <p class="lede">{props.description}</p>}
+        {props.tags.length > 0 && (
+          <p class="tags" aria-label="Tags">{props.tags.map((t) => <span class="tag">{t}</span>)}</p>
+        )}
+      </header>
       <div class="md-layout" data-has-toc={toc.length > 0 ? 'true' : 'false'}>
         {toc.length > 0 && (
           <aside class="toc" aria-label="Table of contents">
@@ -94,50 +155,31 @@ const pagefindBody = isProtected ? undefined : true;
             </ul>
           </aside>
         )}
-        <div class="md-body">
-          <Fragment set:html={html} />
-        </div>
+        <div class="md-body"><Fragment set:html={props.html} /></div>
       </div>
-    )}
+    </article>
+    <Fab rawUrl={props.rawUrl} downloadName={props.downloadName} project={props.project} type="md" isProtected={isProtected} />
+    <meta slot="head" property="og:title" content={props.title} />
+    {props.description && <meta slot="head" property="og:description" content={props.description} />}
+    <meta slot="head" property="og:type" content="article" />
+    <meta slot="head" property="og:url" content={ogUrl} />
+  </Base>
+)}
 
-    {type === 'html' && (
-      <div class="html-wrap">
-        <iframe class="html-frame" src={rawUrl} title={title} loading="lazy"></iframe>
-        <p class="html-hint">
-          Embedded view. <a href={rawUrl} target="_blank" rel="noopener">Open fullscreen ↗</a>
-        </p>
-        {/* The iframe body is invisible to Pagefind. For PUBLIC HTML artifacts we mirror the
-            extracted body text here (off-screen, not display:none so Pagefind still reads it)
-            purely so full-text search works. Protected pages emit nothing (searchText === ''). */}
-        {searchText && <div class="sr-only" aria-hidden="true">{searchText}</div>}
-      </div>
-    )}
-  </article>
-
-  <script>
-    const copyBtn = document.querySelector('[data-copy-link]');
-    if (copyBtn) {
-      const label = copyBtn.querySelector('[data-copy-label]');
-      const original = label ? label.textContent : '';
-      copyBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(window.location.href);
-          if (label) {
-            label.textContent = 'Copied';
-            setTimeout(() => { label.textContent = original; }, 1500);
-          }
-        } catch {
-          // Clipboard API can fail on insecure origins; fall back to a prompt.
-          window.prompt('Copy this link:', window.location.href);
-        }
-      });
-    }
-    const printBtn = document.querySelector('[data-print]');
-    if (printBtn) printBtn.addEventListener('click', () => window.print());
-  </script>
-
-  <meta slot="head" property="og:title" content={title} />
-  {description && <meta slot="head" property="og:description" content={description} />}
-  <meta slot="head" property="og:type" content="article" />
-  <meta slot="head" property="og:url" content={ogUrl} />
-</Base>
+<script>
+  // Runs on every page from this route; handlers no-op where the buttons are absent.
+  const copyBtn = document.querySelector('[data-copy-link]');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        copyBtn.setAttribute('data-copied', '1');
+        setTimeout(() => copyBtn.removeAttribute('data-copied'), 1300);
+      } catch {
+        window.prompt('Copy this link:', window.location.href);
+      }
+    });
+  }
+  const printBtn = document.querySelector('[data-print]');
+  if (printBtn) printBtn.addEventListener('click', () => window.print());
+</script>

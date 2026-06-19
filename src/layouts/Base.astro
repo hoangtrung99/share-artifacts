@@ -4,9 +4,10 @@ import '../styles/global.css';
 interface Props {
   title: string;
   description?: string;
+  fullBleed?: boolean;
 }
 
-const { title, description } = Astro.props;
+const { title, description, fullBleed = false } = Astro.props;
 ---
 
 <!doctype html>
@@ -19,9 +20,7 @@ const { title, description } = Astro.props;
     {description && <meta name="description" content={description} />}
     <slot name="head" />
   </head>
-  <body>
-    <main class="container">
-      <slot />
-    </main>
+  <body class={fullBleed ? 'bleed' : ''}>
+    {fullBleed ? <slot /> : <main class="container"><slot /></main>}
   </body>
 </html>

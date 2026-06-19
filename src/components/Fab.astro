@@ -1,0 +1,40 @@
+---
+// Floating action overlay shown on top of an artifact viewer (full-bleed HTML or rendered MD).
+// Replaces the old top toolbar: the artifact shows full, the actions float over it.
+interface Props {
+  rawUrl: string;
+  downloadName: string;
+  project: string;
+  type: 'md' | 'html';
+  isProtected: boolean;
+}
+const { rawUrl, downloadName, project, type, isProtected } = Astro.props;
+const proj = encodeURIComponent(project);
+---
+<div class="fab" role="toolbar" aria-label="Artifact actions">
+  <a class="fab-btn fab-primary" href={rawUrl} download={downloadName} aria-label={`Download ${downloadName}`}>
+    <span aria-hidden="true">⬇</span><span class="fab-label">Download</span>
+  </a>
+  <button class="fab-btn" type="button" data-copy-link aria-label="Copy link to this artifact">
+    <span aria-hidden="true">🔗</span>
+  </button>
+  <a class="fab-btn" href={rawUrl} target="_blank" rel="noopener" aria-label="Open raw file in a new tab">
+    <span aria-hidden="true">⤢</span>
+  </a>
+  {type === 'md' && (
+    <button class="fab-btn" type="button" data-print aria-label="Print or save as PDF">
+      <span aria-hidden="true">🖨</span>
+    </button>
+  )}
+  <a class="fab-btn" href={`/${proj}`} aria-label="Back to project">
+    <span aria-hidden="true">📁</span>
+  </a>
+  <a class="fab-btn" href="/" aria-label="Home (all projects)">
+    <span aria-hidden="true">🏠</span>
+  </a>
+  {isProtected && (
+    <a class="fab-btn" href={`/logout?project=${proj}`} aria-label="Sign out of this project">
+      <span aria-hidden="true">⎋</span>
+    </a>
+  )}
+</div>
