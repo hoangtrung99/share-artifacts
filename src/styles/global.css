@@ -10,6 +10,7 @@
   --accent-contrast: #ffffff;
   --radius: 10px;
   --maxw: 960px;
+  --indent-step: 1.2rem; /* per-level tree indent; nesting accumulates it into a staircase */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
@@ -99,6 +100,16 @@ h1, h2, h3, h4 { line-height: 1.25; }
   --pagefind-ui-border-radius: var(--radius);
   --pagefind-ui-font: var(--font);
 }
+/* Pagefind only sets the input's background — not its text color — so the typed query falls back
+   to the UA default (black) and vanishes on our dark surface. Pin text/placeholder/clear to our
+   tokens. #search wins specificity over Pagefind's `.x.svelte-*` rules, so no !important needed. */
+#search .pagefind-ui__search-input { color: var(--text); }
+#search .pagefind-ui__search-input::placeholder { color: var(--text-muted); opacity: 1; }
+#search .pagefind-ui__search-clear {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+#search .pagefind-ui__search-clear:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .search-fallback { color: var(--text-muted); font-size: 0.9rem; margin: 0.5rem 0; }
 
 /* Off-screen text that screen readers and Pagefind still read (NOT display:none — Pagefind
@@ -408,9 +419,11 @@ h1, h2, h3, h4 { line-height: 1.25; }
 }
 .login-form { display: flex; flex-direction: column; gap: 0.55rem; }
 .login-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+.login-input-wrap { position: relative; display: flex; }
 .login-input {
   font: inherit;
-  padding: 0.65rem 0.75rem;
+  width: 100%;
+  padding: 0.65rem 2.6rem 0.65rem 0.75rem; /* right room for the show/hide toggle */
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -421,6 +434,29 @@ h1, h2, h3, h4 { line-height: 1.25; }
   outline-offset: 1px;
   border-color: var(--accent);
 }
+.pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.4rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pw-toggle:hover { color: var(--text); background: var(--bg-subtle); }
+.pw-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pw-toggle svg { width: 1.15rem; height: 1.15rem; }
+.pw-toggle .icon-off { display: none; }
+.pw-toggle[aria-pressed='true'] .icon-on { display: none; }
+.pw-toggle[aria-pressed='true'] .icon-off { display: inline; }
 .login-submit { margin-top: 0.4rem; }
 .login-note {
   font-size: 0.8rem;
@@ -449,7 +485,7 @@ h1, h2, h3, h4 { line-height: 1.25; }
   padding-bottom: 0.4rem;
   margin: 0 0 0.7rem;
 }
-.file-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; padding-left: calc(var(--depth, 0) * 1.2rem); }
+.file-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; padding-left: var(--indent-step); }
 .file-list li { margin: 0; }
 .file-link {
   display: flex;
@@ -491,8 +527,11 @@ h1, h2, h3, h4 { line-height: 1.25; }
 .chip.is-active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
 .no-results { color: var(--text-muted); padding: 1.5rem 0; }
 
-/* Collapsible group (native <details>) — supports recursive nesting via --depth */
-details.proj-group { margin-top: 1.6rem; margin-left: calc(var(--depth, 0) * 1.2rem); }
+/* Collapsible group (native <details>) — nesting indent is a CONSTANT per level: the DOM nesting
+   accumulates it into a staircase. (Scaling by depth would compound to 1.2·(1+2+…+n) and shove
+   deep files off-screen on phones.) Top-level groups stay flush; any nested group steps in once. */
+details.proj-group { margin-top: 1.6rem; margin-left: 0; }
+.proj-group .proj-group { margin-left: var(--indent-step); }
 details.proj-group[data-depth="0"] { margin-top: 1.6rem; }
 .proj-group-title { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
 .proj-group-title::-webkit-details-marker { display: none; }
@@ -504,13 +543,17 @@ details[open] > .proj-group-title .grp-chevron { transform: rotate(90deg); }
 
 /* ---- Mobile (phones) ---- */
 @media (max-width: 640px) {
+  :root { --indent-step: 0.65rem; } /* tighter tree indent so deep files don't run off-screen */
   .container { padding: 1.25rem 0.9rem; }
   .md-shell { padding-left: 0.9rem; padding-right: 0.9rem; }
   .gallery-head h1 { font-size: 1.55rem; }
   .proj-h1, .viewer-head h1 { font-size: 1.4rem; }
   .cards { grid-template-columns: 1fr; }
   .proj-filter { flex-basis: 100%; max-width: none; }
+  /* Controls: let each cluster sit on its own line and the filter take the full width. */
+  .proj-controls { gap: 0.5rem; }
   .crumbs .signout { margin-left: 0; }
+  .file-link { padding: 0.6rem 0.7rem; gap: 0.5rem; }
   .viewer-bar { padding: 0 0.6rem; gap: 0.4rem; }
   .vb-btn { padding: 0.42rem 0.45rem; }
 }

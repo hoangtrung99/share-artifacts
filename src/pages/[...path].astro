@@ -83,16 +83,26 @@ function buildTree(items) {
     }
     node.files.push(it);
   }
-  // Convert Maps to sorted arrays and compute descendant counts.
+  // Convert Maps to arrays, compute descendant counts + folder recency, then order siblings.
   const finalize = (node) => {
-    node.children = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name)).map(finalize);
-    node.count = node.files.length + node.children.reduce((s, c) => s + c.count, 0);
+    // Finalize children FIRST so each child's recency (.date) is known before sorting siblings.
+    const kids = [...node.children.values()].map(finalize);
+    // Folder recency = newest sortDate among own files AND child-folder recencies (recursive).
+    const dates = [...node.files.map((f) => f.sortDate || ''), ...kids.map((c) => c.date)].filter(Boolean);
+    node.date = dates.length ? dates.reduce((m, d) => (d > m ? d : m)) : '';
+    // Default order matches the default sort chip ('recent'): newest first, name as tiebreak.
+    kids.sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
+    node.children = kids;
+    node.count = node.files.length + kids.reduce((s, c) => s + c.count, 0);
     return node;
   };
   return finalize(root);
 }
 let tree = null;
 if (kind === 'project') tree = buildTree(props.items);
+// Recency of the (root) group = newest sortDate among files sitting directly at the project root.
+// Lets the (root) group interleave with sub-folders under the 'recent' sort instead of pinning last.
+const rootDate = tree ? tree.files.reduce((m, f) => ((f.sortDate || '') > m ? f.sortDate || '' : m), '') : '';
 ---
 
 {kind === 'project' && (
@@ -141,7 +151,7 @@ if (kind === 'project') tree = buildTree(props.items);
 
     {tree.children.length > 0 && <FileTree nodes={tree.children} />}
     {tree.files.length > 0 && (
-      <details class="proj-group" data-folder="" style="--depth: 0" open>
+      <details class="proj-group" data-folder="" data-name="" data-date={rootDate} style="--depth: 0" open>
         <summary class="proj-group-title">
           <span class="grp-chevron" aria-hidden="true">▸</span>
           <span class="grp-name">(root)</span>
@@ -289,15 +299,21 @@ if (kind === 'project') tree = buildTree(props.items);
       history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
     };
 
+    // Recency compare (newest first). Returns 0 when neither side outranks the other (→ tiebreak).
+    const cmpRecent = (da, db) => {
+      if (da && db && da !== db) return db.localeCompare(da);
+      if (da && !db) return -1;
+      if (db && !da) return 1;
+      return 0;
+    };
+
     // --- Sort: reorder <li> within each <ul> based on active sort mode ---
     const sortList = (ul) => {
       const lis = Array.from(ul.children).filter((el) => el.tagName === 'LI');
       lis.sort((a, b) => {
         if (activeSort === 'recent') {
-          const da = a.dataset.date || '', db = b.dataset.date || '';
-          if (da && db && da !== db) return db.localeCompare(da);
-          if (da && !db) return -1;
-          if (db && !da) return 1;
+          const r = cmpRecent(a.dataset.date || '', b.dataset.date || '');
+          if (r) return r;
         } else if (activeSort === 'type') {
           if (a.dataset.type !== b.dataset.type) return a.dataset.type.localeCompare(b.dataset.type);
         }
@@ -305,6 +321,39 @@ if (kind === 'project') tree = buildTree(props.items);
       });
       lis.forEach((li) => ul.appendChild(li));
     };
+
+    // --- Sort: reorder folder <details> groups to match the active sort mode ---
+    // 'recent' → newest descendant file first; 'name'/'type' → folder name (the empty-named
+    // (root) group sorts last under name, but its recency lets it interleave under 'recent').
+    const groupCmp = (a, b) => {
+      if (activeSort === 'recent') {
+        const r = cmpRecent(a.dataset.date || '', b.dataset.date || '');
+        if (r) return r;
+      }
+      const na = a.dataset.name || '', nb = b.dataset.name || '';
+      if (na === nb) return 0;
+      if (!na) return 1;
+      if (!nb) return -1;
+      return na.localeCompare(nb);
+    };
+    // Reorder only the direct .proj-group children of a container; siblings (header, <ul>,
+    // no-results) keep their slots. Groups are a contiguous block, so we re-insert after the
+    // element that precedes the first group.
+    const reorderGroups = (container) => {
+      const groups = Array.from(container.children).filter(
+        (el) => el.tagName === 'DETAILS' && el.classList.contains('proj-group')
+      );
+      if (groups.length < 2) return;
+      let ref = groups[0].previousElementSibling;
+      groups.sort(groupCmp);
+      for (const g of groups) {
+        if (ref) ref.insertAdjacentElement('afterend', g);
+        else container.insertBefore(g, container.firstChild);
+        ref = g;
+      }
+    };
+    // Every distinct parent that holds folder groups (top-level container + each nesting <details>).
+    const groupContainers = [...new Set(groupEls.map((g) => g.parentElement).filter(Boolean))];
 
     const apply = () => {
       const q = (pf?.value || '').trim().toLowerCase();
@@ -319,8 +368,9 @@ if (kind === 'project') tree = buildTree(props.items);
         li.style.order = vis && q ? String(-Math.round(score * 100)) : '';
         if (vis) shown++;
       }
-      // Sort each file list in place.
+      // Sort each file list in place, then reorder folder groups within every container.
       document.querySelectorAll('.file-list').forEach(sortList);
+      groupContainers.forEach(reorderGroups);
       // Group visibility: bottom-up (deepest first) so parent checks see settled child state.
       for (const g of [...groupEls].reverse()) {
         const anyVisible =

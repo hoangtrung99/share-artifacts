@@ -17,6 +17,7 @@ interface FileItem {
 interface TreeNode {
   name: string;
   path: string;
+  date: string; // folder recency: newest file sortDate in this subtree
   files: FileItem[];
   children: TreeNode[];
   count: number;
@@ -30,7 +31,7 @@ interface Props {
 const { nodes, depth = 0 } = Astro.props;
 ---
 {nodes.map((node) => (
-  <details class="proj-group" data-folder={node.path} data-depth={depth} style={`--depth: ${depth}`} open>
+  <details class="proj-group" data-folder={node.path} data-name={node.name.toLowerCase()} data-date={node.date || ''} data-depth={depth} style={`--depth: ${depth}`} open>
     <summary class="proj-group-title">
       <span class="grp-chevron" aria-hidden="true">▸</span>
       <span class="grp-name">{node.name}</span>
