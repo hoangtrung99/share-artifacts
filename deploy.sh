@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build site Astro tĩnh rồi deploy lên Cloudflare Pages.
 #
-# `npm run build` chạy 3 bước (xem package.json):
+# `pnpm run build` chạy 3 bước (xem package.json):
 #   1. scripts/prepare-static.mjs  — copy raw artifact src/artifacts/ -> public/ (phục vụ verbatim
 #                                    tại /<project>/<file>.(html|md)) + sinh functions/protected-folders.js
 #   2. astro build                 — build gallery + viewer pages vào ./dist
@@ -23,7 +23,7 @@ BRANCH="main"
 [ -d "$ARTIFACTS_DIR" ] || { echo "❌ Không thấy thư mục nguồn: $ARTIFACTS_DIR" >&2; exit 1; }
 
 echo "🏗  Build site (prepare-static + astro build + pagefind)…"
-npm run build
+pnpm run build
 
 [ -d "$ROOT/dist" ] || { echo "❌ Build xong nhưng không thấy ./dist — kiểm tra lỗi build ở trên." >&2; exit 1; }
 

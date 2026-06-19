@@ -36,7 +36,7 @@ bằng **trang login + signed cookie**.
 └── wrangler.jsonc                        # name=artifacts, pages_build_output_dir=./dist
 ```
 
-Quy trình build (`npm run build`):
+Quy trình build (`pnpm run build`):
 
 1. `scripts/prepare-static.mjs` — copy mỗi `src/artifacts/<project>/<file>.(md|html)` sang `public/` ở
    đúng đường dẫn tương đối (để phục vụ verbatim tại `/<project>/<file>.(md|html)`), và sinh
@@ -47,7 +47,7 @@ Quy trình build (`npm run build`):
 ## Cài đặt một lần
 
 ```bash
-npm install                                                   # cài Astro + pagefind + wrangler
+pnpm install                                                   # cài Astro + pagefind + wrangler
 npx wrangler login                                            # xác thực Cloudflare (mở browser)
 npx wrangler pages project create artifacts --production-branch=main
 
@@ -127,7 +127,7 @@ Trên máy mới:
 ```bash
 git clone git@github.com:hoangtrung99/share-artifacts.git
 cd share-artifacts
-npm install
+pnpm install
 ```
 
 Xác thực Cloudflare bằng **API token** (chạy headless, không cần browser — `wrangler login`

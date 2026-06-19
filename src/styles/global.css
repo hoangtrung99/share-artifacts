@@ -459,6 +459,22 @@ h1, h2, h3, h4 { line-height: 1.25; }
 .file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-date { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
 
+/* Per-project fuzzy filter */
+.proj-filter-wrap { display: flex; align-items: center; gap: 0.75rem; margin: 0.9rem 0 0.2rem; }
+.proj-filter {
+  flex: 1;
+  max-width: 30rem;
+  font: inherit;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+.proj-filter:focus-visible { outline: none; border-color: var(--accent); }
+.filter-count { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+.no-results { color: var(--text-muted); padding: 1.5rem 0; }
+
 /* ---- Full-bleed HTML viewer: the artifact fills the screen ---- */
 body.bleed { margin: 0; }
 .viewer-bleed { position: fixed; inset: 0; background: #ffffff; }

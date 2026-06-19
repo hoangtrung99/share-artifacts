@@ -90,7 +90,18 @@ if (kind === 'project') {
         )}
       </nav>
       <h1 class="proj-h1">{props.project}</h1>
-      <p class="count">{props.items.length} file{props.items.length === 1 ? '' : 's'}</p>
+      <div class="proj-filter-wrap">
+        <input
+          type="search"
+          class="proj-filter"
+          data-proj-filter
+          placeholder="Fuzzy filter files…"
+          aria-label="Filter files in this project"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <span class="filter-count" data-filter-count>{props.items.length} file{props.items.length === 1 ? '' : 's'}</span>
+      </div>
     </header>
 
     {groups.map((g) => (
@@ -98,7 +109,7 @@ if (kind === 'project') {
         {g.group && <h2 class="proj-group-title">{g.group}</h2>}
         <ul class="file-list">
           {g.items.map((it) => (
-            <li>
+            <li data-search={`${it.title} ${it.group} ${it.routePath.split('/').pop()}`.toLowerCase()}>
               <a class="file-link" href={`/${it.routePath}`}>
                 <span class={`badge badge-${it.type}`}>{it.type.toUpperCase()}</span>
                 <span class="file-title">{it.title}</span>
@@ -109,6 +120,7 @@ if (kind === 'project') {
         </ul>
       </section>
     ))}
+    <p class="no-results" data-no-results hidden>No files match your filter.</p>
   </Base>
 )}
 
@@ -182,4 +194,41 @@ if (kind === 'project') {
   }
   const printBtn = document.querySelector('[data-print]');
   if (printBtn) printBtn.addEventListener('click', () => window.print());
+
+  // Fuzzy filter for the per-project file list (subsequence match + light ranking).
+  const pf = document.querySelector('[data-proj-filter]');
+  if (pf) {
+    const items = Array.from(document.querySelectorAll('.file-list li'));
+    const groups = Array.from(document.querySelectorAll('.proj-group'));
+    const countEl = document.querySelector('[data-filter-count]');
+    const noRes = document.querySelector('[data-no-results]');
+    const total = items.length;
+    const fuzzy = (q, s) => {
+      let h = 0, score = 0, streak = 0;
+      for (const ch of q) {
+        const i = s.indexOf(ch, h);
+        if (i === -1) return -1;            // not a subsequence → no match
+        streak = i === h ? streak + 1 : 0;  // reward contiguous runs
+        score += 1 + streak * 2 - (i - h) * 0.05;
+        h = i + 1;
+      }
+      return score;
+    };
+    const apply = () => {
+      const q = pf.value.trim().toLowerCase();
+      let shown = 0;
+      for (const li of items) {
+        if (!q) { li.hidden = false; li.style.order = ''; shown++; continue; }
+        const sc = fuzzy(q, li.dataset.search || '');
+        if (sc < 0) { li.hidden = true; }
+        else { li.hidden = false; li.style.order = String(-Math.round(sc * 100)); shown++; }
+      }
+      for (const g of groups) {
+        g.hidden = q ? !g.querySelector('.file-list li:not([hidden])') : false;
+      }
+      if (countEl) countEl.textContent = q ? `${shown} / ${total}` : `${total} file${total === 1 ? '' : 's'}`;
+      if (noRes) noRes.hidden = shown !== 0;
+    };
+    pf.addEventListener('input', apply);
+  }
 </script>
