@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<!--
+  x-translate :: article template  (read-aloud: Native / Web Speech, lightweight)
+  ────────────────────────────────────────────────────────────────────────
+  HOW TO USE  (describe tags by NAME in this comment — never write a literal
+  angle-bracket tag here, or the build/listing title scan matches it, not the real one)
+    1. Fill the JSON config block below (script id "xlate-config"), and set the page
+       title tag in the head to the real article title.
+    2. Replace the contents of the body article (id "xlate-body") with your translated
+       Vietnamese body. Use these tags: p, h2, blockquote, figure.pullquote,
+       hr.ornament, strong, em.
+    3. The h2 headings are auto-numbered (CSS counter) and auto-added to the TOC.
+    4. The floating "Đọc bài" player reads the article aloud with the device's own
+       voice (Web Speech API) — free, no audio files, no extra weight. It splits the
+       body into sentences and highlights the one being read. Nothing to generate.
+    5. Everything else (progress bar, theme toggle, source banner, footer note,
+       TOC, read-aloud player) is generated — do not hand-edit.
+  ────────────────────────────────────────────────────────────────────────
+-->
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ⚠ Set the page title tag below to the real article title, in the form
+     "{config.title} — Bản dịch tiếng Việt". The project listing reads this STATIC title tag
+     (it never runs the page JS), so a placeholder left here shows up as the file's title. -->
+<title>Loop là cái quái gì? — Peter Steinberger vs. Boris Cherny — Bản dịch tiếng Việt</title>
+<meta name="description" content="Bản dịch tiếng Việt bài viết của vivek.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- ════════════════ CONFIG ════════════════ -->
+<script id="xlate-config" type="application/json">
+{
+  "title": "Loop là cái quái gì? — Peter Steinberger vs. Boris Cherny",
+  "titleAccent": "cái quái gì",
+  "lead": "Câu nói được lặp lại nhiều nhất trong lập trình AI tuần này dài đúng sáu từ, và hầu như không ai đang nhắc lại nó có thể định nghĩa được. Một tweet khiến cả timeline lập trình AI như bị bóp cổ tuần này, nên tôi chạy /last30days với từ mà mọi người đang cãi nhau. Câu trả lời là có thật, nó có dòng dõi năm năm, và phần kết là: loop, chứ không phải mô hình, mới là thứ đắt đỏ bây giờ.",
+  "author": "Matt Van Horn",
+  "authorInitial": "M",
+  "sourceUrl": "https://x.com/mvanhorn/status/2063865685558903149",
+  "sourceLabel": "Matt Van Horn (@mvanhorn) — “WTF Is a Loop? Peter Steinberger vs. Boris Cherny” (X / Twitter)"
+}
+</script>
+
+<style>
+  :root {
+    --bg: #f6f2ea; --bg-soft: #efe8db; --paper: #fbf8f1;
+    --ink: #211d18; --ink-soft: #57503f; --muted: #8a8170;
+    --accent: #b4502a; --accent-soft: #d9a98c; --rule: #e2d8c6;
+    --serif: 'Newsreader','Iowan Old Style','Georgia',serif;
+    --sans: 'Inter',system-ui,-apple-system,sans-serif;
+    --mono: 'JetBrains Mono',ui-monospace,monospace;
+  }
+  :root[data-theme="dark"] {
+    --bg:#15130f; --bg-soft:#1c1915; --paper:#1b1814;
+    --ink:#ede6d6; --ink-soft:#b8ad97; --muted:#7d7461;
+    --accent:#e08a5e; --accent-soft:#5a3a28; --rule:#332e25;
+  }
+  *{box-sizing:border-box;} html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);
+    font-size:20px;line-height:1.7;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    padding-bottom:96px;}
+  ::selection{background:var(--accent-soft);color:var(--ink);}
+
+  #progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .12s linear;}
+
+  .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;
+    padding:14px clamp(20px,5vw,48px);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);font-family:var(--sans);}
+  .topbar .brand{font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);}
+  .topbar .brand span{color:var(--accent);}
+  .icon-btn{border:1px solid var(--rule);background:transparent;color:var(--ink-soft);cursor:pointer;
+    width:38px;height:38px;border-radius:10px;display:grid;place-items:center;transition:all .18s ease;}
+  .icon-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-soft);}
+  .icon-btn svg{width:18px;height:18px;}
+
+  .shell{display:grid;grid-template-columns:240px minmax(0,1fr);max-width:1100px;margin:0 auto;}
+  @media (max-width:900px){.shell{grid-template-columns:1fr;}.toc-wrap{display:none;}}
+
+  .toc-wrap{position:sticky;top:72px;align-self:start;height:calc(100vh - 72px);overflow-y:auto;padding:40px 24px 40px 0;}
+  .toc-wrap nav{font-family:var(--sans);border-left:2px solid var(--rule);padding-left:18px;}
+  .toc-label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;font-weight:600;}
+  .toc-wrap ul{list-style:none;margin:0;padding:0;}
+  .toc-wrap a{display:block;text-decoration:none;color:var(--ink-soft);font-size:13.5px;line-height:1.45;
+    padding:6px 0;border-left:2px solid transparent;margin-left:-19px;padding-left:17px;transition:all .16s ease;}
+  .toc-wrap a:hover{color:var(--accent);}
+  .toc-wrap a.active{color:var(--accent);font-weight:600;}
+  .toc-num{color:var(--muted);font-variant-numeric:tabular-nums;margin-right:8px;}
+
+  article.paper{background:var(--paper);padding:clamp(36px,6vw,76px) clamp(24px,6vw,76px) 60px;
+    border-left:1px solid var(--rule);border-right:1px solid var(--rule);box-shadow:0 1px 0 var(--rule);min-width:0;}
+  @media (max-width:900px){article.paper{border:none;}}
+
+  .source-banner{display:flex;align-items:center;gap:12px;font-family:var(--sans);font-size:14px;
+    text-decoration:none;color:var(--ink-soft);padding:12px 16px;margin-bottom:30px;border:1px solid var(--rule);
+    border-left:3px solid var(--accent);border-radius:10px;background:var(--bg-soft);transition:all .18s ease;}
+  .source-banner:hover{border-color:var(--accent);color:var(--accent);transform:translateX(2px);}
+  .source-banner svg{color:var(--accent);flex-shrink:0;}
+  .source-banner .sb-text{flex:1;line-height:1.45;}
+  .source-banner .sb-text strong{color:var(--ink);font-weight:600;}
+  .source-banner .sb-arrow{color:var(--accent);font-weight:600;}
+
+  .eyebrow{font-family:var(--sans);font-size:12px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin-bottom:22px;display:flex;align-items:center;gap:10px;}
+  .eyebrow::before{content:'';display:inline-block;width:28px;height:2px;background:var(--accent);}
+
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(38px,6vw,60px);line-height:1.05;
+    letter-spacing:-0.02em;margin:0 0 28px;color:var(--ink);}
+  h1 .accent{color:var(--accent);font-style:italic;font-weight:500;}
+  .lead{font-size:clamp(19px,2.2vw,22px);line-height:1.6;color:var(--ink-soft);font-style:italic;margin:0 0 36px;}
+  .meta{display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-family:var(--sans);font-size:14px;
+    color:var(--muted);padding-bottom:32px;margin-bottom:40px;border-bottom:1px solid var(--rule);}
+  .meta a{color:var(--accent);text-decoration:none;}.meta a:hover{text-decoration:underline;}
+  .meta .dot{opacity:.5;}
+  .author-chip{display:inline-flex;align-items:center;gap:10px;color:var(--ink-soft);font-weight:500;}
+  .avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-soft));
+    display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px;font-family:var(--sans);}
+
+  /* section numbers via CSS counter — NOT in textContent (keeps audio alignment safe) */
+  #xlate-body{counter-reset:sec;}
+  #xlate-body h2{counter-increment:sec;}
+  #xlate-body h2::before{content:counter(sec,decimal-leading-zero);font-family:var(--mono);
+    font-size:14px;font-weight:500;color:var(--accent);opacity:.85;}
+
+  h2{font-family:var(--sans);font-weight:600;font-size:clamp(22px,3vw,28px);line-height:1.25;letter-spacing:-0.01em;
+    margin:64px 0 22px;scroll-margin-top:90px;color:var(--ink);display:flex;align-items:baseline;gap:16px;}
+
+  p{margin:0 0 1.35em;} em{font-style:italic;} strong{font-weight:600;color:var(--ink);}
+  blockquote{margin:34px 0;padding:4px 0 4px 28px;border-left:3px solid var(--accent);
+    font-style:italic;font-size:1.08em;color:var(--ink-soft);}
+  figure.pullquote{font-family:var(--serif);font-size:clamp(24px,3.4vw,32px);line-height:1.3;font-style:italic;
+    text-align:center;color:var(--accent);margin:48px clamp(10px,5vw,60px);font-weight:500;}
+  figure.pullquote::before,figure.pullquote::after{content:'“';display:block;font-size:1.6em;line-height:.4;color:var(--accent-soft);}
+  figure.pullquote::before{margin-bottom:10px;} figure.pullquote::after{content:'”';margin:14px 0 0;}
+  hr.ornament{border:none;margin:56px auto;width:60px;text-align:center;color:var(--accent-soft);}
+  hr.ornament::after{content:'◆ ◆ ◆';letter-spacing:.4em;font-size:10px;}
+
+  /* sentence highlight (read-aloud) */
+  .xr-sent{border-radius:3px;transition:background .15s ease,color .15s ease;}
+  .xr-active{background:var(--accent-soft);color:var(--ink);box-shadow:0 0 0 3px var(--accent-soft);}
+
+  .source-note{margin-top:72px;padding-top:28px;border-top:1px solid var(--rule);
+    font-family:var(--sans);font-size:14px;line-height:1.6;color:var(--muted);}
+  .source-note a{color:var(--accent);text-decoration:none;}.source-note a:hover{text-decoration:underline;}
+  .end-mark{text-align:center;margin:60px 0 0;color:var(--accent);font-family:var(--sans);
+    font-size:13px;letter-spacing:.2em;text-transform:uppercase;}
+  .end-mark::before{content:'◆';display:block;margin-bottom:10px;}
+
+  /* ════════ read-aloud player ════════ */
+  .player{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(140%);
+    z-index:80;display:flex;align-items:center;gap:10px;max-width:min(720px,calc(100vw - 24px));
+    padding:8px 10px;border:1px solid var(--rule);border-radius:999px;
+    background:color-mix(in srgb,var(--paper) 92%,transparent);backdrop-filter:blur(10px);
+    box-shadow:0 10px 30px rgba(0,0,0,.12);font-family:var(--sans);transition:transform .3s cubic-bezier(.2,.8,.2,1);}
+  .player.show{transform:translateX(-50%) translateY(0);}
+  .player button{border:none;background:transparent;color:var(--ink-soft);cursor:pointer;
+    width:36px;height:36px;border-radius:50%;display:grid;place-items:center;transition:all .15s ease;flex-shrink:0;}
+  .player button:hover{background:var(--bg-soft);color:var(--accent);}
+  .player .pplay{background:var(--accent);color:#fff;width:42px;height:42px;}
+  .player .pplay:hover{background:var(--ink);color:#fff;}
+  .player svg{width:18px;height:18px;}
+  .player .pdivider{width:1px;height:24px;background:var(--rule);}
+  .player select{font-family:inherit;font-size:12.5px;color:var(--ink-soft);background:transparent;border:none;
+    border-radius:8px;padding:6px 4px;cursor:pointer;max-width:104px;outline:none;}
+  .player select:hover{color:var(--accent);}
+  .player .pbar{flex:1;height:5px;border-radius:3px;background:var(--rule);position:relative;min-width:60px;cursor:pointer;}
+  .player .pfill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent);border-radius:3px;}
+  .player .ptime{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:74px;text-align:right;}
+  .player .pclose{width:30px;height:30px;color:var(--muted);}
+  @media (max-width:560px){
+    .player .ptime{display:none;} .player select{max-width:84px;} .player{gap:6px;padding:7px 8px;}
+  }
+
+  .read-btn{position:fixed;right:20px;bottom:22px;z-index:70;display:flex;align-items:center;gap:8px;
+    font-family:var(--sans);font-size:13.5px;font-weight:500;color:var(--ink-soft);background:var(--paper);
+    border:1px solid var(--rule);padding:10px 16px;border-radius:999px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.10);
+    transition:all .18s ease;}
+  .read-btn:hover{color:var(--accent);border-color:var(--accent);transform:translateY(-1px);}
+  .read-btn svg{width:17px;height:17px;color:var(--accent);}
+  @media (max-width:560px){.read-btn span{display:none;}.read-btn{padding:12px;}}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<div class="topbar">
+  <div class="brand">thư viện <span>đọc</span></div>
+  <div class="actions">
+    <button class="icon-btn" id="theme-toggle" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện">
+      <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+    </button>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="toc-wrap"><nav>
+    <div class="toc-label">Mục lục</div>
+    <ul id="toc"></ul>
+  </nav></aside>
+
+  <article class="paper">
+    <div id="xlate-head"></div>
+
+    <!-- ════════════════ BODY: replace with your translated Vietnamese content ════════════════ -->
+    <article id="xlate-body">
+<h2>Dòng tweet khiến timeline như bị bóp cổ</h2>
+<p>Một dòng tweet đã khiến cả timeline lập trình AI ám ảnh suốt tuần này. Peter Steinberger đăng nó ngày 7 tháng 6, nó đạt 2,2 triệu lượt xem, và các trả lời biến thành một trận ẩu đả về ý nghĩa thực sự của nó.</p>
+<blockquote>“Đây là lời nhắc hàng tháng của bạn: bạn không nên prompt các coding agent nữa. Bạn nên thiết kế những loop tự prompt các agent của bạn.”<br>— @steipete, 7 tháng 6, 2026</blockquote>
+<p>Đó là câu mọi người đang trích dẫn. Câu trả lời đáng chú ý nhất đến từ Varadh Jain, người đặt câu hỏi duy nhất quan trọng: điều này trông như thế nào trong thực tế? Và câu trả lời trở thành tâm trạng chung là của Matthew Berman.</p>
+<blockquote>“Không ai biết ngoài anh ấy và Boris.”<br>— @MatthewBerman, 7 tháng 6, 2026</blockquote>
+<p>Đó mới là câu chuyện thực sự. Không phải loop là tương lai, mà là một cụm sáu từ đạt hai triệu lượt xem trong khi những người chia sẻ nó tranh cãi trong phần trả lời về ý nghĩa của nó. Tôi không khinh thường, vì tôi chạy một loop mỗi đêm, mở pull request trên khoảng ba mươi kho mã nguồn mở trong khi tôi ngủ. Chín mươi giây nghiên cứu trả lại mười lăm luồng Reddit, hai mươi mốt bài đăng X, và một mô hình khó chịu: ý tưởng ồn ào nhất trong lập trình AI là thứ mà hầu hết những người đang lặp lại nó không thể giải thích. Một phe hét lên rằng prompt engineering đã chết. Phe còn lại, những người thực sự đặt tay lên bàn phím, thì thận trọng hơn.</p>
+<blockquote>“Không phải ralph/goal loops, thứ đó giờ đã cũ rích. Có lẽ là một dạng continuous orchestration loop nào đó giám sát các luồng/agent khác.”<br>— @trashpandaemoji, 7 tháng 6, 2026</blockquote>
+<h2>Loop thực sự là gì</h2>
+<p>Boris Cherny tạo ra Claude Code như một dự án phụ vào tháng 9 năm 2024. Giờ đây nó được cho là đứng sau gần bốn phần trăm tất cả các commit công khai trên GitHub. Trên sân khấu tại sự kiện WorkOS Acquired Unplugged ngày 2 tháng 6, anh đưa ra định nghĩa rõ ràng nhất về loop mà bạn có thể tìm thấy.</p>
+<blockquote>“Bây giờ nó đã thực sự thăng cấp, tôi nghĩ, lên một làn sóng trừu tượng tiếp theo, nơi tôi không prompt Claude nữa. Tôi có những loop đang chạy. Chính chúng đang prompt Claude và tìm ra phải làm gì. Công việc của tôi là viết các loop.”<br>— Boris Cherny, WorkOS Acquired Unplugged, 2 tháng 6, 2026</blockquote>
+<p>Vậy đây là phiên bản đơn giản. Một loop là một chương trình nhỏ bạn viết để prompt coding agent thay mặt bạn, đọc những gì nó tạo ra, quyết định xem đã xong chưa, và nếu chưa thì prompt lại. Bạn ngừng là thứ bên trong loop đang gõ prompt. Bạn trở thành tác giả của loop. Mô hình trở thành một subroutine.</p>
+<figure class="pullquote">Ngừng là thứ bên trong loop.</figure>
+<p>Boris kể về ba giai đoạn, và việc tự đặt mình vào thang của anh ấy là cách nhanh nhất để hiểu. Một năm trước anh viết code bằng tay với tính năng tự động hoàn thành. Sau đó anh chạy năm đến mười phiên Claude song song và prompt từng cái. Giờ anh không prompt nữa. Anh viết các loop prompt Claude, và vài trăm agent đọc GitHub, Slack và Twitter của anh để quyết định xây dựng gì tiếp theo. Anh có bằng chứng.</p>
+<blockquote>“Trong 30 ngày qua, 100% đóng góp của tôi cho Claude Code được viết bởi Claude Code. Tôi đã merge 259 PR.”<br>— Boris Cherny, qua Simon Willison, 27 tháng 12, 2025</blockquote>
+<p>Anh đã xóa IDE vào tháng 11 và từ đó không mở lại. Sắc thái mà phe prompt-engineering-is-dead bỏ qua: anh không nói kỹ sư đã lỗi thời. Vẫn cần người quyết định xây dựng gì, nói chuyện với khách hàng, và phối hợp nhóm, và anh nói các kỹ sư giỏi quan trọng hơn bao giờ hết. Công việc không biến mất. Nó dịch chuyển lên một độ cao, từ viết code sang viết thứ viết code.</p>
+<h2>Phổ từ ReAct đến orchestration</h2>
+<p>Các câu trả lời rối rắm vì loop che giấu ít nhất năm thứ khác nhau. Đây là thang, từ cũ đến mới, để bạn ngừng nói lệch nhau.</p>
+<p>Giai đoạn một là academic while-loop. Bài báo ReAct năm 2022 hệ thống hóa nó: mô hình suy luận, gọi công cụ, đọc kết quả, lặp lại cho đến khi xong. Một mô hình, một loop, một con người quan sát. Giai đoạn hai là AutoGPT năm 2023, cho nó một mục tiêu và để nó tự prompt chính mình, nổi tiếng vì quay vòng mãi mà chẳng làm gì. Thất bại đó gieo mầm cho câu nói “các agent chỉ là đồ chơi” kéo dài nhiều năm.</p>
+<p>Giai đoạn ba là thứ Trash Panda gọi là cũ rích: ralph loop, do Geoffrey Huntley công bố tháng 7 năm 2025. Nó gần như xúc phạm vì đơn giản, một dòng bash đưa cùng một file prompt vào agent lặp đi lặp lại. Đổi mới thực sự của nó là kỷ luật: mỗi vòng lặp đặt lại ngữ cảnh về một tập file neo cố định thay vì để cuộc trò chuyện phình ra. Huntley đã xây dựng cả một ngôn ngữ lập trình với nó chỉ với khoảng 297 đô la. Giai đoạn bốn đưa nó thành sản phẩm: vào mùa xuân năm 2026 cả Codex và Claude Code đều ra mắt lệnh /goal, chạy ralph loop cho đến khi một mô hình xác nhận nhỏ xác nhận nhiệm vụ đã xong.</p>
+<p>Giai đoạn năm là thứ Boris và Steinberger thực sự muốn nói, và nó thực sự mới, không chỉ là đổi tên. Bốn điều đã thay đổi. Loop trở thành đơn vị công việc, chứ không phải nhiệm vụ. Các loop bắt đầu giám sát các loop khác, đồng thời và theo lịch. Lập lịch thay thế việc khởi động của con người, nên loop chạy theo thời gian của hạ tầng thay vì sự chú ý của bạn. Và độ bền trở nên rõ ràng, với trạng thái được git hỗ trợ và khôi phục sau sự cố, vì những thứ này phải sống sót qua khởi động lại. Ralph giả định terminal của bạn luôn mở. Phiên bản 2026 giả định nó không. Vậy Trash Panda đúng hai lần: loop một agent kiểu ralph đã cũ, và loop orchestration đa agent ở trên nó mới là thứ mới.</p>
+<h2>Chỉ là cron job đội mũ</h2>
+<p>Dòng hoài nghi hay nhất trong toàn bộ văn kiện chỉ dài bốn từ, đăng dưới một bài gushing rằng loops là nơi mọi thứ sẽ đi.</p>
+<blockquote>“Cronjobs have funny re-branding rn.”<br>— Trả lời X, loops discourse, tháng 6 năm 2026</blockquote>
+<p>Điều này đáng được trả lời thẳng thắn, không né tránh, vì nó đúng một nửa. Đúng, lớp lập lịch là cron. Boris thực sự chạy loop của mình trên cron. Lệnh /loop trong Claude Code dùng cron bên dưới. Nếu định nghĩa loop của bạn chỉ là một thứ chạy theo định kỳ, thì đúng, chúng ta đã phát minh ra nó từ năm 1975 và bạn có thể về nhà.</p>
+<p>Những gì cron chưa từng có là phần ở giữa. Một cron job chạy một kịch bản cố định. Một loop chạy một mô hình nhìn vào trạng thái hiện tại, quyết định làm gì tiếp theo, làm nó, kiểm tra xem có hiệu quả không, và quyết định có tiếp tục không. Quyết định thuộc về agent, không phải bạn, và không phải một nhánh mã hóa cứng. Xếp chồng chúng, để một loop điều phối và giám sát các loop khác, cho chúng trạng thái chia sẻ bền vững, và bạn có thứ mà cron không thể diễn đạt. Cách diễn đạt trung thực không phải loop là ma thuật mới và cũng không phải loop chỉ là cron. Mà là: loop là cron cộng với một người ra quyết định ở bên trong, và phần kỹ thuật thú vị là mọi thứ bạn bao quanh quyết định đó để nó không lao xuống vực.</p>
+<h2>Trông như thế nào khi bạn thực sự xây dựng một cái</h2>
+<p>Đủ lý thuyết rồi. Lối vào chỉ là một dòng. Claude Code ra mắt /loop, và ví dụ của Boris chính là khởi đầu kinh điển. Dán cái này vào và thay danh từ.</p>
+<blockquote>/loop trông nom tất cả PR của tôi. Tự động sửa lỗi build, và khi có bình luận, dùng một worktree agent để sửa chúng.</blockquote>
+<p>Và đây là công thức đầy đủ hơn của anh ấy. Vài ngày sau, Boris đăng năm lời khuyên để chạy Opus tự chủ trong hàng giờ hoặc hàng ngày.</p>
+<blockquote>“Năm lời khuyên, theo lời anh ấy: dùng chế độ tự động để cấp quyền, để Claude không hỏi phê duyệt; dùng dynamic workflows để Claude điều phối hàng trăm hoặc hàng nghìn agent để hoàn thành nhiệm vụ; dùng /goal hoặc /loop để nhắc Claude tiếp tục cho đến khi xong; dùng Claude Code trên đám mây để có thể đóng laptop; và đảm bảo Claude có cách tự xác minh công việc từ đầu đến cuối.”<br>— @bcherny, tháng 6 năm 2026</blockquote>
+<p>Lời khuyên thứ năm là thứ phe quảng cáo bỏ qua và phe thực hành ám ảnh: một loop chỉ đáng tin bằng khả năng tự kiểm tra công việc của chính nó.</p>
+<p>Đó là toàn bộ ý tưởng thu nhỏ. Bạn không viết các bước. Bạn viết ý định và hành vi dừng, và loop prompt agent mỗi lần. Trên TikTok, cách diễn đạt này dễ hiểu với khán giả đại chúng.</p>
+<blockquote>“Loop mode là một trong những dấu hiệu rõ ràng nhất cho thấy lập trình AI đang chuyển từ one-off prompts sang hoạt động nền.”<br>— @ai.native.founder trên TikTok, tháng 6 năm 2026</blockquote>
+<p>Đầu sâu là Gas Town của Steve Yegge, ra mắt tháng 1: hai mươi đến ba mươi phiên Claude Code được điều phối bởi một Mayor agent, với các patrol agent chạy continuous loops và trạng thái lưu trong git để công việc sống sót sau sự cố. Đó chính là continuous orchestration loop giám sát các luồng khác mà Trash Panda đang hướng tới, đã được triển khai và mã nguồn mở.</p>
+<p>Nhưng bài học thực tế nhất trong nghiên cứu là một loop chỉ tốt bằng khả năng tự kiểm tra của nó. Chủ đề phụ phát triển nhanh nhất không phải orchestration, mà là verification.</p>
+<blockquote>“Your coding agent can move fast, but bad commits compound fast too.”<br>— @DanKornas, tháng 6 năm 2026</blockquote>
+<p>Kornas đang phát hành roborev, một công cụ đánh giá mỗi commit trong nền và đưa kết quả trở lại agent trong khi ngữ cảnh vẫn còn tươi. Một loop mở chỉ viết code mà không có phản hồi là một cỗ máy tạo ra những sai lầm tự tin. Một loop viết, chạy, đọc kết quả và sửa là thứ thực sự hoạt động. Loop không phải phép màu. Phản hồi bên trong nó mới là.</p>
+<h2>Bước ngoặt: loop giờ là phần đắt đỏ</h2>
+<p>Đây là lúc nghiên cứu chuyển từ triết lý sang bài toán tài chính. Câu trả lời sắc bén nhất làm xì hơi toàn bộ thần thoại agent đến từ một kỹ sư đang làm việc.</p>
+<blockquote>“Every ai agent i shipped this year is a for-loop, an llm call, and a try/catch around the json parsing. The only thing agentic about it is the anthropic bill at the end of the month.”<br>— @rohit_jsfreaky, tháng 6 năm 2026</blockquote>
+<p>Hóa đơn đó không phải đùa. Biên lai của tháng: Uber giới hạn các kỹ sư của mình ở mức 1.500 đô la một người một công cụ một tháng cho Claude Code và Cursor sau khi đốt cháy ngân sách AI hàng năm trong bốn tháng. Một khi mô hình viết code gần như miễn phí, chi phí chuyển sang loop chạy nó.</p>
+<blockquote>“The costliest thing in AI coding is no longer writing code, it’s managing the agent loop.”<br>— @runes_leo, tháng 6 năm 2026</blockquote>
+<p>Và kiểu thất bại mà mọi người trong production sợ là loop không dừng lại.</p>
+<blockquote>“Without guardrails, you get infinite loops and billing surprises orders of magnitude over budget.”<br>— @cv_usk, tháng 6 năm 2026</blockquote>
+<p>Đó là lý do mọi bài viết nghiêm túc năm 2026 về loop đều hội tụ vào cùng ba điểm dừng cứng: số lần lặp tối đa, phát hiện không tiến triển, và giới hạn token hoặc ngân sách đô la. Phiên bản lãng mạn của loop là bạn viết loop và nghìn agent xây dựng công ty của bạn qua đêm. Phiên bản production là bạn viết loop, và phần lớn công việc của bạn là đảm bảo chúng dừng lại. Gartner đặt agentic AI ở đỉnh kỳ vọng thổi phồng, với chỉ khoảng mười bảy phần trăm tổ chức thực sự triển khai agent. Khoảng cách giữa timeline và biên lai chính là trạng thái thực tế.</p>
+<h2>Không phải loop. Mà là skill.</h2>
+<p>Đây là quan điểm của riêng tôi, và là nơi tôi đứng sau một tuần quan sát. Loop chỉ là đường ống. Tài sản là skill mà nó gọi.</p>
+<p>Điểm lặp lại khác của Steinberger đi cùng với điểm về loop và là nửa bền vững hơn: nếu bạn làm điều gì đó hơn một lần, hãy biến nó thành một skill tự động, và nếu bạn làm điều gì đó khó, hãy biến nó thành skill sau đó để lần sau miễn phí. Một loop không có skill tái sử dụng bên trong chỉ là một while-true quanh một người lạ. Một loop gọi một thư viện các skill sắc bén, đã kiểm tra, có tên là một hệ thống kết hợp. Một người dùng Reddit đang thực sự chuyển đổi đã nói đúng nhất.</p>
+<blockquote>“A lot of people are rolling their eyes on Twitter, but my ears are perked up.”<br>— r/ChatGPTCoding, tháng 6 năm 2026</blockquote>
+<p>Vậy câu trả lời cho WTF là loop không phải một phát ngôn gây sốc rằng prompt engineering đang chết. Mà là: ngừng là thứ bên trong loop. Viết loop một lần, trang bị cho nó các skill đáng gọi và phản hồi để nó tự kiểm tra, giới hạn nó để nó dừng lại, và để nó chạy trên cron trong khi bạn đi quyết định xây dựng gì tiếp theo. Steinberger và Boris đang mô tả cùng một con vật từ hai phía. Chỉ những người đã xây dựng một cái mới thực sự biết. Tin tốt là, kể từ tháng này, lối vào chỉ là một lệnh gạch chéo duy nhất.</p>
+<h2>Các mẫu chính từ nghiên cứu</h2>
+<p>Một loop là cron cộng người ra quyết định bên trong: mô hình, không phải nhánh mã hóa cứng, chọn hành động tiếp theo mỗi lần.</p>
+<p>Dòng dõi là có thật: ReAct năm 2022, AutoGPT năm 2023, ralph năm 2025, /goal mùa xuân 2026, orchestration loops bây giờ. Loop ralph một agent đã cũ; giám sát đa agent là lớp mới.</p>
+<p>Loop chỉ tốt bằng phản hồi của nó. Đánh giá liên tục và các cổng xác nhận là thứ làm cho loop đáng tin.</p>
+<p>Tài nguyên đắt đỏ đã chuyển từ token sang quản lý loop. Giới hạn số lần lặp, phát hiện không tiến triển, đặt ngân sách đô la.</p>
+<p>Đơn vị tái sử dụng bên trong loop là skill, không phải prompt. Các loop gọi skill có tên sắc bén thì kết hợp; các loop tự suy diễn lại mọi thứ chỉ đốt tiền.</p>
+<h2>Tất cả agent đều báo cáo lại</h2>
+<p>Reddit: 17 giọng nói (r/ClaudeAI, r/AI_Agents, r/ExperiencedDevs), 47 luồng, 34k upvote. X: 21 giọng nói (steipete, bcherny, runes_leo), 56 bài đăng, 175 repost. YouTube: 4 giọng nói (WorkOS, Lenny’s Podcast, Y Combinator), bản ghi lời nói. TikTok: 6 giọng nói (ai.native.founder, nikpolale), 34 clip. Instagram: 4 giọng nói (sequenzy_com, ai.builders), 14 reel. Hacker News: 12 giọng nói, 54 câu chuyện, 1k bình luận. GitHub: 6 kho (gastownhall/gastown, NousResearch/hermes), steipete 259+ PR. Các giọng nói hàng đầu: steipete, bcherny, runes_leo, rohit_jsfreaky, MatthewBerman.</p>
+<p>Biên soạn từ các lần chạy /last30days ngày 2026-06-07. Các khía cạnh: designing loops that prompt coding agents, ai loops, coding loops.</p>
+<p>Đồng sáng lập một công ty lò nướng tự lái (được Weber mua lại) và công ty sau này trở thành Lyft. Đang xây dựng tiếp, sẽ sớm chia sẻ. Tôi chạy các loop gửi PR mã nguồn mở trong khi tôi ngủ, và tôi viết chúng với nghiên cứu /last30days chạy nền.</p>
+</article>
+    <!-- ════════════════ /BODY ════════════════ -->
+
+    <div class="source-note" id="xlate-foot"></div>
+    <div class="end-mark">Hết</div>
+  </article>
+</div>
+
+<!-- read-aloud: floating trigger + player -->
+<button class="read-btn" id="read-btn" title="Đọc bài" aria-label="Đọc bài">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4"/><path d="M7 7v10"/><path d="M11 4v16"/><path d="M15 8v8"/><path d="M19 11v2"/></svg>
+  <span>Đọc bài</span>
+</button>
+<div class="player" id="player">
+  <button class="pplay" id="p-play" title="Phát/Tạm dừng"><svg id="p-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+  <button id="p-stop" title="Dừng"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+  <span class="pdivider"></span>
+  <select id="p-speed" title="Tốc độ"></select>
+  <div class="pbar" id="p-bar"><div class="pfill" id="p-fill"></div></div>
+  <span class="ptime" id="p-time"></span>
+  <button class="pclose" id="p-close" title="Đóng"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+</div>
+
+<script>
+const cfg = JSON.parse(document.getElementById('xlate-config').textContent);
+
+/* ---------- head + meta + footer ---------- */
+document.title = cfg.title + ' — Bản dịch tiếng Việt';
+const d = document.querySelector('meta[name="description"]'); if (d) d.setAttribute('content','Bản dịch tiếng Việt bài viết của '+cfg.author+'.');
+const accent = cfg.titleAccent || '';
+const titleHTML = accent && cfg.title.includes(accent) ? cfg.title.replace(accent,'<span class="accent">'+accent+'</span>') : cfg.title;
+const initial = cfg.authorInitial || (cfg.author?cfg.author[0]:'?');
+document.getElementById('xlate-head').innerHTML = `
+  <a class="source-banner" href="${cfg.sourceUrl}" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    <span class="sb-text"><strong>Bài viết gốc:</strong> ${cfg.sourceLabel}</span><span class="sb-arrow">↗</span></a>
+  <div class="eyebrow">Tiểu luận · Dịch thuật</div>
+  <h1>${titleHTML}</h1>
+  <p class="lead">${cfg.lead}</p>
+  <div class="meta"><span class="author-chip"><span class="avatar">${initial}</span> ${cfg.author}</span>
+    <span class="dot">·</span><span>Bản dịch tiếng Việt</span><span class="dot">·</span>
+    <a href="${cfg.sourceUrl}" target="_blank" rel="noopener">Nguyên bản ↗</a></div>`;
+document.getElementById('xlate-foot').innerHTML = `<strong>Ghi chú:</strong> Đây là bản dịch tiếng Việt. Tác giả gốc: <strong>${cfg.author}</strong>. <a href="${cfg.sourceUrl}" target="_blank" rel="noopener">Xem bài gốc ↗</a>. Bản dịch phục vụ mục đích chia sẻ và học tập.`;
+
+/* ---------- TOC from <h2> ---------- */
+const body = document.getElementById('xlate-body');
+const toc = document.getElementById('toc');
+const heads = Array.from(body.querySelectorAll('h2'));
+const slug = s => 'muc-' + s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+heads.forEach((h,i)=>{
+  if(!h.id) h.id = slug(h.textContent)+(i+1);
+  const li=document.createElement('li'), a=document.createElement('a');
+  a.href='#'+h.id; a.innerHTML='<span class="toc-num">'+String(i+1).padStart(2,'0')+'</span>'+h.textContent;
+  li.appendChild(a); toc.appendChild(li);
+});
+
+/* ---------- progress + TOC spy ---------- */
+const prog=document.getElementById('progress');
+const onScroll=()=>{const h=document.documentElement,m=h.scrollHeight-h.clientHeight;prog.style.width=(m>0?(h.scrollTop/m)*100:0)+'%';};
+document.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+const links=Array.from(document.querySelectorAll('#toc a'));
+const spy = new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(l=>l.classList.remove('active'));const a=links.find(l=>l.getAttribute('href')==='#'+e.target.id);if(a)a.classList.add('active');}});},{rootMargin:'-30% 0px -60% 0px',threshold:0});
+heads.forEach(h=>spy.observe(h));
+
+/* ---------- theme ---------- */
+const sun='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>';
+const moon='<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+const setTheme=t=>{document.documentElement.setAttribute('data-theme',t);localStorage.setItem('xlate-theme',t);document.getElementById('theme-icon').innerHTML=t==='dark'?moon:sun;};
+setTheme(localStorage.getItem('xlate-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
+document.getElementById('theme-toggle').addEventListener('click',()=>setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'));
+
+/* ════════════ READ ALOUD ════════════ */
+/* DOM analysis: normalized textContent + mapping back to raw text nodes */
+function analyze(root){
+  // skip text inside <svg> diagrams — wrapping SVG text in <span> would corrupt the figure
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
+    acceptNode:n=>(n.parentElement&&n.parentElement.closest('svg'))?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT
+  });
+  const segs=[]; let raw='';
+  let n; while((n=walker.nextNode())){ segs.push({node:n,s:raw.length,e:raw.length+n.nodeValue.length}); raw+=n.nodeValue; }
+  let norm='', map=[];
+  let i=0; const L=raw.length;
+  while(i<L){ if(/\s/.test(raw[i])){ let j=i; while(j<L&&/\s/.test(raw[j])) j++; norm+=' '; map.push(i); i=j; }
+    else { norm+=raw[i]; map.push(i); i++; } }
+  let a=0,b=norm.length; while(a<b&&norm[a]===' ')a++; while(b>a&&norm[b-1]===' ')b--;
+  return {segs, norm:norm.slice(a,b), map:map.slice(a,b)};
+}
+function unwrap(root){ root.querySelectorAll('.xr-sent').forEach(s=>s.replaceWith(...s.childNodes)); root.normalize(); }
+/* wrap normalized-space char ranges [s,e) in <span class="xr-sent" data-i>; groups per parent */
+function wrapRanges(A, ranges){
+  const mk=()=>{const s=document.createElement('span');s.className='xr-sent';return s;};
+  for(let k=ranges.length-1;k>=0;k--){
+    const {i,s,e}=ranges[k];
+    if(s<0||e<0||e<=s) continue;
+    const rs=A.map[Math.max(0,Math.min(s,A.map.length-1))];
+    const reEndIdx=Math.max(0,Math.min(e-1,A.map.length-1));
+    const re=(A.map[reEndIdx]??rs)+1;
+    let groups=[]; let cur=null;
+    for(const seg of A.segs){
+      if(seg.e<=rs||seg.s>=re) continue;
+      const ls=Math.max(rs,seg.s)-seg.s, le=Math.min(re,seg.e)-seg.s;
+      let node=seg.node;
+      if(le<node.nodeValue.length) node.splitText(le);
+      const wrapped = ls>0 ? node.splitText(ls) : node;
+      const parent=wrapped.parentNode;
+      if(!cur||cur.parent!==parent){ cur={parent,span:mk(),nodes:[]}; cur.span.dataset.i=i; groups.push(cur); }
+      cur.nodes.push(wrapped);
+    }
+    for(const g of groups){ g.parent.insertBefore(g.span,g.nodes[0]); g.nodes.forEach(n=>g.span.appendChild(n)); }
+  }
+}
+
+const A = analyze(body);
+let spansCache=[];
+function setActive(i){
+  spansCache.forEach(s=>s.classList.remove('xr-active'));
+  const act = spansCache.filter(s=>s.dataset.i==String(i));
+  act.forEach(s=>s.classList.add('xr-active'));
+  if(act[0]) act[0].scrollIntoView({behavior:'smooth',block:'center'});
+}
+function rebuild(ranges){ unwrap(body); wrapRanges(A,ranges); spansCache=Array.from(body.querySelectorAll('.xr-sent')); }
+
+/* ---------- player UI (Native / Web Speech only) ---------- */
+const player=document.getElementById('player');
+const btn=document.getElementById('read-btn');
+const pPlay=document.getElementById('p-play'), pPlayIcon=document.getElementById('p-play-icon');
+const pStop=document.getElementById('p-stop'), pClose=document.getElementById('p-close');
+const pSpeed=document.getElementById('p-speed');
+const pBar=document.getElementById('p-bar'), pFill=document.getElementById('p-fill'), pTime=document.getElementById('p-time');
+const ICON_PLAY='<path d="M8 5v14l11-7z"/>', ICON_PAUSE='<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+const synth=window.speechSynthesis;
+
+[0.75,0.9,1,1.1,1.25,1.5].forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=r+'×';if(r===1)o.selected=true;pSpeed.appendChild(o);});
+
+const state={speed:1, playing:false, idx:0, ranges:[]};
+
+function setProgress(p){ pFill.style.width=Math.min(100,Math.max(0,p*100))+'%'; }
+function updateTime(){ pTime.textContent = state.ranges.length ? ('câu '+Math.min(state.idx+1,state.ranges.length)+' / '+state.ranges.length) : ''; }
+
+/* split the normalized text into sentences */
+function setRanges(){
+  const rx=/[^.!?…。]*[.!?…。]+|\S+$/g; let m, ranges=[], off=0;
+  while((m=rx.exec(A.norm))){ const t=m[0].trim(); if(!t) continue;
+    let start=A.norm.indexOf(m[0],off); if(start===-1) start=off; off=start+m[0].length;
+    ranges.push({i:ranges.length,s:start,e:start+m[0].length,text:m[0].replace(/\s+/g,' ').trim()}); }
+  if(off<A.norm.length-1){ ranges.push({i:ranges.length,s:off,e:A.norm.length,text:A.norm.slice(off).trim()}); }
+  state.ranges=ranges; rebuild(state.ranges); setProgress(0); updateTime();
+}
+
+/* ---------- native playback ---------- */
+let voices=[]; function loadVoices(){voices=synth?synth.getVoices():[];}
+if(synth){ loadVoices(); synth.onvoiceschanged=loadVoices; }
+function viVoice(){ return voices.find(v=>/^vi/i.test(v.lang)) || voices.find(v=>/vietnam/i.test(v.name)) || null; }
+function speakFrom(i){
+  if(!synth) return;
+  synth.cancel();
+  const r=state.ranges[i]; if(!r){ stop(); return; }
+  state.idx=i; setActive(i); setProgress((i+1)/state.ranges.length); updateTime();
+  const u=new SpeechSynthesisUtterance(r.text);
+  u.lang='vi-VN'; const v=viVoice(); if(v)u.voice=v; u.rate=+state.speed;
+  u.onend=()=>{ if(!state.playing || state.idx!==i) return;
+    if(i<state.ranges.length-1) speakFrom(i+1); else stop(); };
+  synth.speak(u);
+}
+
+/* ---------- transport ---------- */
+function play(){ if(!synth) return; state.playing=true; updatePlayIcon();
+  if(state.idx>=state.ranges.length) state.idx=0; speakFrom(state.idx); }
+function pause(){ state.playing=false; updatePlayIcon(); if(synth) synth.cancel(); }
+function stop(){ state.playing=false; state.idx=0; updatePlayIcon(); setProgress(0); updateTime();
+  if(synth) synth.cancel(); spansCache.forEach(s=>s.classList.remove('xr-active')); }
+function toggle(){ state.playing?pause():play(); }
+function updatePlayIcon(){ pPlayIcon.innerHTML=state.playing?ICON_PAUSE:ICON_PLAY; }
+
+function openPlayer(){ setRanges(); player.classList.add('show'); btn.style.display='none'; }
+function closePlayer(){ stop(); player.classList.remove('show'); btn.style.display=''; unwrap(body); }
+
+btn.addEventListener('click',openPlayer);
+pPlay.addEventListener('click',toggle);
+pStop.addEventListener('click',stop);
+pClose.addEventListener('click',closePlayer);
+pSpeed.addEventListener('change',()=>{ state.speed=+pSpeed.value; if(state.playing) speakFrom(state.idx); });
+pBar.addEventListener('click',e=>{ if(!state.ranges.length) return;
+  const rect=pBar.getBoundingClientRect(); const p=(e.clientX-rect.left)/rect.width;
+  const i=Math.max(0,Math.min(state.ranges.length-1,Math.floor(p*state.ranges.length)));
+  state.idx=i; if(state.playing) speakFrom(i); else { setActive(i); setProgress((i+1)/state.ranges.length); updateTime(); } });
+
+/* no Web Speech support -> hide the read button entirely */
+if(!synth) btn.style.display='none';
+/* (TOC spy set above) */
+</script>
+</body>
+</html>
