@@ -28,6 +28,9 @@ voice (Web Speech API). No audio files are generated or deployed — the artifac
   `"how to be good at research" site:huggingface.co`, Medium reprints, forum mirrors — then
   `read` the cleanest full-text copy.
 - Capture: **title, author handle (@...), original post URL, full body, section headings**.
+- **Capture all images / figures / screenshots** in the original article. Note their URLs and
+  the paragraph/section each belongs to. Do not drop images that are part of the article’s
+  content (diagrams, screenshots, figures).
 
 ### 2. Translate to Vietnamese
 - Faithful meaning, natural Vietnamese. Keep proper names (Richard Hamming, Karpathy).
@@ -46,9 +49,11 @@ voice (Web Speech API). No audio files are generated or deployed — the artifac
   the file's title in the listing.
 - Put translated body inside `<article id="xlate-body">` using `p`, `h2` (auto-numbered + TOC'd),
   `blockquote`, `figure.pullquote`, `hr.ornament`.
+- **Preserve all original images.** Download each image, convert to a `data:` URI, and insert
+  it near the translated paragraph or section it illustrates. Use a `<figure>` with
+  `<img src="data:image/png;base64,..." alt="...">`. Keep the original image’s meaning in the
+  `alt` text (translate the alt/caption if there is one).
 - Must stay **self-contained**: inline CSS/JS, images as `data:` URIs only.
-- Section numbers are **CSS counters** (not text). Never re-add a `<span class="sec-num">` —
-  it would enter `textContent` and misalign the read-aloud sentence highlighting.
 
 ### 4. Deliver
 ```bash
