@@ -12,3 +12,4 @@ public/*
 
 # local preview config (Claude Preview MCP)
 .claude/launch.json
+.gstack/
