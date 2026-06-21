@@ -15,6 +15,10 @@ user a shareable link — auto-classifying the project, or asking when unclear.
   the viewer `https://artifacts.hoangtrung.dev/<project>/<file>` and the raw
   `https://artifacts.hoangtrung.dev/<project>/<file>.(html|md)`.
 - **Tooling is `wrangler` (Pages), NOT `cloudflared`.**
+- **Git sync (automatic):** `deliver.sh` runs `git pull --rebase` before copying the artifact (skipped with
+  a warning if the working tree is dirty) and `git commit + push` after a successful deploy, so
+  `src/artifacts/` stays consistent across machines. Only the artifact + `protected.list` +
+  `functions/protected-folders.js` are staged — unrelated changes are left alone.
 
 ## Steps
 

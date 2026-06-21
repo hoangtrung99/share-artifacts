@@ -45,6 +45,15 @@ case "$BASENAME" in
   *) echo "❌ Chỉ hỗ trợ .html hoặc .md (nhận: $BASENAME). Lưu ý: .htm không được hỗ trợ." >&2; exit 1;;
 esac
 
+# Pull code mới nhất để src/artifacts/ không lệch khi deploy từ nhiều máy.
+# Chỉ pull khi working tree sạch — tránh rebase conflict/ghi đè thay đổi local chưa commit.
+if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+  echo "⬇️  git pull --rebase…"
+  git pull --rebase --quiet || echo "⚠️ git pull thất bại — tiếp tục với state local." >&2
+else
+  echo "⚠️ Working tree không sạch — bỏ qua git pull (commit/stash thủ công để tránh lệch)." >&2
+fi
+
 mkdir -p "src/artifacts/$PROJECT"
 cp "$SRC" "src/artifacts/$PROJECT/$BASENAME"
 echo "📥 $SRC  ->  src/artifacts/$PROJECT/$BASENAME"
@@ -63,3 +72,13 @@ echo "✅ Delivered:"
 echo "   $VIEW_URL        (viewer — toolbar + nội dung)"
 echo "   $RAW_URL         (raw — file gốc)"
 [ "$OPEN" = 1 ] && command -v open >/dev/null && open "$VIEW_URL" || true
+
+# Commit + push artifact vào git để các máy khác sync (share-artifacts là repo sync giữa các máy).
+# Chỉ stage những gì deliver.sh touch — không quét thay đổi unrelated đang dở dang của user.
+git add "src/artifacts/$PROJECT/$BASENAME" protected.list functions/protected-folders.js 2>/dev/null || true
+if ! git diff --cached --quiet 2>/dev/null; then
+  echo "📤 git commit + push…"
+  git commit -m "feat(artifacts): publish $PROJECT/$BASENAME" --quiet \
+    && git push --quiet \
+    || echo "⚠️ git commit/push thất bại — web đã deploy, nhưng cần commit/push thủ công." >&2
+fi

@@ -186,9 +186,12 @@ Sau khi tạo một artifact (md hoặc html) ở bất kỳ đâu, publish bằ
 ~/Local/Work/solashi/share-artifacts/deliver.sh ./notes.md research --protect 's3cret'
 ```
 
-`deliver.sh <file.(html|md)> [project] [--name x.(html|md)] [--protect [pw]] [--open]` sẽ: copy file vào
-`src/artifacts/<project>/`, (tuỳ chọn) bảo vệ project, build (prepare-static + astro + pagefind), deploy,
-in cả URL viewer và URL raw. Project mặc định là `shared`. Chỉ hỗ trợ `.html` và `.md`.
+`deliver.sh <file.(html|md)> [project] [--name x.(html|md)] [--protect [pw]] [--open]` sẽ: `git pull --rebase`
+(sync source giữa các máy), copy file vào `src/artifacts/<project>/`, (tuỳ chọn) bảo vệ project, build
+(prepare-static + astro + pagefind), deploy, `git commit + push` (đẩy artifact lên git để máy khác sync),
+rồi in cả URL viewer và URL raw. Project mặc định là `shared`. Chỉ hỗ trợ `.html` và `.md`. Khi working tree
+không sạch thì `git pull` bị bỏ qua (kèm cảnh báo); nếu commit/push thất bại thì web vẫn đã deploy (kèm cảnh báo),
+agent/user chỉ cần pull/commit/push lại thủ công.
 
 ### Cho agent (Claude) sau khi tạo artifact
 - **Skill `deploy-artifacts`** (`.claude/skills/`): agent tự **phân loại** artifact vào project (hỏi nếu không rõ),
