@@ -3,14 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="date" content="2026-06-19">
-<title>CloudWatch Observability Dashboards — Design &amp; Implementation</title>
+<title>CloudWatch Observability Dashboards — Hub-and-Spoke Design</title>
 <style>
   :root{
     --bg:#fafbfc; --surface:#ffffff; --ink:#14181f; --muted:#5a6472; --faint:#8b94a3;
     --line:#e7eaf0; --line-strong:#d4dae4;
     --primary:#2f4bd8; --primary-soft:#eef1fe;
-    --t-over:#6366f1; --t-fe:#0ea5e9; --t-be:#10b981; --t-data:#f59e0b; --t-ext:#f43f5e;
+    --t-health:#2f4bd8; --t-fe:#0ea5e9; --t-be:#10b981; --t-data:#f59e0b; --t-async:#8b5cf6; --t-plat:#f43f5e;
     --ok:#0f9d6b; --warn:#d9822b; --bad:#dc4d4d;
     --shadow:0 1px 2px rgba(20,24,31,.04),0 8px 24px rgba(20,24,31,.05);
     --radius:14px;
@@ -26,7 +25,6 @@
   code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;font-size:.86em}
   a{color:var(--primary)}
 
-  /* hero */
   header.hero{
     background:linear-gradient(160deg,#1b2440 0%,#243056 48%,#2f4bd8 130%);
     color:#fff;padding:64px 0 56px;position:relative;overflow:hidden;
@@ -39,22 +37,20 @@
     color:#aeb9ff;font-weight:600;margin-bottom:18px}
   .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:#7c8cff;box-shadow:0 0 0 4px rgba(124,140,255,.22)}
   header.hero h1{font-size:clamp(28px,4.6vw,46px);line-height:1.1;margin:0 0 16px;font-weight:760;letter-spacing:-.02em}
-  header.hero p.lede{font-size:clamp(16px,2vw,19px);color:#d4dbf2;max-width:62ch;margin:0 0 28px}
+  header.hero p.lede{font-size:clamp(16px,2vw,19px);color:#d4dbf2;max-width:64ch;margin:0 0 28px}
   .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
   .chip{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);
     color:#eaeefb;padding:7px 13px;border-radius:999px;font-size:13px;font-weight:500;backdrop-filter:blur(4px)}
   .chip b{color:#fff;font-weight:700}
 
-  /* sections */
   main{padding:8px 0 80px}
   section{padding:46px 0 10px;border-bottom:1px solid var(--line)}
   section:last-child{border-bottom:0}
   .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
   .sec-num{font-size:13px;font-weight:700;color:var(--primary);font-family:"SF Mono",ui-monospace,monospace;padding-top:5px}
   h2{font-size:clamp(21px,3vw,27px);margin:0;font-weight:720;letter-spacing:-.01em}
-  .sec-sub{color:var(--muted);margin:6px 0 26px;max-width:70ch}
+  .sec-sub{color:var(--muted);margin:6px 0 26px;max-width:72ch}
 
-  /* generic cards */
   .grid{display:grid;gap:16px}
   .g2{grid-template-columns:repeat(2,1fr)}
   .g3{grid-template-columns:repeat(3,1fr)}
@@ -62,7 +58,6 @@
   .card h3{margin:0 0 8px;font-size:16px;font-weight:680}
   .card p{margin:0;color:var(--muted);font-size:14.5px}
 
-  /* architecture diagram */
   .arch{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
   .arch-flow{display:flex;align-items:stretch;gap:14px;flex-wrap:wrap}
   .arch-col{flex:1 1 200px;min-width:0}
@@ -76,7 +71,17 @@
   .read-only-note{margin-top:16px;font-size:13.5px;color:var(--muted);display:flex;gap:9px;align-items:flex-start}
   .read-only-note .pill{flex:0 0 auto;background:#eef7f1;color:var(--ok);border:1px solid #c9e9d6;font-weight:700;font-size:11.5px;padding:2px 9px;border-radius:999px;letter-spacing:.03em}
 
-  /* tier cards */
+  /* hub + spokes */
+  .hub{display:flex;flex-direction:column;gap:14px}
+  .hub-card{background:linear-gradient(150deg,#222c4d,#2f4bd8);color:#fff;border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow)}
+  .hub-card .hl{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .hub-card .hl b{font-size:18px;font-weight:740}
+  .hub-card .hl .tagp{margin-left:auto;font-size:11px;font-weight:700;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);padding:3px 10px;border-radius:999px;letter-spacing:.04em}
+  .hub-card p{margin:0;color:#d7ddf5;font-size:14px}
+  .hub-card .rowlist{margin:12px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,1fr);gap:6px 18px}
+  .hub-card .rowlist li{font-size:13px;color:#eaeefb;position:relative;padding-left:16px}
+  .hub-card .rowlist li::before{content:"▸";position:absolute;left:0;color:#9fb0ff}
+
   .tiers{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
   .tier{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
   .tier .bar{height:5px}
@@ -84,30 +89,30 @@
   .tier .tlabel{display:flex;align-items:center;gap:9px;margin-bottom:4px}
   .tier .tlabel b{font-size:16px;font-weight:720}
   .tier .tlabel .reg{margin-left:auto;font-size:11px;font-weight:600;color:var(--faint);font-family:"SF Mono",monospace}
+  .tier .tlabel .new{font-size:10px;font-weight:700;color:#fff;background:var(--t-async);padding:1px 7px;border-radius:999px;letter-spacing:.04em}
   .tier .svc{color:var(--muted);font-size:13px;margin:0 0 12px}
   .tier table{width:100%;border-collapse:collapse;font-size:13px}
   .tier td{padding:5px 0;border-top:1px solid var(--line);vertical-align:top}
   .tier td:first-child{font-weight:600;white-space:nowrap;padding-right:12px;color:var(--ink)}
   .tier td:last-child{color:var(--muted)}
   .axis{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:5px;margin-right:5px}
-  .ax-t{background:#eef6ff;color:#2563eb}.ax-e{background:#fdeef0;color:#d6455a}.ax-l{background:#f3eefe;color:#7c3aed}.ax-u{background:#eef7f1;color:#0f9d6b}
+  .ax-t{background:#eef6ff;color:#2563eb}.ax-e{background:#fdeef0;color:#d6455a}.ax-l{background:#f3eefe;color:#7c3aed}.ax-u{background:#eef7f1;color:#0f9d6b}.ax-a{background:#fff4e6;color:#c2700f}
 
-  /* decisions list */
   .dec{display:grid;gap:0}
-  .dec .row{display:grid;grid-template-columns:210px 1fr;gap:20px;padding:16px 0;border-top:1px solid var(--line)}
+  .dec .row{display:grid;grid-template-columns:230px 1fr;gap:20px;padding:16px 0;border-top:1px solid var(--line)}
   .dec .row:first-child{border-top:0}
   .dec .k{font-weight:680;font-size:14.5px}
   .dec .k .tag{display:block;font-size:11.5px;color:var(--faint);font-weight:600;margin-top:2px;font-family:"SF Mono",monospace}
   .dec .v{color:var(--muted);font-size:14.5px}
   .dec .v code{background:#f4f6fa;border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--ink)}
 
-  /* fix table (before/after) */
   .fixes{display:grid;gap:14px}
   .fix{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
   .fix .ftop{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
   .fix .sev{font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 9px;border-radius:999px}
-  .sev-fix{background:#eef7f1;color:var(--ok);border:1px solid #c9e9d6}
+  .sev-fix{background:#fdeef0;color:var(--bad);border:1px solid #f3cdd4}
   .sev-opt{background:#eef1fe;color:var(--primary);border:1px solid #d3dafb}
+  .sev-keep{background:#eef7f1;color:var(--ok);border:1px solid #c9e9d6}
   .fix .ftitle{font-weight:680;font-size:15px}
   .fix .ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
   .ba .col{background:#fafbfd;border:1px solid var(--line);border-radius:9px;padding:11px 13px}
@@ -116,7 +121,6 @@
   .ba code{font-size:12px;color:var(--ink);word-break:break-word}
   .fix .why{font-size:13.5px;color:var(--muted);margin:11px 0 0}
 
-  /* evidence / validation */
   .ev{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:4px}
   .ev .e{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;box-shadow:var(--shadow);text-align:center}
   .ev .e .big{font-size:30px;font-weight:780;letter-spacing:-.02em;color:var(--primary)}
@@ -128,13 +132,14 @@
   ul.clean li b{color:var(--ink);font-weight:660}
 
   .callout{display:flex;gap:13px;background:#fffaf2;border:1px solid #f3e2c5;border-radius:12px;padding:15px 17px;margin-top:18px}
+  .callout.blue{background:#f1f5ff;border-color:#d3def8}
   .callout .ic{flex:0 0 auto;font-size:18px;line-height:1.4}
   .callout p{margin:0;font-size:14px;color:#7a5a22}
+  .callout.blue p{color:#37456b}
 
   footer{padding:30px 0 60px;color:var(--faint);font-size:13px;text-align:center}
   footer .wrap{border-top:1px solid var(--line);padding-top:24px}
 
-  /* repository tree */
   .filetree{background:#0e1320;border:1px solid #1e2740;border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow);overflow-x:auto}
   .ft-grid{display:grid;grid-template-columns:max-content 1fr;column-gap:28px;min-width:600px}
   .ft-grid .nm{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;line-height:2.05;color:#cdd6ee;white-space:pre;align-self:start}
@@ -143,13 +148,14 @@
   .ft-grid .nm .root{color:#e9edf8;font-weight:700}
   .ft-grid .ds{font-size:12.5px;line-height:2.05;color:#8793b0;white-space:normal;align-self:start}
   .ft-grid .ds .hl{color:#5fd0a0;font-weight:600}
+  .ft-grid .ds .nw{color:#b69bff;font-weight:600}
   .ft-grid .ds code{background:#1c2438;border:1px solid #2a3552;color:#c7d0e8;padding:0 5px;border-radius:5px;font-size:11.5px}
-  .layer-tags{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .layer-tags{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
   .layer-tag{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted)}
   .layer-tag .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
 
   @media(max-width:760px){
-    .g2,.g3,.tiers,.dec .row,.fix .ba,.ev{grid-template-columns:1fr}
+    .g2,.g3,.tiers,.dec .row,.fix .ba,.ev,.hub-card .rowlist{grid-template-columns:1fr}
     .dec .row{gap:4px}
     .arch-flow{flex-direction:column}
     .arrow{transform:rotate(90deg);align-self:center}
@@ -162,10 +168,10 @@
   <div class="wrap">
     <span class="eyebrow"><span class="dot"></span>Infrastructure · Observability</span>
     <h1>CloudWatch Observability Dashboards</h1>
-    <p class="lede">A Terraform-managed, read-only observability layer that gives operators a single system-wide view across the Frontend, Backend, Data, and External tiers — built to surface incidents and load trends early, and to feed steady monthly operational reporting.</p>
+    <p class="lede">A Terraform-managed, read-only observability layer redesigned around the on-call workflow: one always-open health pane that answers "is anything on fire?" in five seconds, backed by five focused tier drill-downs that answer "where?". Every widget is grounded in metrics verified to carry live data.</p>
     <div class="meta-row">
-      <span class="chip"><b>5</b> dashboards / env</span>
-      <span class="chip"><b>4</b> service tiers</span>
+      <span class="chip"><b>6</b> dashboards / env</span>
+      <span class="chip">hub-and-spoke · <b>1 health + 5 tiers</b></span>
       <span class="chip"><b>2</b> environments — dev-ex · stg-ex</span>
       <span class="chip">Terraform · <b>aws_cloudwatch_dashboard</b></span>
       <span class="chip">Read-only · zero lifecycle coupling</span>
@@ -177,26 +183,26 @@
 
   <!-- 1. Purpose -->
   <section>
-    <div class="sec-head"><span class="sec-num">01</span><h2>Why this exists</h2></div>
-    <p class="sec-sub">The system lacked a consolidated view, so the early signs of failure or performance degradation were hard to catch, and incident scoping took too long. There was also no standing set of metrics for routine operations and monthly reporting.</p>
+    <div class="sec-head"><span class="sec-num">01</span><h2>Why this exists, and what changed</h2></div>
+    <p class="sec-sub">The first cut was a flat set of tier boards: useful, but to judge overall health an operator had to open the overview, scan it, then <i>guess</i> which detail board held the diagnosis — and several decision-critical signals were on no board at all. The redesign fixes both: a verdict-first landing pane, plus coverage for the blind spots a live-infrastructure audit surfaced.</p>
     <div class="grid g3">
-      <div class="card"><h3>Early detection</h3><p>One overview surfaces traffic spikes, error-rate climbs, latency creep, and saturation before they page.</p></div>
-      <div class="card"><h3>Faster incident scoping</h3><p>Tier dashboards let an operator jump from "something's wrong" to "which layer" in seconds.</p></div>
-      <div class="card"><h3>Reproducible by code</h3><p>Everything is Terraform. Provider versions are locked, so any operator re-creates the identical dashboards.</p></div>
+      <div class="card"><h3>Detection in five seconds</h3><p>A row of single-value SLO tiles gives an at-a-glance verdict; the request path then reads top-to-bottom as Rate → Errors → Latency.</p></div>
+      <div class="card"><h3>Diagnosis without guessing</h3><p>Each tile points at a tier; the matching spoke board holds the trend and breakdown for that subsystem.</p></div>
+      <div class="card"><h3>Evidence, not assumption</h3><p>Every metric was checked against live <code>list-metrics</code> + <code>get-metric-statistics</code> on both accounts, so no widget ships permanently empty.</p></div>
     </div>
   </section>
 
   <!-- 2. Architecture -->
   <section>
     <div class="sec-head"><span class="sec-num">02</span><h2>Architecture &amp; boundaries</h2></div>
-    <p class="sec-sub">Observability lives in its own repository so it can evolve independently of the application infrastructure. It only <b>reads</b> metrics that the application stack already publishes — it never owns or mutates those resources.</p>
+    <p class="sec-sub">Observability lives in its own repository so it evolves independently of the application infrastructure. It only <b>reads</b> metrics the application stack already publishes — it never owns or mutates those resources.</p>
     <div class="arch">
       <div class="arch-flow">
         <div class="arch-col">
           <div class="node accent">
             <div class="nt">Observability repo (Terraform)</div>
-            <div class="nd">One component, five dashboards</div>
-            <ul><li>templatefile() per tier</li><li>per-widget region</li><li>env-diff via tfvars</li></ul>
+            <div class="nd">One component, six dashboards</div>
+            <ul><li>templatefile() per board</li><li>per-widget region</li><li>env-diff via tfvars</li></ul>
           </div>
         </div>
         <div class="arrow">→</div>
@@ -212,36 +218,52 @@
           <div class="node">
             <div class="nt">Application infrastructure</div>
             <div class="nd">Owned elsewhere</div>
-            <ul><li>WAF · CloudFront</li><li>ALB · EKS</li><li>Aurora · Redis · Redshift · S3</li><li>PrivateLink endpoints</li></ul>
+            <ul><li>WAF · CloudFront · ALB · EKS</li><li>Aurora · Redis · Redshift · S3</li><li>SQS · SNS · EventBridge · Lambda</li><li>PrivateLink · NAT · hosts · ACM</li></ul>
           </div>
         </div>
       </div>
       <div class="read-only-note">
         <span class="pill">READ-ONLY</span>
-        <span>Dashboards are create-only and stateless. The state backend (bucket + lock table) is <b>shared</b> with the application stack; isolation is achieved purely through a distinct state key path, so there is no new bucket and no risk of clobbering another component's state.</span>
+        <span>Dashboards are create-only and stateless (<code>PutDashboard</code> upsert). The state backend is <b>shared</b> with the application stack; isolation is purely a distinct state-key path — no new bucket, no risk of clobbering another component's state.</span>
       </div>
     </div>
     <div class="callout">
       <span class="ic">🌏</span>
-      <p><b>Cross-region, one dashboard.</b> CloudFront and CloudFront-scoped WAF metrics are published in <code>us-east-1</code>; everything else in <code>ap-northeast-1</code>. Rather than spin up a second provider or a second dashboard, each widget sets its own <code>region</code> — a single board mixes both regions transparently.</p>
+      <p><b>Cross-region, one dashboard.</b> CloudFront, CloudFront-scoped WAF, and the CloudFront ACM certificate publish in <code>us-east-1</code>; everything else in <code>ap-northeast-1</code>. Rather than a second provider or board, each widget sets its own <code>region</code> — a single pane mixes both regions transparently.</p>
     </div>
   </section>
 
   <!-- 3. The dashboards -->
   <section>
-    <div class="sec-head"><span class="sec-num">03</span><h2>The five dashboards</h2></div>
-    <p class="sec-sub">One condensed <b>Overview</b> board (1–2 signals per service) plus four deep tier boards. Every tier covers the four KPI axes:
-      <span class="axis ax-t">TRAFFIC</span><span class="axis ax-e">ERROR</span><span class="axis ax-l">LATENCY</span><span class="axis ax-u">UTILIZATION</span></p>
-    <div class="tiers">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Six dashboards — hub and spoke</h2></div>
+    <p class="sec-sub">One NOC-style <b>health</b> hub as the landing pane, plus five tier spokes. Widgets are ordered by golden signal — the most decision-relevant signal sits top-left:
+      <span class="axis ax-e">ERROR</span><span class="axis ax-u">AVAILABILITY</span><span class="axis ax-t">TRAFFIC</span><span class="axis ax-l">LATENCY</span><span class="axis ax-u">SATURATION</span></p>
+
+    <div class="hub">
+      <div class="hub-card">
+        <div class="hl"><b>health</b><span class="tagp">ALWAYS OPEN · NOC LANDING</span></div>
+        <p>A two-row grid of single-value SLO verdict tiles, then the request path walked end-to-end as Rate/Errors/Duration rows, then the application and security meta-signals.</p>
+        <ul class="rowlist">
+          <li>SLO tiles: customer 5xx %, API p99, app errors, queue divergence</li>
+          <li>SLO tiles: failed nodes, alert-pipeline errors, cert expiry, Redis evictions</li>
+          <li>Request path: CloudFront → WAF → ALB → EKS</li>
+          <li>App layer: per-service errors + OOM / lock / circuit-breaker</li>
+          <li>Data: Aurora replica lag · Redis evictions</li>
+          <li>Security: root use · no-MFA login · unauthorized-API trend</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="tiers" style="margin-top:16px">
 
       <div class="tier">
         <div class="bar" style="background:var(--t-fe)"></div>
         <div class="body">
-          <div class="tlabel"><b>Frontend</b><span class="reg">us-east-1</span></div>
-          <p class="svc">WAF (CloudFront scope) · CloudFront CDN</p>
+          <div class="tlabel"><b>frontend</b><span class="reg">us-east-1</span></div>
+          <p class="svc">CloudFront CDN · WAF (CloudFront scope)</p>
           <table>
-            <tr><td>WAF</td><td><span class="axis ax-t">T</span>allowed <span class="axis ax-e">E</span>blocked requests</td></tr>
-            <tr><td>CloudFront</td><td><span class="axis ax-t">T</span>requests, bytes <span class="axis ax-e">E</span>4xx / 5xx error rate</td></tr>
+            <tr><td>CloudFront</td><td><span class="axis ax-e">E</span>4xx/5xx rate <span class="axis ax-t">T</span>requests, bytes</td></tr>
+            <tr><td>WAF</td><td><span class="axis ax-e">E</span>blocked <span class="axis ax-t">T</span>allowed (+ admin-private WAF on stg)</td></tr>
           </table>
         </div>
       </div>
@@ -249,11 +271,12 @@
       <div class="tier">
         <div class="bar" style="background:var(--t-be)"></div>
         <div class="body">
-          <div class="tlabel"><b>Backend</b><span class="reg">ap-northeast-1</span></div>
-          <p class="svc">ALB · EKS (Container Insights)</p>
+          <div class="tlabel"><b>backend</b><span class="reg">ap-northeast-1</span></div>
+          <p class="svc">ALB · EKS · application faults</p>
           <table>
-            <tr><td>ALB</td><td><span class="axis ax-t">T</span>req / conns <span class="axis ax-e">E</span>4xx/5xx, host health <span class="axis ax-l">L</span>response p99</td></tr>
-            <tr><td>EKS</td><td><span class="axis ax-u">U</span>node / pod cpu·mem·fs <span class="axis ax-e">E</span>restarts, failed nodes</td></tr>
+            <tr><td>App</td><td><span class="axis ax-e">E</span>errors by service, OOM/lock/circuit-breaker (point-metrics)</td></tr>
+            <tr><td>ALB</td><td><span class="axis ax-e">E</span>4xx/5xx, host health <span class="axis ax-l">L</span>p99 <span class="axis ax-t">T</span>req + per-TG</td></tr>
+            <tr><td>EKS</td><td><span class="axis ax-u">U</span>node/pod cpu·mem·fs <span class="axis ax-e">E</span>restarts, failed nodes</td></tr>
           </table>
         </div>
       </div>
@@ -261,64 +284,86 @@
       <div class="tier">
         <div class="bar" style="background:var(--t-data)"></div>
         <div class="body">
-          <div class="tlabel"><b>Data</b><span class="reg">ap-northeast-1</span></div>
-          <p class="svc">Aurora MySQL · ElastiCache Redis · Redshift · S3</p>
+          <div class="tlabel"><b>data</b><span class="reg">ap-northeast-1</span></div>
+          <p class="svc">Aurora · Redis · Redshift · S3 · batch pipeline</p>
           <table>
-            <tr><td>Aurora</td><td><span class="axis ax-t">T</span>conns / queries <span class="axis ax-l">L</span>commit·select·r/w <span class="axis ax-u">U</span>cpu·mem·storage <span class="axis ax-e">E</span>deadlocks</td></tr>
-            <tr><td>Redis</td><td><span class="axis ax-t">T</span>conns / net <span class="axis ax-u">U</span>cpu·mem <span class="axis ax-e">E</span>evictions <span class="axis ax-l">L</span>repl lag</td></tr>
-            <tr><td>Redshift</td><td><span class="axis ax-u">U</span>cpu·disk <span class="axis ax-l">L</span>WLM queue <span class="axis ax-e">E</span>health</td></tr>
-            <tr><td>S3</td><td><span class="axis ax-u">U</span>bucket size · object count (daily, free)</td></tr>
+            <tr><td>Aurora</td><td><span class="axis ax-e">E</span>deadlocks <span class="axis ax-l">L</span>latency (ms / s split) <span class="axis ax-u">U</span>cpu·mem·storage·lag</td></tr>
+            <tr><td>Redis</td><td><span class="axis ax-u">U</span>cpu·mem <span class="axis ax-e">E</span>evictions <span class="axis ax-l">L</span>repl lag <span class="axis ax-t">T</span>conns/net</td></tr>
+            <tr><td>Redshift</td><td><span class="axis ax-u">U</span>cpu·disk (split) <span class="axis ax-l">L</span>WLM queue <span class="axis ax-u">A</span>health</td></tr>
+            <tr><td>Pipeline</td><td><span class="axis ax-e">E</span>Glue failed tasks · S3-to-Redshift Lambda · Firehose</td></tr>
+            <tr><td>S3</td><td><span class="axis ax-u">U</span>bucket size · object count (daily)</td></tr>
           </table>
         </div>
       </div>
 
       <div class="tier">
-        <div class="bar" style="background:var(--t-ext)"></div>
+        <div class="bar" style="background:var(--t-async)"></div>
         <div class="body">
-          <div class="tlabel"><b>External</b><span class="reg">ap-northeast-1</span></div>
-          <p class="svc">PrivateLink — interface VPC endpoints</p>
+          <div class="tlabel"><b>async</b><span class="new">NEW</span><span class="reg">ap-northeast-1</span></div>
+          <p class="svc">SQS · EventBridge · SNS · alert Lambda</p>
           <table>
-            <tr><td>PrivateLink</td><td><span class="axis ax-t">T</span>bytes, active/new conns <span class="axis ax-e">E</span>packets dropped, RST</td></tr>
+            <tr><td>SQS</td><td><span class="axis ax-e">E</span>sent-vs-consumed divergence <span class="axis ax-t">T</span>busiest queues</td></tr>
+            <tr><td>EventBridge</td><td><span class="axis ax-u">A</span>invocations heartbeat <span class="axis ax-e">E</span>failed invocations</td></tr>
+            <tr><td>SNS / Lambda</td><td><span class="axis ax-e">E</span>notifications failed, alert-Lambda errors <span class="axis ax-l">L</span>duration</td></tr>
           </table>
-          <p class="svc" style="margin:12px 0 0">A single <code class="mono">SEARCH()</code> expression auto-aggregates every interface endpoint — no per-endpoint maintenance.</p>
+          <p class="svc" style="margin:12px 0 0">The biggest blind spot in the first cut — a stuck worker was invisible. Now a fleet-wide divergence signal makes it obvious.</p>
+        </div>
+      </div>
+
+      <div class="tier" style="grid-column:1 / -1">
+        <div class="bar" style="background:var(--t-plat)"></div>
+        <div class="body">
+          <div class="tlabel"><b>platform</b><span class="reg">ap-northeast-1 + us-east-1</span></div>
+          <p class="svc">PrivateLink · NAT · standalone hosts · EBS · ACM (renamed &amp; expanded from the old <code>external</code> board)</p>
+          <table>
+            <tr><td>NAT</td><td><span class="axis ax-u">U</span>port-allocation errors (SNAT exhaustion) <span class="axis ax-t">T</span>throughput, drops</td></tr>
+            <tr><td>PrivateLink</td><td><span class="axis ax-t">T</span>bytes, active/new conns <span class="axis ax-e">E</span>dropped / RST</td></tr>
+            <tr><td>Hosts</td><td><span class="axis ax-u">A</span>status check <span class="axis ax-u">U</span>cpu · EBS queue + gp2 burst-balance</td></tr>
+            <tr><td>ACM</td><td><span class="axis ax-u">A</span>days-to-expiry (regional + CloudFront)</td></tr>
+          </table>
         </div>
       </div>
 
     </div>
-    <div class="callout">
-      <span class="ic">✂️</span>
-      <p><b>Scope discipline.</b> A "VGW / Site-to-Site VPN" tier was in the original ask but was <b>intentionally dropped</b> after verifying — against live infrastructure — that no VPN gateway exists in either environment. Building empty VPN widgets would have been noise, not coverage.</p>
+
+    <div class="callout blue">
+      <span class="ic">🪤</span>
+      <p><b>The trap the redesign avoids.</b> An obvious SQS health widget — "oldest message age / visible backlog" — would read green while every worker is dead: queues have a 60-second retention and no dead-letter queues, so a stalled worker's messages simply expire. The board instead tracks the <b>sent-vs-consumed divergence</b>, which actually moves when consumption stops.</p>
     </div>
   </section>
 
   <!-- 4. Engineering decisions -->
   <section>
     <div class="sec-head"><span class="sec-num">04</span><h2>Key engineering decisions</h2></div>
-    <p class="sec-sub">The interesting problems were all about <i>identity and dimensions</i> — pointing each widget at the exact coordinates where the metric actually lands.</p>
+    <p class="sec-sub">The hard part was <i>identity and dimensions</i> — pointing each widget at the exact coordinates where the metric actually lands, and refusing to chart anything that would render empty.</p>
     <div class="dec">
       <div class="row">
-        <div class="k">Dynamic ALB suffix<span class="tag">data source</span></div>
-        <div class="v">The ALB is created by the Kubernetes load-balancer controller, so its ARN suffix (<code>app/&lt;name&gt;/&lt;hex&gt;</code>) is generated at runtime. A <code>data</code> lookup resolves it at plan time and injects it into the templates — no hardcoding, no state coupling.</div>
+        <div class="k">Application-layer signal<span class="tag">point-metrics</span></div>
+        <div class="v">The app emits a custom metric namespace (per-service error counters, out-of-memory, circuit-breaker, worker lock-failures). These are the strongest health signal and are invisible to ALB/EKS — they now lead the backend and health boards. The namespace is dimensionless, so a <code>SEARCH()</code> sum aggregates errors without enumerating each metric.</div>
       </div>
       <div class="row">
-        <div class="k">WAF-on-CloudFront keying<span class="tag">verified live</span></div>
-        <div class="v">CloudFront-scoped WAF metrics do <b>not</b> resolve under the intuitive <code>WebACL + Rule</code> dimensions (they return zero datapoints). They are keyed by the protected distribution's ARN via <code>Resource + ResourceType=CF</code> — confirmed against both AWS docs and live metrics.</div>
+        <div class="k">Security from CloudTrail<span class="tag">log-metric filters</span></div>
+        <div class="v">Live CloudTrail metric-filter counters (root-account use, console login without MFA, failed login, unauthorized API call) are surfaced as a tile row on the health pane — textbook single-pane triage, with no separate security board to maintain.</div>
       </div>
       <div class="row">
-        <div class="k">Templates, not inline JSON<span class="tag">templatefile()</span></div>
-        <div class="v">Each board is a <code>.json.tftpl</code> file rendered with <code>templatefile()</code> + <code>jsonencode()</code> for the dynamic metric arrays — readable JSON, and metric lists that expand from lists of node / instance identifiers.</div>
+        <div class="k">Quiet ≠ broken<span class="tag">FILL(metric, 0)</span></div>
+        <div class="v">Event-gated signals (LB-level 5xx, alert-Lambda errors, SNS/EventBridge failures, NAT errors) are wrapped in <code>FILL(…,0)</code> so a healthy system reads a solid <code>0</code> instead of "no data" — a healthy system must never <i>look</i> broken.</div>
       </div>
       <div class="row">
-        <div class="k">Environment-conditional widgets<span class="tag">tfvars flag</span></div>
-        <div class="v">A regional admin-private WAF exists only in staging. Its widget is gated behind a boolean template directive, so the same templates render correctly in both environments — proven by rendering both branches.</div>
+        <div class="k">Fleets by SEARCH, hosts by list<span class="tag">SEARCH vs enumerate</span></div>
+        <div class="v">SQS, SNS, EventBridge, NAT, PrivateLink and per-target-group widgets use a <code>SEARCH()</code> expression so dev and stg both render from one definition. Standalone hosts and their EBS volumes are the deliberate exception — enumerated per env, because a <code>SEARCH</code> over instance/volume ids would sweep in the EKS node-group nodes Container Insights already covers.</div>
       </div>
       <div class="row">
-        <div class="k">One resource, five boards<span class="tag">for_each</span></div>
-        <div class="v">Five near-identical resource blocks were collapsed into a single <code>for_each</code> over a tier set — adding a board is now a one-line change.</div>
+        <div class="k">Display correctness<span class="tag">units &amp; axes</span></div>
+        <div class="v">Never mix milliseconds and seconds on one axis (Aurora commit/select are ms, read/write are s — split into two widgets); never cram count + % + 0/1 onto one axis (Redshift de-crammed into separate %, count, and health tiles); Y-axes pinned <code>min:0</code> (and <code>max:100</code> on percentages) so sub-1% blips don't auto-scale into mountains.</div>
+      </div>
+      <div class="row">
+        <div class="k">Enumerated batch jobs<span class="tag">future-proof</span></div>
+        <div class="v">Glue batch jobs are a tfvars list, not a prefix <code>SEARCH</code>: stale CloudWatch dimensions from retired batches still linger, so a prefix search would resurrect dead series. Adding a future batch is a one-line tfvars edit — no template change.</div>
       </div>
       <div class="row">
         <div class="k">Tiny env-diff surface<span class="tag">tfvars</span></div>
-        <div class="v">Because every backing resource shares the same name across environments, the per-environment difference reduces to four variables. Dynamic identifiers resolve through data sources, not config.</div>
+        <div class="v">Backing resources share names across environments, so the per-env difference reduces to a handful of values: distribution ids, the admin-private-WAF flag, the Firehose flag, and the host / volume id lists. Dynamic identifiers resolve through data sources, not config.</div>
       </div>
     </div>
   </section>
@@ -326,91 +371,83 @@
   <!-- 5. Repository layout -->
   <section>
     <div class="sec-head"><span class="sec-num">05</span><h2>Repository layout</h2></div>
-    <p class="sec-sub">Two layers: a thin <b>wrapper + state-backend skeleton</b> (a shared Terraform convention adopted as-is) and a single <b>component</b> that holds all five dashboards. Adding a board is one template plus one line.</p>
+    <p class="sec-sub">A thin <b>wrapper + state-backend skeleton</b> (a shared Terraform convention) and a single <b>component</b> holding all six dashboards. Adding a board is one template plus one line in a set.</p>
     <div class="layer-tags">
       <span class="layer-tag"><span class="sw" style="background:#7aa2ff"></span>directory</span>
-      <span class="layer-tag"><span class="sw" style="background:#5fd0a0"></span>review change applied here</span>
+      <span class="layer-tag"><span class="sw" style="background:#5fd0a0"></span>changed in redesign</span>
+      <span class="layer-tag"><span class="sw" style="background:#b69bff"></span>new in redesign</span>
     </div>
     <div class="filetree">
       <div class="ft-grid">
-        <div class="nm"><span class="root">bs-observability-infra/</span></div><div class="ds">Greenfield observability repository (its own repo, separate from app infra)</div>
-        <div class="nm"><span class="con">├─ </span>README.md</div><div class="ds">Repo purpose + how to run the wrapper</div>
-        <div class="nm"><span class="con">├─ </span>.gitignore</div><div class="ds">Ignores the <code>.terraform</code> plugin dir, state &amp; tmp — but now <span class="hl">keeps</span> the provider lock file</div>
-        <div class="nm"><span class="con">├─ </span><span class="dir">lib/</span></div><div class="ds">&nbsp;</div>
-        <div class="nm"><span class="con">│&nbsp;&nbsp;└─ </span>bash-functions.sh</div><div class="ds">Environment-detection + output helpers used by the wrapper</div>
+        <div class="nm"><span class="root">bs-observability-infra/</span></div><div class="ds">Greenfield observability repository (separate from app infra)</div>
         <div class="nm"><span class="con">└─ </span><span class="dir">terraform/</span></div><div class="ds">&nbsp;</div>
         <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;├─ </span>terraform.sh</div><div class="ds">Wrapper — injects the S3 backend (bucket/key) per <code>--env</code>, then runs Terraform</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;├─ </span><span class="dir">tf-backend/</span></div><div class="ds">&nbsp;</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;└─ </span>backend.tf</div><div class="ds">Shared state-backend stub (region · lock table · encryption)</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;└─ </span><span class="dir">components/cloudwatch_dashboard/</span></div><div class="ds"><b>The one component</b> — all five dashboards live here</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;├─ </span><span class="dir">tf-backend/</span></div><div class="ds">Shared state-backend stub (region · lock table · encryption)</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;└─ </span><span class="dir">components/cloudwatch_dashboard/</span></div><div class="ds"><b>The one component</b> — all six dashboards live here</div>
         <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>versions.tf</div><div class="ds">Provider pin (aws ~&gt; 5) + minimum Terraform version</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>variables.tf</div><div class="ds">Inputs: validated env, region, distribution ids, feature flags, resource identifiers</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>variables.tf</div><div class="ds"><span class="hl">+ host/volume id lists, Firehose flag, Glue batch list</span></div>
         <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>data.tf</div><div class="ds">Dynamic ALB-suffix lookup + account identity, resolved at plan time</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>main.tf</div><div class="ds">Provider + locals: name prefix, WAF ARNs, S3 bucket list, the shared template-variable map</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>dashboards.tf</div><div class="ds"><span class="hl"><code>for_each</code></span> over the tier set → five <code>aws_cloudwatch_dashboard</code> resources</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>main.tf</div><div class="ds"><span class="hl">+ app-services list, host/pipeline template vars</span></div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>dashboards.tf</div><div class="ds"><span class="hl"><code>for_each</code> over six board keys</span> → six dashboards</div>
         <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>outputs.tf</div><div class="ds">Dashboard names + ready-to-click console URLs</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>.terraform.lock.hcl</div><div class="ds"><span class="hl">Now tracked</span> — pins the provider build so every checkout is identical</div>
         <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span><span class="dir">templates/</span></div><div class="ds">One JSON template per board, rendered with <code>templatefile()</code></div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>overview.json.tftpl</div><div class="ds">Condensed cross-tier board (~16 widgets)</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>frontend.json.tftpl</div><div class="ds">WAF + CloudFront (us-east-1; conditional admin-private widget) <span class="hl">· latency widget removed</span></div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>backend.json.tftpl</div><div class="ds">ALB + EKS Container Insights <span class="hl">· pod-restart &amp; running-pod queries corrected</span></div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>data.json.tftpl</div><div class="ds">Aurora + Redis + Redshift + S3</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;└─ </span>external.json.tftpl</div><div class="ds">PrivateLink — one <code>SEARCH()</code> across every endpoint</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>health.json.tftpl</div><div class="ds"><span class="nw">NEW</span> — NOC landing: SLO tiles + request path + security</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>frontend.json.tftpl</div><div class="ds">CloudFront + WAF <span class="hl">· Y-axis bounds + error annotations</span></div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>backend.json.tftpl</div><div class="ds">ALB + EKS <span class="hl">· + app-error &amp; app-fault rows, per-TG split</span></div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>data.json.tftpl</div><div class="ds">Aurora/Redis/Redshift/S3 <span class="hl">· + pipeline, latency &amp; unit fixes</span></div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├─ </span>async.json.tftpl</div><div class="ds"><span class="nw">NEW</span> — SQS / EventBridge / SNS / alert Lambda</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;└─ </span>platform.json.tftpl</div><div class="ds"><span class="nw">renamed</span> from <code>external</code> · + NAT, hosts, EBS, ACM &amp; PrivateLink fix</div>
         <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ </span><span class="dir">tfvars/</span></div><div class="ds">The entire per-environment difference</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>dev-ex.tfvars</div><div class="ds">Development values</div>
-        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ </span>stg-ex.tfvars</div><div class="ds">Staging values (admin-private WAF widget enabled)</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ </span>dev-ex.tfvars</div><div class="ds">Dev values (Firehose on; bastion gp2 volume listed)</div>
+        <div class="nm"><span class="con">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ </span>stg-ex.tfvars</div><div class="ds">Staging values (admin-private WAF on; Firehose off; all gp3)</div>
       </div>
     </div>
     <div class="callout">
       <span class="ic">🧩</span>
-      <p><b>Why a single component.</b> All five boards share the same inputs and the same dynamic lookups, so they belong to one Terraform state. The overview and the four tier boards differ only by which template they render — which is exactly what the <code>for_each</code> expresses.</p>
+      <p><b>Why a single component.</b> All six boards share the same inputs and dynamic lookups, so they belong to one Terraform state. They differ only by which template they render — exactly what the <code>for_each</code> expresses. The old <code>overview</code> and <code>external</code> boards were renamed to <code>health</code> and <code>platform</code>; <code>for_each</code> keys by name, so the rename is a clean replace.</p>
     </div>
   </section>
 
   <!-- 6. Quality / fixes -->
   <section>
-    <div class="sec-head"><span class="sec-num">06</span><h2>Review &amp; hardening</h2></div>
-    <p class="sec-sub">A dashboard can deploy perfectly and still be useless: <code>aws_cloudwatch_dashboard</code> validates only that the JSON is well-formed — never that a metric at a given dimension set actually has data. So a focused review hunted for "silently empty" widgets, cross-checking every questionable metric against AWS documentation <b>and</b> live <code>cloudwatch list-metrics</code>.</p>
+    <div class="sec-head"><span class="sec-num">06</span><h2>Correctness review &amp; hardening</h2></div>
+    <p class="sec-sub"><code>aws_cloudwatch_dashboard</code> validates only that the JSON is well-formed — never that a metric at a given dimension set has data. So a focused audit verified every questionable metric against AWS docs <b>and</b> live <code>get-metric-statistics</code> over a 72-hour window on both accounts, separating a real structural bug from a merely-quiet (but correct) metric.</p>
     <div class="fixes">
 
       <div class="fix">
-        <div class="ftop"><span class="sev sev-fix">FIXED</span><span class="ftitle">EKS pod restarts — queried a dimension set AWS doesn't publish</span></div>
+        <div class="ftop"><span class="sev sev-fix">MUST-FIX</span><span class="ftitle">Aurora free-storage — charted a metric Aurora never publishes</span></div>
         <div class="ba">
-          <div class="col before"><div class="lab">Before — empty</div><code>pod_number_of_container_restarts @ {ClusterName, Namespace}</code></div>
-          <div class="col after"><div class="lab">After — renders</div><code>SEARCH('{…,ClusterName,Namespace,PodName} …', 'Sum', 60)</code></div>
+          <div class="col before"><div class="lab">Before — empty</div><code>FreeStorageSpace (a standard-RDS metric, absent on Aurora)</code></div>
+          <div class="col after"><div class="lab">After — renders</div><code>FreeLocalStorage (per-instance local headroom; live)</code></div>
         </div>
-        <p class="why">This metric is only emitted per-pod. A <code>SEARCH()</code> over the published dimension set discovers every pod at render time and sums it — and stays correct as the workload scales, with no Terraform change.</p>
+        <p class="why">Confirmed absent on every instance in both accounts; the control metric returned data, proving the absence was structural, not a quiet resource. The disk-queue series rides alongside it on a second axis.</p>
       </div>
 
       <div class="fix">
-        <div class="ftop"><span class="sev sev-fix">FIXED</span><span class="ftitle">EKS running pods — namespace-level aggregate not published</span></div>
+        <div class="ftop"><span class="sev sev-fix">MUST-FIX</span><span class="ftitle">PrivateLink — search matched zero of the published dimensions</span></div>
         <div class="ba">
-          <div class="col before"><div class="lab">Before — empty</div><code>service_number_of_running_pods @ {ClusterName, Namespace}</code></div>
-          <div class="col after"><div class="lab">After — renders</div><code>service_number_of_running_pods @ {ClusterName}</code></div>
+          <div class="col before"><div class="lab">Before — empty</div><code>SEARCH('{…,"VPC Endpoint Id"} …')  → 0 series</code></div>
+          <div class="col after"><div class="lab">After — renders</div><code>SEARCH('{…,Endpoint Type,Service Name,VPC Endpoint Id,VPC Id} …')  → all endpoints</code></div>
         </div>
-        <p class="why">AWS publishes this only at the cluster level or per service — never at the namespace level. Switched to the cluster-wide total, which is live-confirmed to exist.</p>
+        <p class="why">A CloudWatch <code>SEARCH</code> brace is an <b>exact</b> dimension-set match, not a contains-match. The metrics publish at the full four-dimension set; the one-dimension search matched nothing. One fix, applied across five expressions, turned three empty widgets into live data.</p>
       </div>
 
-      <div class="fix">
-        <div class="ftop"><span class="sev sev-fix">FIXED</span><span class="ftitle">CloudFront origin latency — opt-in metric that was never enabled</span></div>
-        <div class="ba">
-          <div class="col before"><div class="lab">Before — empty</div><code>OriginLatency widget (additional metric, OFF on every distribution)</code></div>
-          <div class="col after"><div class="lab">After — clean</div><code>widget removed; error-rate widget widened to fill the row</code></div>
-        </div>
-        <p class="why">Origin latency is an <i>additional</i> CloudFront metric that must be turned on per distribution — verified OFF in the live environment. Enabling it would mean managing a resource owned by the application stack, which violates this repo's read-only boundary, so the widget was removed and flagged to the distribution owner instead.</p>
+      <div class="fix" style="border-left-color:var(--ok)">
+        <div class="ftop"><span class="sev sev-keep">KEEP — NOT A BUG</span><span class="ftitle">Widgets that look empty but are correct</span></div>
+        <p class="why" style="margin-top:2px">The audit also <i>cleared</i> several widgets that read flat or empty: LB-level 5xx (event-gated, appears on the first 5xx), the admin-private WAF on staging (the rule exists but is not yet attached), replication-lag on the Redis primary (emits a true 0.0), and all eight S3 buckets (all present, with data). These are intentional — flagged so a future "cleanup" pass does not delete them.</p>
       </div>
 
       <div class="fix" style="border-left-color:var(--primary)">
-        <div class="ftop"><span class="sev sev-opt">OPTIMIZED</span><span class="ftitle">Reproducibility &amp; cleanup</span></div>
-        <p class="why" style="margin-top:2px">Collapsed five resource blocks into one <code>for_each</code>; began tracking the provider lock file so every checkout resolves an identical provider build; and removed a dead branch in the environment-detection helper.</p>
+        <div class="ftop"><span class="sev sev-opt">OPTIMIZED</span><span class="ftitle">Display correctness &amp; reproducibility</span></div>
+        <p class="why" style="margin-top:2px">Split the Aurora latency widget by unit (ms vs s) and de-crammed the multi-unit Redshift widget; pinned Y-axis bounds across rate/utilization widgets; added static threshold annotations (graph decoration — not CloudWatch alarms); and kept the provider lock file tracked so every checkout resolves an identical build.</p>
       </div>
 
     </div>
 
     <div style="margin-top:26px">
       <div class="ev">
-        <div class="e"><div class="big">2</div><div class="cap">independent sources per finding — AWS docs <b>and</b> live metrics</div></div>
-        <div class="e"><div class="big">6 / 6</div><div class="cap">templates re-render to valid JSON (both env branches)</div></div>
+        <div class="e"><div class="big">72h</div><div class="cap">live verification window per metric, both accounts</div></div>
+        <div class="e"><div class="big">6 / 6</div><div class="cap">templates re-render to valid JSON — both env branches (12/12)</div></div>
         <div class="e"><div class="big">0</div><div class="cap">destroy / replace — create-only, low blast radius</div></div>
       </div>
     </div>
@@ -420,9 +457,10 @@
   <section>
     <div class="sec-head"><span class="sec-num">07</span><h2>Delivery model</h2></div>
     <ul class="clean">
-      <li><b>Apply-safe today.</b> Pure create — no stateful resource is touched — so the rollout carries essentially zero blast radius.</li>
-      <li><b>Two environments, one codebase.</b> The same templates serve dev-ex and staging; only four tfvars values differ.</li>
-      <li><b>Validate, then visual-confirm.</b> Formatting and JSON rendering are checked in code; after apply, every widget is eyeballed on the console so "no data" can't slip through.</li>
+      <li><b>Fix-then-apply.</b> The structural-empty corrections are pure string edits with zero plan-shape change, so they land before the first apply rather than as a follow-up patch.</li>
+      <li><b>Apply-safe.</b> Pure create — no stateful resource is touched — so the rollout carries essentially zero blast radius.</li>
+      <li><b>Two environments, one codebase.</b> The same templates serve dev-ex and staging; only a handful of tfvars values differ, and both gating branches are render-verified.</li>
+      <li><b>Validate, then visual-confirm.</b> Formatting, HCL validation, and JSON rendering are checked in code; after apply, every widget is eyeballed on the console so "no data" can't slip through.</li>
       <li><b>Production-ready path.</b> A production environment isn't live yet, but the design extends to it by adding one tfvars file — nothing structural changes.</li>
     </ul>
   </section>
@@ -430,7 +468,7 @@
 </main>
 
 <footer>
-  <div class="wrap">CloudWatch Observability Dashboards · Terraform · system-wide overview monitoring</div>
+  <div class="wrap">CloudWatch Observability Dashboards · Terraform · hub-and-spoke on-call monitoring</div>
 </footer>
 
 </body>
