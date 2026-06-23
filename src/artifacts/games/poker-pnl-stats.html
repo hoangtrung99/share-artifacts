@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker PnL Statistics</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0; padding: 20px;
+  }
+  h1 { font-size: 28px; margin-bottom: 8px; color: #f8fafc; }
+  .subtitle { color: #94a3b8; margin-bottom: 24px; font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; max-width: 800px; }
+  th, td { padding: 12px 16px; text-align: right; border-bottom: 1px solid #1e293b; }
+  th { background: #1e293b; color: #cbd5e1; font-weight: 600; font-size: 14px; }
+  th:first-child, td:first-child { text-align: left; }
+  .player { font-weight: 600; color: #f1f5f9; }
+  .pos { color: #4ade80; }
+  .neg { color: #f87171; }
+  .zero { color: #475569; }
+  .total { font-weight: 700; font-size: 16px; }
+  tr:hover { background: #1e293b40; }
+  tr.sum-row { background: #1e293b80; font-weight: 700; }
+  tr.sum-row td { border-top: 2px solid #334155; }
+  .footer { margin-top: 24px; color: #64748b; font-size: 12px; line-height: 1.8; }
+  a { color: #38bdf8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .balanced { color: #4ade80; font-size: 13px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<h1>🎰 Poker PnL Statistics</h1>
+<p class="subtitle">PokerNow.club — settled PnL results across 2 games</p>
+<p class="balanced">✅ All games balanced (net = 0)</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Player</th>
+      <th>Jun 19<br><span style="font-weight:400;font-size:12px;color:#64748b">Game 1</span></th>
+      <th>Jun 22<br><span style="font-weight:400;font-size:12px;color:#64748b">Game 3</span></th>
+      <th>Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="player">hoangtrungdev</td>
+      <td class="pos">+33,009</td>
+      <td class="neg">-8,045</td>
+      <td class="total pos">+24,964</td>
+    </tr>
+    <tr>
+      <td class="player">hgun123</td>
+      <td class="zero">—</td>
+      <td class="pos">+27,307</td>
+      <td class="total pos">+27,307</td>
+    </tr>
+    <tr>
+      <td class="player">nam</td>
+      <td class="neg">-5,545</td>
+      <td class="pos">+5,130</td>
+      <td class="total neg">-415</td>
+    </tr>
+    <tr>
+      <td class="player">Huy</td>
+      <td class="zero">—</td>
+      <td class="pos">+4,609</td>
+      <td class="total pos">+4,609</td>
+    </tr>
+    <tr>
+      <td class="player">Hiep</td>
+      <td class="zero">—</td>
+      <td class="pos">+3,486</td>
+      <td class="total pos">+3,486</td>
+    </tr>
+    <tr>
+      <td class="player">ChipChip</td>
+      <td class="zero">—</td>
+      <td class="pos">+764</td>
+      <td class="total pos">+764</td>
+    </tr>
+    <tr>
+      <td class="player">DQT</td>
+      <td class="neg">-422</td>
+      <td class="zero">—</td>
+      <td class="total neg">-422</td>
+    </tr>
+    <tr>
+      <td class="player">huyy</td>
+      <td class="neg">-1,033</td>
+      <td class="neg">-2,249</td>
+      <td class="total neg">-3,282</td>
+    </tr>
+    <tr>
+      <td class="player">Nhật Huy</td>
+      <td class="neg">-1,570</td>
+      <td class="zero">—</td>
+      <td class="total neg">-1,570</td>
+    </tr>
+    <tr>
+      <td class="player">hungallin</td>
+      <td class="neg">-1,894</td>
+      <td class="zero">—</td>
+      <td class="total neg">-1,894</td>
+    </tr>
+    <tr>
+      <td class="player">Tùng</td>
+      <td class="neg">-2,135</td>
+      <td class="zero">—</td>
+      <td class="total neg">-2,135</td>
+    </tr>
+    <tr>
+      <td class="player">Hiuuuu</td>
+      <td class="zero">—</td>
+      <td class="neg">-2,000</td>
+      <td class="total neg">-2,000</td>
+    </tr>
+    <tr>
+      <td class="player">huy</td>
+      <td class="zero">—</td>
+      <td class="neg">-15,002</td>
+      <td class="total neg">-15,002</td>
+    </tr>
+    <tr>
+      <td class="player">ToanBT</td>
+      <td class="neg">-8,000</td>
+      <td class="zero">—</td>
+      <td class="total neg">-8,000</td>
+    </tr>
+    <tr>
+      <td class="player">Hieu</td>
+      <td class="neg">-12,410</td>
+      <td class="zero">—</td>
+      <td class="total neg">-12,410</td>
+    </tr>
+    <tr>
+      <td class="player">TBT</td>
+      <td class="zero">—</td>
+      <td class="neg">-14,000</td>
+      <td class="total neg">-14,000</td>
+    </tr>
+    <tr class="sum-row">
+      <td class="player">TOTAL</td>
+      <td class="zero">0</td>
+      <td class="zero">0</td>
+      <td class="total zero">0</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="footer">
+  <p>Game 1 (Jun 19): <a href="https://www.pokernow.com/games/pglKnm5PW4POgjiuzCpYesyP3" target="_blank">pglKnm5PW4POgjiuzCpYesyP3</a></p>
+  <p>Game 3 (Jun 22): <a href="https://www.pokernow.com/games/pgltM2Pvz8_55Cch5QJVxtaTX" target="_blank">pgltM2Pvz8_55Cch5QJVxtaTX</a></p>
+  <p>Rate: 1 chip = 1 VND | Generated: June 23, 2026</p>
+</div>
+</body>
+</html>
