@@ -110,6 +110,33 @@ fail-closed (qua `protected-folders.js` sinh khi build).
 
 Khi truy cập project được bảo vệ, trình duyệt mở **trang login** — nhập mật khẩu vào form, không có popup.
 
+## Ghost projects (ẩn khỏi trang chủ)
+
+Bạn có thể đánh dấu một project là **ghost** để nó:
+
+- **Không hiển thị** trên trang chủ `/`.
+- Không xuất hiện trong **Pagefind search index**.
+- Chỉ hiện qua trang `/ghost` sau khi nhập **master password**.
+- Vẫn có thể **có hoặc không có** mật khẩu riêng (`PW_<PROJECT>`). Nếu có, ngườii dùng cần qua cả hai lớp: master password (/ghost) + project password (/login).
+
+Luồng:
+1. Truy cập `https://artifacts.hoangtrung.dev/ghost` hoặc `https://artifacts.hoangtrung.dev/?ghost=true`.
+2. Nhập master password → nhận signed cookie `cf_ghost` (HMAC-SHA256 trên `COOKIE_SECRET`, HttpOnly/Secure/SameSite=Lax, 7 ngày).
+3. Thấy danh sách ghost projects, click vào project để xem files.
+
+**Master password** được lưu dưới dạng secret `GHOST_MASTER_PW` trên Cloudflare — **KHÔNG** nằm trong git.
+
+```bash
+./ghost.sh my-project                  # đánh dấu project là ghost; tự tạo/đảm bảo GHOST_MASTER_PW + COOKIE_SECRET
+./ghost.sh my-project 'jj66668888'     # truyền thẳng master password (chỉ dùng khi bạn muốn set mới)
+./ghost.sh --list                      # xem project nào đang là ghost
+./ghost.sh --unghost my-project        # gỡ ghost
+./ghost.sh --set-master 'jj66668888'   # đặt/đổi master password cho /ghost
+./deploy.sh                            # build + deploy lại để cập nhật ghost-folders.js
+```
+
+Master password mặc định được yêu cầu là **jj66668888** — bạn có thể đổi bằng `./ghost.sh --set-master`.
+
 ## Share link (chia sẻ truy cập không cần mật khẩu)
 
 Khi đã đăng nhập vào một project được bảo vệ, bạn có thể tạo **share link** để người khác truy cập

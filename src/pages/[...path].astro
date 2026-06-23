@@ -13,12 +13,13 @@ import Base from '../layouts/Base.astro';
 import Fab from '../components/Fab.astro';
 import ShareModal from '../components/ShareModal.astro';
 import FileTree from '../components/FileTree.astro';
-import { loadArtifacts, protectedProjects } from '../lib/artifacts.mjs';
+import { loadArtifacts, protectedProjects, ghostProjects } from '../lib/artifacts.mjs';
 
 export async function getStaticPaths() {
   const mdModules = import.meta.glob('../artifacts/**/*.md', { eager: true });
   const artifacts = await loadArtifacts(mdModules);
   const locked = protectedProjects();
+  const ghosts = ghostProjects();
 
   // Per-project listing entries (lean items only — no compiled html / search text).
   const byProject = new Map();
@@ -37,7 +38,7 @@ export async function getStaticPaths() {
   }
   const projectPaths = [...byProject.entries()].map(([project, items]) => ({
     params: { path: project },
-    props: { kind: 'project', project, locked: locked.has(project), items },
+    props: { kind: 'project', project, locked: locked.has(project), ghost: ghosts.has(project), items },
   }));
 
   const artifactPaths = artifacts.map((a) => ({
@@ -55,13 +56,14 @@ const isArtifact = kind === 'artifact';
 const isHtml = isArtifact && props.type === 'html';
 const isMd = isArtifact && props.type === 'md';
 const isProtected = isArtifact ? props.protected : props.locked;
+const isGhost = isArtifact ? props.ghost : props.ghost;
 const ogUrl = isArtifact ? new URL(Astro.url.pathname, Astro.site).href : '';
 const toc = isMd ? (props.headings ?? []).filter((h) => h.depth === 2 || h.depth === 3) : [];
 // Wrap wide tables so they scroll inside their own box (never overflow the page / under the TOC).
 const mdHtml = isMd
   ? props.html.replace(/<table>/g, '<div class="x-scroll"><table>').replace(/<\/table>/g, '</table></div>')
   : '';
-const pagefindBody = isArtifact && !isProtected ? true : undefined;
+const pagefindBody = isArtifact && !isProtected && !isGhost ? true : undefined;
 
 const pageTitle = kind === 'project' ? props.project : props.title;
 const pageDesc = kind === 'project' ? `Files in ${props.project}` : props.description;
@@ -107,12 +109,14 @@ const rootDate = tree ? tree.files.reduce((m, f) => ((f.sortDate || '') > m ? f.
 
 {kind === 'project' && (
   <Base title={pageTitle} description={pageDesc}>
+    {isGhost && <meta slot="head" name="robots" content="noindex" />}
     <header class="proj-head">
       <nav class="crumbs" aria-label="Breadcrumb">
         <a href="/">🏠 Artifacts</a>
         <span class="crumb-sep" aria-hidden="true">/</span>
         <span class="proj-name">{props.project}</span>
         {props.locked && <span class="lock"><span aria-hidden="true">🔒</span> Protected</span>}
+        {isGhost && <span class="lock"><span aria-hidden="true">👻</span> Ghost</span>}
         {props.locked && (
           <button class="share-link" type="button" data-share data-share-project={props.project} data-share-path={`/${encodeURIComponent(props.project)}/`} data-tip="Create share link for this project">📤 Share</button>
         )}
@@ -183,6 +187,7 @@ const rootDate = tree ? tree.files.reduce((m, f) => ((f.sortDate || '') > m ? f.
 
 {isHtml && (
   <Base title={pageTitle} description={pageDesc} fullBleed>
+    {isGhost && <meta slot="head" name="robots" content="noindex" />}
     <div class="viewer-bleed">
       <iframe class="bleed-frame" src={props.rawUrl} title={props.title}></iframe>
     </div>
@@ -202,6 +207,7 @@ const rootDate = tree ? tree.files.reduce((m, f) => ((f.sortDate || '') > m ? f.
 
 {isMd && (
   <Base title={pageTitle} description={pageDesc} fullBleed>
+    {isGhost && <meta slot="head" name="robots" content="noindex" />}
     <div class="md-shell">
     <article class="md-view" data-pagefind-body={pagefindBody} data-pagefind-meta={pagefindBody ? `title:${props.title}` : undefined}>
       <header class="viewer-head">

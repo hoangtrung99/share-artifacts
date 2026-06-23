@@ -1,0 +1,57 @@
+---
+// Ghost gallery — hidden projects, only reachable after master password unlock at /ghost.
+// This page is PRE-RENDERED at build time (same as the home gallery) but never served without
+// a valid cf_ghost cookie: functions/ghost.js calls next() to fall through here ONLY when
+// authenticated, otherwise it returns the login form. The middleware also gates direct
+// /<ghost-project>/ URLs (redirects to /ghost if no cf_ghost cookie).
+//
+// Privacy: ghost project names/file counts appear here, but this page is behind the ghost auth
+// gate. No data-pagefind-body → ghost content never enters the public search index.
+import Base from '../layouts/Base.astro';
+import { loadArtifacts, protectedProjects, ghostProjects } from '../lib/artifacts.mjs';
+
+const mdModules = import.meta.glob('../artifacts/**/*.md', { eager: true });
+const artifacts = await loadArtifacts(mdModules);
+const locked = protectedProjects();
+const ghosts = ghostProjects();
+
+const counts = new Map();
+for (const a of artifacts) {
+  if (!ghosts.has(a.project)) continue;
+  counts.set(a.project, (counts.get(a.project) ?? 0) + 1);
+}
+
+const projects = [...counts.entries()]
+  .map(([project, count]) => ({ project, count, locked: locked.has(project) }))
+  .sort((a, b) => a.project.localeCompare(b.project));
+---
+
+<Base title="👻 Ghost — Artifacts" description="Hidden projects.">
+  <meta slot="head" name="robots" content="noindex" />
+  <header class="gallery-head">
+    <h1>👻 Ghost projects</h1>
+    <p class="lede">Hidden from the public gallery.</p>
+    <p class="count">{projects.length} project{projects.length === 1 ? '' : 's'}</p>
+  </header>
+
+  <ul class="cards">
+    {projects.map((p) => (
+      <li class="card">
+        <a class="card-link" href={`/${encodeURIComponent(p.project)}`} aria-label={`Open project ${p.project}`}>
+          <div class="card-top">
+            <span class="proj-icon" aria-hidden="true">{p.locked ? '🔒' : '📁'}</span>
+            {!p.locked && <span class="card-date">{p.count} file{p.count === 1 ? '' : 's'}</span>}
+          </div>
+          <h3 class="card-title proj-name">{p.project}</h3>
+          <p class="card-desc">{p.locked ? 'Protected — password required to view files.' : 'Open — click to view files.'}</p>
+        </a>
+      </li>
+    ))}
+  </ul>
+
+  {projects.length === 0 && (
+    <p class="no-results">No ghost projects configured. Add project names to <code>ghost.list</code> and redeploy.</p>
+  )}
+
+  <p class="count" style="margin-top: 2.5rem"><a href="/ghost?logout=1">Sign out of ghost mode</a></p>
+</Base>

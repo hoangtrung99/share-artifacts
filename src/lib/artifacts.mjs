@@ -14,6 +14,7 @@ import path from 'node:path';
 
 const ARTIFACTS_ROOT = path.resolve(process.cwd(), 'src', 'artifacts');
 const PROTECTED_LIST = path.resolve(process.cwd(), 'protected.list');
+const GHOST_LIST = path.resolve(process.cwd(), 'ghost.list');
 
 /** Recursively collect every *.html under src/artifacts (no Vite import → no emitted asset). */
 function collectHtml(dir) {
@@ -127,6 +128,17 @@ export function protectedProjects() {
   return new Set(names);
 }
 
+/** Set of ghost (hidden) project names, read directly from ghost.list. */
+export function ghostProjects() {
+  if (!fs.existsSync(GHOST_LIST)) return new Set();
+  const names = fs
+    .readFileSync(GHOST_LIST, 'utf8')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return new Set(names);
+}
+
 /**
  * Enumerate every artifact with full metadata.
  *
@@ -137,6 +149,7 @@ export function protectedProjects() {
 export async function loadArtifacts(mdModules) {
   const records = [];
   const locked = protectedProjects();
+  const ghosts = ghostProjects();
   // --- Markdown artifacts (frontmatter + compiled HTML + headings from Astro's compiler) ---
   for (const [key, mod] of Object.entries(mdModules)) {
     const meta = fromGlobKey(key);
@@ -147,6 +160,7 @@ export async function loadArtifacts(mdModules) {
       type: 'md',
       project: meta.project,
       protected: locked.has(meta.project),
+      ghost: ghosts.has(meta.project),
       routePath: meta.routePath,
       rawUrl: meta.rawUrl,
       downloadName: meta.downloadName,
@@ -176,10 +190,13 @@ export async function loadArtifacts(mdModules) {
     const dateContent = dateMatch ? dateMatch[0].match(/content=["']([\s\S]*?)["']/i) : null;
     const metaDate = dateContent ? isoDate(dateContent[1].trim()) : undefined;
     const isLocked = locked.has(meta.project);
+    const isGhost = ghosts.has(meta.project);
+    const hidden = isLocked || isGhost; // both protected AND ghost leak content if indexed
     records.push({
       type: 'html',
       project: meta.project,
       protected: isLocked,
+      ghost: isGhost,
       routePath: meta.routePath,
       rawUrl: meta.rawUrl,
       downloadName: meta.downloadName,
@@ -190,9 +207,9 @@ export async function loadArtifacts(mdModules) {
       sortDate: metaDate || extractDateFromContent(raw) || extractDateFromPath(meta.routePath),
       html: null,
       // The iframed body text is invisible to Pagefind. For PUBLIC artifacts we extract it so
-      // the viewer can embed it in the indexed region. For PROTECTED artifacts we leave it empty
-      // so protected body text never reaches the public index — fail-closed.
-      searchText: isLocked ? '' : htmlToSearchText(raw),
+      // the viewer can embed it in the indexed region. For PROTECTED or GHOST artifacts we leave
+      // it empty so their body text never reaches the public index — fail-closed.
+      searchText: hidden ? '' : htmlToSearchText(raw),
       headings: [],
     });
   }

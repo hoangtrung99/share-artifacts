@@ -1,6 +1,6 @@
 ---
 name: deploy-artifacts
-description: Use when the user wants to publish/deploy an HTML or Markdown artifact to artifacts.hoangtrung.dev and get a shareable link. Classifies the artifact into the right project folder (asks if unclear), deploys via the share-artifacts repo, optionally password-protects it, and returns the URL. Triggers - "deploy this artifact", "publish this to my site", "share this report/page", "deploy-artifacts", "đẩy artifact này lên web".
+description: Use when the user wants to publish/deploy an HTML or Markdown artifact to artifacts.hoangtrung.dev and get a shareable link. Classifies the artifact into the right project folder (asks if unclear), deploys via the share-artifacts repo, optionally password-protects it, optionally marks it as a hidden (ghost) project, and returns the URL. Triggers - "deploy this artifact", "publish to my site", "share this report/page", "deploy-artifacts", "đẩy artifact này lên web".
 ---
 
 # Deploy Artifacts to artifacts.hoangtrung.dev
@@ -18,7 +18,8 @@ user a shareable link — auto-classifying the project, or asking when unclear.
 - **Git sync (automatic):** `deliver.sh` runs `git pull --rebase` before copying the artifact (skipped with
   a warning if the working tree is dirty) and `git commit + push` after a successful deploy, so
   `src/artifacts/` stays consistent across machines. Only the artifact + `protected.list` +
-  `functions/protected-folders.js` are staged — unrelated changes are left alone.
+  `ghost.list` + `functions/protected-folders.js` + `functions/ghost-folders.js` are staged — unrelated
+  changes are left alone.
 
 ## Steps
 
@@ -38,26 +39,35 @@ user a shareable link — auto-classifying the project, or asking when unclear.
      `eks-incident`).
 4. **If the classification is ambiguous or you are not confident, ASK** (AskUserQuestion): present the
    best-matching existing project(s) + your suggested new slug, and let the user pick. Never silently guess.
-
 ### 3. Decide password protection
 - If the artifact has internal / work / sensitive content, recommend protecting the project.
 - To protect: pass `--protect`. If that project has no password yet, **ask the user for the password** —
-  NEVER invent one, NEVER print it to output/logs.
+  NEVER invent one, NEVER print it to the output/logs.
 - Skip if the project is already protected (the existing password persists) or the content is clearly public.
 
-### 4. Deploy
+### 4. Decide ghost mode (hide from home gallery)
+- If the project should be **hidden from the public home page** and only reachable via `/ghost` after the
+  master password, pass `--ghost`.
+- A project can be **both** `--ghost` and `--protect` — it needs the master password to appear in the
+  ghost gallery, then the project password to open its files.
+- Do NOT invent the master password; `--ghost` will ensure `GHOST_MASTER_PW` exists on Cloudflare. If the
+  user wants to set/change it, run `./ghost.sh --set-master` separately.
+
+### 5. Deploy
 ```bash
 cd ~/Local/Work/solashi/share-artifacts
-./deliver.sh <artifact.(html|md)> <project> [--name <newname>.(html|md)] [--protect 'password']
+./deliver.sh <artifact.(html|md)> <project> [--name <newname>.(html|md)] [--protect 'password'] [--ghost]
 ```
 - Prerequisite: `wrangler` authenticated (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` env var). If the
   deploy fails on auth, tell the user how to authenticate and stop.
 
-### 5. Return the shareable link
+### 6. Return the shareable link
 - Report the URL(s) `deliver.sh` printed: the viewer `https://artifacts.hoangtrung.dev/<project>/<file>`
   and the raw `https://artifacts.hoangtrung.dev/<project>/<file>.(html|md)`.
 - If the project is protected, tell the user: visiting it opens a **styled login page** (project name + a
   password field) — enter the password there. There is no browser popup; a signed cookie keeps them in for 12h.
+- If the project is ghost, tell the user: it is hidden from the home gallery and reachable via
+  `https://artifacts.hoangtrung.dev/ghost` after the master password.
 
 ## Notes
 - One artifact per run. To put many files into one project, copy them into `src/artifacts/<project>/` then run

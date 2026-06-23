@@ -7,14 +7,18 @@
 // projects. File count is shown only for PUBLIC projects (a count would hint at protected size).
 // Pagefind search stays (public-only index — protected viewers carry no data-pagefind-body).
 import Base from '../layouts/Base.astro';
-import { loadArtifacts, protectedProjects } from '../lib/artifacts.mjs';
+import { loadArtifacts, protectedProjects, ghostProjects } from '../lib/artifacts.mjs';
 
 const mdModules = import.meta.glob('../artifacts/**/*.md', { eager: true });
 const artifacts = await loadArtifacts(mdModules);
 const locked = protectedProjects();
+const ghosts = ghostProjects();
 
 const counts = new Map();
-for (const a of artifacts) counts.set(a.project, (counts.get(a.project) ?? 0) + 1);
+for (const a of artifacts) {
+  if (ghosts.has(a.project)) continue; // ghost projects are hidden from home
+  counts.set(a.project, (counts.get(a.project) ?? 0) + 1);
+}
 
 // Public projects first, then locked; alpha within each.
 const projects = [...counts.entries()]

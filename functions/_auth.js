@@ -14,6 +14,13 @@
 
 export const COOKIE_PREFIX = 'cf_auth_';
 export const TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60; // 180 days
+// Ghost mode: a single master password (env GHOST_MASTER_PW) unlocks all ghost (hidden)
+// projects. The cookie cf_ghost is signed with the same COOKIE_SECRET, using GHOST_PROJECT
+// as the payload's project binding so verifyToken's project-match check is reused —
+// a forged token signed for a real project won't pass the __ghost__ binding check.
+export const GHOST_COOKIE_NAME = 'cf_ghost';
+export const GHOST_PROJECT = '__ghost__';
+export const GHOST_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days — shorter than per-project (180d)
 
 // Share-link TTL options (seconds). The chosen TTL controls BOTH how long the share link
 // stays valid AND how long the recipient's session cookie lasts after redemption — so "24h"

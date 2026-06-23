@@ -2,18 +2,23 @@
 # Deliver MỘT artifact (HTML hoặc Markdown) lên artifacts.hoangtrung.dev chỉ bằng 1 lệnh.
 # Dùng được từ BẤT KỲ thư mục nào (gọi bằng đường dẫn tuyệt đối tới script này).
 #
-#   deliver.sh <file.html|file.md> [project] [--name <newname>.(html|md)] [--protect [password]] [--open]
+#   deliver.sh <file.html|file.md> [project] [--name <newname>.(html|md)] [--protect [password]] [--ghost] [--open]
 #
 #   <file>             file nguồn (bắt buộc): HTML self-contained, hoặc Markdown (.md)
 #   [project]          tên project/thư mục đích (mặc định: "shared")
 #   --name <x>         đổi tên file khi publish (phải giữ đuôi .html hoặc .md)
 #   --protect [pw]     bảo vệ project bằng login + signed cookie (nếu không kèm pw, wrangler sẽ hỏi)
+#   --ghost            ẩn project khỏi trang chủ, chỉ hiện qua /ghost sau khi nhập master password
 #   --open             mở URL bằng trình duyệt sau khi xong
 #
 # Ví dụ:
 #   ~/Local/Work/solashi/share-artifacts/deliver.sh ./report.html cost-review
 #   → viewer: https://artifacts.hoangtrung.dev/cost-review/report
 #   → raw:    https://artifacts.hoangtrung.dev/cost-review/report.html
+#
+#   ~/Local/Work/solashi/share-artifacts/deliver.sh ./secret.html ops --ghost --protect
+#   → viewer: https://artifacts.hoangtrung.dev/ops/secret (ẩn khỏi home, cần /ghost + password project)
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,13 +28,14 @@ SRC="${1:-}"
 [ -n "$SRC" ] || { sed -n '2,16p' "$0"; exit 1; }
 shift
 
-PROJECT="shared"; NAME=""; PROTECT=0; PROTECT_PW=""; OPEN=0
+PROJECT="shared"; NAME=""; PROTECT=0; PROTECT_PW=""; GHOST=0; OPEN=0
 # project = đối số positional đầu tiên không bắt đầu bằng "--"
 if [ "${1:-}" ] && [ "${1#--}" = "${1:-}" ]; then PROJECT="$1"; shift; fi
 while [ "${1:-}" ]; do
   case "$1" in
     --name)    NAME="${2:?--name cần giá trị}"; shift 2;;
     --protect) PROTECT=1; shift; if [ "${1:-}" ] && [ "${1#--}" = "${1:-}" ]; then PROTECT_PW="$1"; shift; fi;;
+    --ghost)   GHOST=1; shift;;
     --open)    OPEN=1; shift;;
     *) echo "❌ Tham số lạ: $1" >&2; exit 1;;
   esac
@@ -62,6 +68,11 @@ if [ "$PROTECT" = 1 ]; then
   if [ -n "$PROTECT_PW" ]; then ./protect.sh "$PROJECT" "$PROTECT_PW"; else ./protect.sh "$PROJECT"; fi
 fi
 
+if [ "$GHOST" = 1 ]; then
+  # --ensure-master đảm bảo GHOST_MASTER_PW tồn tại trên Cloudflare.
+  ./ghost.sh "$PROJECT" --ensure-master
+fi
+
 ./deploy.sh
 
 CLEAN="${BASENAME%.*}"   # bỏ đuôi cuối (an toàn cho tên nhiều dấu chấm: a.b.v2.md -> a.b.v2)
@@ -75,7 +86,7 @@ echo "   $RAW_URL         (raw — file gốc)"
 
 # Commit + push artifact vào git để các máy khác sync (share-artifacts là repo sync giữa các máy).
 # Chỉ stage những gì deliver.sh touch — không quét thay đổi unrelated đang dở dang của user.
-git add "src/artifacts/$PROJECT/$BASENAME" protected.list functions/protected-folders.js 2>/dev/null || true
+git add "src/artifacts/$PROJECT/$BASENAME" protected.list ghost.list functions/protected-folders.js functions/ghost-folders.js 2>/dev/null || true
 if ! git diff --cached --quiet 2>/dev/null; then
   echo "📤 git commit + push…"
   git commit -m "feat(artifacts): publish $PROJECT/$BASENAME" --quiet \

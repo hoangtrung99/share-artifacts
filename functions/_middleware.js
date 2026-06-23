@@ -1,34 +1,40 @@
 // Cloudflare Pages Functions middleware — runs at the edge on EVERY request.
-// Guards the first path segment (the project folder) with a styled-login + signed-cookie scheme
-// (replaces the old HTTP Basic Auth popup).
 //
-// A project "X" requires auth when:
-//   - X is in protected-folders.js (generated from protected.list), OR
-//   - a secret env "PW_<SNAKE(X)>" exists
-//   where SNAKE(X) = X uppercased, every char outside [A-Z0-9] -> "_"
-//   (e.g. /reports/.. -> PW_REPORTS ; /project-a/.. -> PW_PROJECT_A). Matches protect.sh.
+// Two auth layers, checked in order:
 //
-// To pass, the request must carry a valid signed cookie cf_auth_<SNAKE(X)> — verified with
-// HMAC-SHA256 over COOKIE_SECRET (crypto.subtle), checking expiry AND that the token's project
-// matches the path. Missing/invalid on a navigation request -> 302 to the styled /login page.
+// 1. GHOST LAYER — hidden projects (ghost.list → ghost-folders.js).
+//    A ghost project requires a valid cf_ghost cookie (HMAC-signed, master password unlock
+//    via /ghost). Fail-closed: a ghost project with no GHOST_MASTER_PW or no COOKIE_SECRET
+//    is never served. ?ghost=true / ?ghost=1 on ANY page → 302 to /ghost.
 //
-// FAIL-CLOSED. A project is denied (never served) if it is listed-protected but EITHER its
-// PW_<X> secret OR the COOKIE_SECRET signing key is missing — a misconfigured lock must not
-// silently become public.
+// 2. PER-PROJECT LAYER — password-protected projects (protected.list → protected-folders.js
+//    or PW_<SNAKE(X)> env secret). A project "X" requires a valid cf_auth_<SNAKE(X)> cookie.
+//    Fail-closed: listed-protected but missing PW_<X> or COOKIE_SECRET → 403.
 //
-// /login, /logout, /pagefind/*, /_astro/*, favicon, sitemap, robots all have a non-project
-// first segment, so they pass through next() without auth (no explicit allowlist needed —
-// just don't name a protected project "login" or "pagefind").
+// A project can be BOTH ghost AND protected — the user must clear both layers.
+//
+// /ghost, /login, /logout, /pagefind/*, /_astro/*, favicon, sitemap, robots all have a
+// non-project first segment, so they pass through next() without auth (no explicit allowlist
+// needed — just don't name a project "ghost", "login", or "pagefind").
 
 import PROTECTED from './protected-folders.js';
-import { pwKey, cookieName, verifyToken, readCookie } from './_auth.js';
+import GHOST from './ghost-folders.js';
+import {
+  pwKey,
+  cookieName,
+  verifyToken,
+  readCookie,
+  GHOST_COOKIE_NAME,
+  GHOST_PROJECT,
+} from './_auth.js';
 
 const protectedFolders = new Set(PROTECTED);
+const ghostFolders = new Set(GHOST);
 
 const baseHeaders = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' };
 
 function misconfigured() {
-  // Listed protected but a required secret (PW_<X> or COOKIE_SECRET) is missing -> hard lock.
+  // Listed protected/ghost but a required secret is missing -> hard lock.
   return new Response(
     '🔒 This folder is protected but is not fully configured. Please contact the site owner.',
     { status: 403, headers: baseHeaders },
@@ -47,10 +53,32 @@ function isDocumentRequest(request) {
 
 export const onRequest = async ({ request, env, next }) => {
   const url = new URL(request.url);
+
+  // ?ghost=true / ?ghost=1 on any page → redirect to /ghost (master password unlock).
+  if (url.searchParams.get('ghost') === 'true' || url.searchParams.get('ghost') === '1') {
+    return Response.redirect(new URL('/ghost/', url).href, 302);
+  }
+
   const seg = url.pathname.split('/').filter(Boolean)[0];
   if (!seg) return next(); // home page: public
 
   const project = decodeURIComponent(seg);
+
+  // --- Layer 1: Ghost gate ---
+  if (ghostFolders.has(project)) {
+    // Fail-closed: ghost project with no master password or no signing key.
+    if (!env.GHOST_MASTER_PW || !env.COOKIE_SECRET) return misconfigured();
+    const ghostToken = readCookie(request.headers.get('Cookie'), GHOST_COOKIE_NAME);
+    if (!(await verifyToken(env.COOKIE_SECRET, ghostToken, GHOST_PROJECT))) {
+      if (isDocumentRequest(request)) {
+        return Response.redirect(new URL('/ghost/', url).href, 302);
+      }
+      return new Response('🔒 Ghost access required.', { status: 401, headers: baseHeaders });
+    }
+    // cf_ghost valid — fall through to per-project auth below.
+  }
+
+  // --- Layer 2: Per-project password gate ---
   const expected = env[pwKey(project)];
   const mustAuth = protectedFolders.has(project) || !!expected;
   if (!mustAuth) return next(); // unprotected folder

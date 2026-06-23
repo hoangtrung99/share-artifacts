@@ -37,6 +37,8 @@ const ARTIFACTS_DIR = path.join(ROOT, 'src', 'artifacts');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const PROTECTED_LIST = path.join(ROOT, 'protected.list');
 const PROTECTED_OUT = path.join(ROOT, 'functions', 'protected-folders.js');
+const GHOST_LIST = path.join(ROOT, 'ghost.list');
+const GHOST_OUT = path.join(ROOT, 'functions', 'ghost-folders.js');
 const REDIRECTS_OUT = path.join(PUBLIC_DIR, '_redirects');
 const HEADERS_OUT = path.join(PUBLIC_DIR, '_headers');
 
@@ -152,6 +154,23 @@ function generateProtectedFolders() {
   fs.writeFileSync(PROTECTED_OUT, body);
   return names;
 }
+function generateGhostFolders() {
+  const names = fs.existsSync(GHOST_LIST)
+    ? fs
+        .readFileSync(GHOST_LIST, 'utf8')
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+  const body =
+    '// AUTO-GENERATED from ghost.list by scripts/prepare-static.mjs — do not edit by hand.\n' +
+    '// Fail-closed registry of ghost (hidden) project names imported by functions/_middleware.js\n' +
+    '// and functions/ghost.js.\n' +
+    `export default ${JSON.stringify(names)};\n`;
+  fs.mkdirSync(path.dirname(GHOST_OUT), { recursive: true });
+  fs.writeFileSync(GHOST_OUT, body);
+  return names;
+}
 
 if (!fs.existsSync(ARTIFACTS_DIR)) {
   console.error(`prepare-static: missing artifacts dir ${ARTIFACTS_DIR}`);
@@ -163,7 +182,9 @@ const { count: copied, htmlBases } = copyArtifacts();
 const redirectCount = generateRedirects(htmlBases);
 generateHeaders();
 const protectedNames = generateProtectedFolders();
+const ghostNames = generateGhostFolders();
 
 console.log(`prepare-static: copied ${copied} raw artifact(s) into public/ (${htmlBases.length} html as .rawhtml)`);
 console.log(`prepare-static: wrote ${redirectCount} _redirects rule(s) + _headers`);
 console.log(`prepare-static: protected projects -> [${protectedNames.join(', ')}]`);
+console.log(`prepare-static: ghost projects -> [${ghostNames.join(', ')}]`);
