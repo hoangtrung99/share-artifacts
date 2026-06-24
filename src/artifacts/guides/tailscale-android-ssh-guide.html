@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSH vào Android qua Tailscale + chạy curl (không cần root)</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-soft: #161b22;
+    --bg-code: #0a0e14;
+    --border: #21262d;
+    --text: #e6edf3;
+    --text-dim: #9da7b3;
+    --accent: #58a6ff;
+    --accent-2: #7ee787;
+    --warn: #f0b429;
+    --danger: #ff7b72;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 80% -10%, #14233b 0%, transparent 60%), var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 96px; }
+  header.hero {
+    text-align: center;
+    padding: 24px 0 36px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    color: var(--accent-2);
+    padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    letter-spacing: .3px; margin-bottom: 20px;
+  }
+  h1 {
+    font-size: clamp(26px, 4.5vw, 40px);
+    line-height: 1.2; margin: 0 0 14px;
+    background: linear-gradient(120deg, #fff, #9bd0ff 70%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .subtitle { color: var(--text-dim); font-size: 17px; max-width: 620px; margin: 0 auto; }
+  h2 {
+    font-size: 23px; margin: 48px 0 14px; padding-top: 8px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2 .num {
+    flex: none;
+    width: 32px; height: 32px; border-radius: 9px;
+    background: linear-gradient(135deg, #1f6feb, #388bfd);
+    color: #fff; font-size: 16px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  h3 { font-size: 17px; margin: 28px 0 10px; color: var(--accent); }
+  p { margin: 12px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    background: #1b2230; border: 1px solid var(--border);
+    padding: 2px 7px; border-radius: 6px; font-size: 13.5px; color: #ffd9a0;
+  }
+  pre {
+    background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px; overflow-x: auto;
+    margin: 14px 0; position: relative;
+  }
+  pre code { background: none; border: none; padding: 0; color: #cdd9e5; font-size: 13.5px; line-height: 1.7; }
+  pre .cmt { color: #6e7781; }
+  pre .grn { color: var(--accent-2); }
+  pre .blu { color: var(--accent); }
+  .card {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 4px 22px; margin: 16px 0;
+  }
+  .callout {
+    border-radius: var(--radius); padding: 14px 18px; margin: 18px 0;
+    border: 1px solid; display: flex; gap: 12px; align-items: flex-start;
+  }
+  .callout .ic { font-size: 18px; line-height: 1.5; flex: none; }
+  .callout.tip { background: rgba(126,231,135,.07); border-color: rgba(126,231,135,.3); }
+  .callout.warn { background: rgba(240,180,41,.07); border-color: rgba(240,180,41,.3); }
+  .callout.info { background: rgba(88,166,255,.07); border-color: rgba(88,166,255,.3); }
+  .callout p { margin: 4px 0; font-size: 14.5px; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 18px 0;
+    font-size: 14.5px; overflow: hidden; border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-soft); color: var(--text); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--accent-2); font-weight: 500; white-space: nowrap; }
+  .answer {
+    background: linear-gradient(135deg, rgba(31,111,235,.15), rgba(56,139,253,.05));
+    border: 1px solid rgba(88,166,255,.35);
+    border-radius: var(--radius); padding: 22px 24px; margin: 4px 0 8px;
+  }
+  .answer strong { color: var(--accent-2); }
+  .kbd {
+    font-family: monospace; background: #1b2230; border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 5px; padding: 1px 7px; font-size: 13px;
+  }
+  ol, ul { padding-left: 22px; }
+  li { margin: 7px 0; }
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    justify-content: center; margin: 24px 0; font-size: 14px;
+  }
+  .node {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    padding: 12px 18px; border-radius: 10px; text-align: center; min-width: 130px;
+  }
+  .node .t { font-weight: 600; }
+  .node .s { color: var(--text-dim); font-size: 12px; margin-top: 3px; }
+  .arrow { color: var(--accent); font-size: 22px; }
+  footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 13.5px; text-align: center; }
+  @media (max-width: 560px) { .flow { flex-direction: column; } .arrow { transform: rotate(90deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="pill">⚡ Hướng dẫn thực hành</div>
+    <h1>SSH từ Mac mini vào Android qua Tailscale &amp; chạy <code style="font-size:.7em">curl</code></h1>
+    <p class="subtitle">Cả hai máy join cùng một tailnet. Mục tiêu: SSH từ Mac mini vào điện thoại Android rồi chạy lệnh — <b>không cần root</b>.</p>
+  </header>
+
+  <div class="answer">
+    <p style="margin:6px 0;font-size:17px;">❓ <b>Có cần root không?</b> → <strong>KHÔNG.</strong></p>
+    <p style="margin:6px 0;font-size:15px;color:var(--text-dim)">Android không có sẵn SSH server, và Tailscale cũng không biến Android thành SSH server được (Tailscale SSH server chỉ chạy trên Linux). Giải pháp: cài <b>Termux</b> — chạy hoàn toàn trong userspace, không đụng tới root.</p>
+  </div>
+
+  <div class="flow">
+    <div class="node"><div class="t">🖥️ Mac mini</div><div class="s">ssh client</div></div>
+    <span class="arrow">→</span>
+    <div class="node"><div class="t">🔒 Tailnet</div><div class="s">100.x.x.x</div></div>
+    <span class="arrow">→</span>
+    <div class="node"><div class="t">📱 Android</div><div class="s">Termux sshd :8022</div></div>
+  </div>
+
+  <h2><span class="num">1</span> Setup phía Android (Termux)</h2>
+
+  <div class="callout warn">
+    <span class="ic">⚠️</span>
+    <div><p style="margin:0"><b>Cài Termux từ F-Droid hoặc GitHub</b> — KHÔNG dùng bản trên Google Play (đã cũ và lỗi, không cập nhật package được).</p></div>
+  </div>
+
+  <h3>Cài SSH server + curl</h3>
+  <pre><code><span class="cmt"># cập nhật repo và package</span>
+pkg update &amp;&amp; pkg upgrade
+pkg install openssh curl</code></pre>
+
+  <h3>Bật SSH server</h3>
+  <pre><code><span class="cmt"># đặt mật khẩu (hoặc dùng SSH key — xem mục 3)</span>
+passwd
+
+<span class="cmt"># khởi động sshd</span>
+sshd</code></pre>
+
+  <div class="callout info">
+    <span class="ic">💡</span>
+    <div><p style="margin:0">Vì không root, sshd của Termux nghe ở <b>port 8022</b> (không phải 22) — user thường không bind được port &lt; 1024.</p></div>
+  </div>
+
+  <h3>Lấy username Termux (cần khi ssh vào)</h3>
+  <pre><code>whoami    <span class="cmt"># ví dụ: u0_a234</span></code></pre>
+
+  <h3>Cài &amp; kết nối Tailscale</h3>
+  <p>Cài app <b>Tailscale</b> trên Android, đăng nhập <b>cùng tailnet</b> với Mac mini. Lấy IP <code>100.x.x.x</code> của Android trong app hoặc admin console.</p>
+
+  <h2><span class="num">2</span> Kết nối từ Mac mini</h2>
+
+  <pre><code>ssh -p <span class="grn">8022</span> <span class="blu">u0_a234</span>@<span class="blu">&lt;tailscale-ip-android&gt;</span></code></pre>
+
+  <p>Nếu bật <b>MagicDNS</b>, dùng luôn tên máy thay cho IP:</p>
+  <pre><code>ssh -p 8022 u0_a234@<span class="blu">android-hostname</span></code></pre>
+
+  <p>Sau khi vào shell, chạy <code>curl</code> bình thường:</p>
+  <pre><code>curl https://example.com
+curl -s https://api.ipify.org   <span class="cmt"># xem IP public mà Android đang đi ra</span></code></pre>
+
+  <h2><span class="num">3</span> Khuyến nghị: dùng SSH key thay mật khẩu</h2>
+
+  <p>Trên <b>Mac mini</b>, lấy public key:</p>
+  <pre><code>cat ~/.ssh/id_ed25519.pub</code></pre>
+
+  <p>Trên <b>Termux</b>, dán vào file authorized_keys:</p>
+  <pre><code>mkdir -p ~/.ssh
+nano ~/.ssh/authorized_keys   <span class="cmt"># dán public key vào đây</span>
+chmod 600 ~/.ssh/authorized_keys</code></pre>
+
+  <div class="callout tip">
+    <span class="ic">✅</span>
+    <div><p style="margin:0">Dùng key giúp bạn ssh không cần gõ mật khẩu mỗi lần, và an toàn hơn — đặc biệt khi muốn chạy script tự động từ Mac mini.</p></div>
+  </div>
+
+  <h2><span class="num">4</span> Giữ kết nối ổn định</h2>
+
+  <p>Trở ngại lớn nhất không phải SSH mà là <b>Android tự tắt tiến trình nền</b>. Xử lý:</p>
+
+  <table>
+    <thead><tr><th>Vấn đề</th><th>Giải pháp</th></tr></thead>
+    <tbody>
+      <tr><td>Android kill Termux ở background</td><td>Tắt battery optimization cho Termux; cài <code>pkg install termux-api</code> rồi chạy <code>termux-wakelock</code> để giữ tiến trình sống</td></tr>
+      <tr><td>Tailscale rớt khi tắt màn hình</td><td>Android Settings → VPN → bật <b>Always-on VPN</b> cho Tailscale; tắt battery optimization cho app Tailscale</td></tr>
+      <tr><td>sshd không tự chạy sau reboot</td><td>Cài addon <b>Termux:Boot</b> để tự start <code>sshd</code> + Tailscale khi khởi động máy</td></tr>
+      <tr><td>Phải gõ <code>sshd</code> mỗi lần mở Termux</td><td>Thêm <code>sshd</code> vào <code>~/.bashrc</code> hoặc dùng Termux:Boot</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="num">5</span> Tóm tắt nhanh</h2>
+
+  <div class="card">
+    <table style="border:none;margin:8px 0">
+      <tbody>
+        <tr><td>Cần root?</td><td>Không</td></tr>
+        <tr><td>Android cần gì?</td><td>Termux + openssh (sshd) + curl + app Tailscale, cùng tailnet</td></tr>
+        <tr><td>Port SSH</td><td>8022 (không phải 22)</td></tr>
+        <tr><td>Username</td><td>kết quả của <code>whoami</code> trong Termux (vd <code>u0_a234</code>)</td></tr>
+        <tr><td>Trở ngại chính</td><td>Giữ Termux + Tailscale không bị Android tắt nền</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <span class="ic">🔎</span>
+    <div>
+      <p style="margin:2px 0"><b>Ghi chú về IP:</b> Tailscale mặc định KHÔNG tunnel toàn bộ traffic internet. Khi chạy <code>curl</code> trên Android, traffic ra internet vẫn đi qua mạng của điện thoại (Wi-Fi/4G) — trừ khi Android dùng một <b>Exit Node</b>. IP <code>100.x.x.x</code> chỉ là địa chỉ nội bộ tailnet, không phải IP public.</p>
+    </div>
+  </div>
+
+  <footer>
+    Hướng dẫn thực hành · Tailscale + Termux + SSH · cập nhật 2026-06
+  </footer>
+
+</div>
+</body>
+</html>
