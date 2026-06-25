@@ -1217,9 +1217,9 @@ curl https://www.cloudflare.com/cdn-cgi/trace
       <strong>Aliases</strong> cho nhanh (thêm vào <code>~/.zshrc</code> hoặc <code>~/.bashrc</code>):
     </p>
     <div class="code-block"><span class="comment"># Alias nhanh</span>
-<span class="cmd">alias</span> won=<span class="str">'warp-cli connect'</span>
-<span class="cmd">alias</span> woff=<span class="str">'warp-cli disconnect'</span>
-<span class="cmd">alias</span> wstatus=<span class="str">'warp-cli status'</span></div>
+<span class="cmd">alias</span> bse-on=<span class="str">'warp-cli connect'</span>
+<span class="cmd">alias</span> bse-off=<span class="str">'warp-cli disconnect'</span>
+<span class="cmd">alias</span> bse-status=<span class="str">'warp-cli status'</span></div>
   </div>
 
   <div class="callout section callout--warn" style="--i:30">
@@ -1374,6 +1374,191 @@ curl https://www.cloudflare.com/cdn-cgi/trace
       <li><strong>DNS resolve qua proxy</strong> &mdash; dùng <code>socks5h://</code>, verify DNS server tại dnsleaktest.com</li>
     </ul>
   </div>
+
+
+  <!-- ============================================================== -->
+  <!-- ====== MAC SETUP GUIDE (BSE PROXY) ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:39b">
+    <span class="divider-section__title">Mac Setup &mdash; BSE Proxy</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="description section" style="--i:39c">
+    <p>
+      Setup hoàn toàn qua terminal &mdash; không cần GUI. Sau khi setup, chỉ cần <strong>2 lệnh</strong>
+      hàng ngày: <code>bse-on</code> (bật) và <code>bse-off</code> (tắt).
+    </p>
+  </div>
+
+  <!-- Files -->
+  <div class="grid-2 section" style="--i:39d">
+    <div class="ve-card ve-card--accent-a">
+      <div class="ve-card__label label-a">File 1</div>
+      <h3>~/.proxy/aws-proxy.pac</h3>
+      <p>PAC file &mdash; quyết định domain nào đi qua proxy (AWS), domain nào direct.</p>
+      <div class="code-block" style="font-size:11px"><span class="comment">// Route AWS traffic qua SOCKS5, phần còn lại direct</span>
+function FindProxyForURL(url, host) {
+  <span class="comment">// AWS Sign-In + Console</span>
+  if (dnsDomainIs(host, <span class="str">".signin.aws"</span>) ||
+      dnsDomainIs(host, <span class="".console.aws.amazon.com<span class="str">"))
+    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
+
+  <span class="comment">// Static assets + CloudFront</span>
+  if (dnsDomainIs(host, <span class="str">".awsstatic.com"</span>) ||
+      dnsDomainIs(host, <span class="str">".cloudfront.net"</span>))
+    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
+
+  <span class="comment">// SSO / Identity Center</span>
+  if (dnsDomainIs(host, <span class="str">".awsapps.com"</span>) ||
+      dnsDomainIs(host, <span class="str">".sso.amazonaws.com"</span>))
+    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
+
+  <span class="comment">// Service APIs (EC2, S3, SSM, ...)</span>
+  if (dnsDomainIs(host, <span class="str">".amazonaws.com"</span>) ||
+      dnsDomainIs(host, <span class="str">".api.aws"</span>))
+    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
+
+  return <span class="str">"DIRECT"</span>;
+}</div>
+    </div>
+    <div class="ve-card ve-card--accent-a">
+      <div class="ve-card__label label-a">File 2</div>
+      <h3>~/.proxy/bse-aliases.sh</h3>
+      <p>Alias script &mdash; điều khiển tunnel + proxy + CLI. Source trong <code>~/.zshrc</code>.</p>
+      <div class="code-block" style="font-size:11px"><span class="comment"># Thêm vào ~/.zshrc:</span>
+[ -f ~/.proxy/bse-aliases.sh ] <span class="flag">&&</span> source ~/.proxy/bse-aliases.sh
+
+<span class="comment"># Lệnh chính:</span>
+bse-on      <span class="comment"># bật toàn bộ</span>
+bse-off     <span class="comment"># tắt toàn bộ</span>
+bse-status  <span class="comment"># kiểm tra</span>
+
+<span class="comment"># Lệnh chi tiết:</span>
+bse-connect     <span class="comment"># chỉ SSH tunnel</span>
+bse-proxy-on    <span class="comment"># chỉ system PAC (browser)</span>
+bse-cli-on      <span class="comment"># chỉ CLI env vars</span></div>
+    </div>
+  </div>
+
+  <!-- SSH Config -->
+  <div class="ve-card ve-card--accent-a section" style="--i:39e">
+    <div class="ve-card__label label-a">SSH Config</div>
+    <h3>~/.ssh/config &mdash; Android host</h3>
+    <p>Android device chạy SimpleSSHD (port 8022) + WARP. Mac kết nối SSH tunnel.</p>
+    <div class="code-block"><span class="comment"># ~/.ssh/config</span>
+Host blackshark
+  HostName blackshark.internal
+  Port 8022
+  User root
+  DynamicForward 1080
+  ServerAliveInterval 60</div>
+  </div>
+
+  <!-- How it works -->
+  <div class="ve-card ve-card--recessed section" style="--i:39f">
+    <div class="ve-card__label" style="color:var(--text-dim)">Cách hoạt động</div>
+    <div class="grid-2" style="margin-top:8px">
+      <div>
+        <p style="font-size:13px"><strong>Browser traffic:</strong></p>
+        <p style="font-size:12px">Browser &rarr; System PAC &rarr; <code>dnsDomainIs</code> check &rarr;
+        AWS domain? &rarr; SOCKS5 127.0.0.1:1080 &rarr; SSH tunnel &rarr; Android WARP &rarr; Gateway &rarr; AWS.<br>
+        Non-AWS? &rarr; DIRECT (không qua WARP).</p>
+      </div>
+      <div>
+        <p style="font-size:13px"><strong>CLI traffic:</strong></p>
+        <p style="font-size:12px"><code>aws ssm start-session</code> &rarr; <code>HTTPS_PROXY</code> env var &rarr;
+        SOCKS5 127.0.0.1:1080 &rarr; SSH tunnel &rarr; Android WARP &rarr; Gateway &rarr; AWS.<br>
+        PAC <strong>không ảnh hưởng CLI</strong> &mdash; cần env var riêng.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Daily usage -->
+  <div class="ve-card ve-card--accent-b section" style="--i:39g">
+    <div class="ve-card__label label-b">Sử dụng hàng ngày</div>
+    <h3>2 lệnh duy nhất</h3>
+    <div class="code-block"><span class="comment"># Bật &mdash; tunnel + PAC + CLI env vars</span>
+bse-on
+
+<span class="comment"># Kiểm tra</span>
+bse-status
+<span class="comment"># → SSH tunnel: ✓ RUNNING</span>
+<span class="comment"># → System PAC: ✓ ON</span>
+<span class="comment"># → WARP check: warp=on ✓</span>
+<span class="comment"># → Direct check: warp=off ✓ (host sạch)</span>
+
+<span class="comment"># Tắt</span>
+bse-off</div>
+  </div>
+
+  <!-- Commands reference -->
+  <div class="table-wrap section" style="--i:39h">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Lệnh</th>
+            <th>Tác dụng</th>
+            <th>Cách toggle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>bse-on</code></td>
+            <td>Bật toàn bộ: SSH tunnel + system PAC + CLI env vars</td>
+            <td><code>bse-off</code></td>
+          </tr>
+          <tr>
+            <td><code>bse-connect</code></td>
+            <td>Chỉ bật SSH tunnel (port 1080)</td>
+            <td><code>bse-disconnect</code></td>
+          </tr>
+          <tr>
+            <td><code>bse-proxy-on</code></td>
+            <td>Chỉ bật system PAC proxy (browser)</td>
+            <td><code>bse-proxy-off</code></td>
+          </tr>
+          <tr>
+            <td><code>bse-cli-on</code></td>
+            <td>Chỉ bật CLI env vars (<code>HTTPS_PROXY</code>)</td>
+            <td><code>bse-cli-off</code></td>
+          </tr>
+          <tr>
+            <td><code>bse-status</code></td>
+            <td>Kiểm tra trạng thái + verify WARP</td>
+            <td>&mdash;</td>
+          </tr>
+          <tr>
+            <td><code>bse-help</code></td>
+            <td>Hiển thị hướng dẫn</td>
+            <td>&mdash;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- System PAC vs CLI -->
+  <div class="callout section callout--warn" style="--i:39i">
+    <strong>PAC file (browser) vs env vars (CLI):</strong><br>
+    PAC file chỉ ảnh hưởng <strong>browser</strong> (Chrome, Safari, Edge). CLI tools
+    (<code>aws</code>, <code>curl</code>) <strong>không đọc PAC</strong> &mdash; cần <code>HTTPS_PROXY</code> env var.
+    <code>bse-on</code> set cả hai. Nếu chỉ cần browser &rarr; <code>bse-connect &amp;&amp; bse-proxy-on</code>.
+    Nếu chỉ cần CLI &rarr; <code>bse-connect &amp;&amp; bse-cli-on</code>.
+  </div>
+
+  <!-- Verified status -->
+  <div class="callout section callout--success" style="--i:39j">
+    <strong>Đã verify hoạt động:</strong>
+    <ul style="margin:8px 0 0 0; padding-left:1.2em; font-size:12px; line-height:1.7;">
+      <li>SSH tunnel: <code>blackshark.internal:8022</code> &rarr; port 1080 ✓</li>
+      <li>Qua proxy: <code>warp=on</code>, <code>gateway=on</code> ✓</li>
+      <li>Direct (host): <code>warp=off</code> ✓ &mdash; host sạch</li>
+      <li>System PAC: <code>networksetup</code> Wi-Fi ✓</li>
+    </ul>
+  </div>
+
 
   <!-- ============================================================== -->
   <!-- ====== TROUBLESHOOTING ====== -->
