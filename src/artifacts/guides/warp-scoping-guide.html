@@ -931,6 +931,8 @@ function FindProxyForURL(url, host) {
 
   <!-- ============================================================== -->
   <!-- ====== CÁCH B: ANDROID TAILSCALE PROXY ====== -->
+    <!-- ============================================================== -->
+  <!-- ====== CÁCH B: ANDROID TAILSCALE PROXY ====== -->
   <!-- ============================================================== -->
   <div class="divider-section section" style="--i:15">
     <span class="divider-section__title">Cách B &mdash; Android Tailscale Proxy</span>
@@ -945,135 +947,110 @@ function FindProxyForURL(url, host) {
     <p style="margin-top:8px">
       <strong>Thách thức:</strong> Android chỉ cho phép <strong>một VpnService cùng lúc</strong>. Tailscale app
       tiêu chuẩn và WARP đều dùng VpnService &mdash; <strong>xung đột</strong>.
-      <strong>Giải pháp:</strong> chạy Tailscale ở chế độ <strong>userspace networking</strong> (không dùng VpnService).
+      <strong>Giải pháp:</strong> chạy <code>tailscaled</code> ở chế độ <strong>userspace networking</strong> (không dùng VpnService).
     </p>
   </div>
 
   <div class="callout section callout--danger" style="--i:17">
-    <strong>Conflictt xác nhận:</strong> Tailscale app tiêu chuẩn + WARP = <strong>không thể chạy cùng lúc</strong> trên Android.
+    <strong>Conflict xác nhận:</strong> Tailscale app tiêu chuẩn + WARP = <strong>không thể chạy cùng lúc</strong> trên Android.
     Cả hai đều dùng VpnService. Android chỉ cho phép 1 VpnService active.
     <br><br>
     Nguồn: <a href="https://tailscale.com/docs/reference/faq/other-vpns" style="color:var(--accent)">Tailscale FAQ: Other VPNs</a>,
-    <a href="https://github.com/tailscale/tailscale/issues/410" style="color:var(--accent)">GitHub #410</a>,
-    <a href="https://github.com/tailscale/tailscale/issues/15288" style="color:var(--accent)">GitHub #15288</a>
-  </div>
-
-  <!-- Solution B -->
-  <div class="ve-card ve-card--accent-b section" style="--i:18">
-    <div class="ve-card__label label-b">Giải pháp</div>
-    <h3>Tailscale Userspace Networking + WARP</h3>
-    <p>Chạy Tailscale <strong>không dùng VpnService</strong> &mdash; dùng userspace networking mode.
-    WARP giữ VpnService. Không xung đột.</p>
-
-    <div class="grid-2" style="margin-top:16px">
-      <div>
-        <p><span class="step-num step-num--b">1</span> <strong>TailSocks</strong> (không cần root)</p>
-        <p>App Android chạy Tailscale ở userspace mode (tsnet). Built-in SOCKS5 proxy. Không xung đột WARP.</p>
-        <div class="code-block" style="font-size:11px"><span class="comment"># Cài TailSocks APK</span>
-<span class="comment"># GitHub: bropines/tailsocks</span>
-<span class="comment"># Login tailnet &rarr; nhận tailnet IP</span>
-<span class="comment"># Built-in SOCKS5 proxy local</span></div>
-      </div>
-      <div>
-        <p><span class="step-num step-num--b">2</span> <strong>Magisk tailscaled</strong> (có root)</p>
-        <p>Magisk module chạy tailscaled daemon userspace. hev-socks5-tunnel expose proxy.</p>
-        <div class="code-block" style="font-size:11px"><span class="comment"># tailscaled userspace mode:</span>
-tailscaled <span class="flag">--tun</span>=userspace-networking \
-  <span class="flag">--socks5-server</span>=localhost:1080
-tailscale up <span class="flag">--auth-key</span>=&lt;key&gt;</div>
-      </div>
-    </div>
+    <a href="https://github.com/tailscale/tailscale/issues/410" style="color:var(--accent)">GitHub #410</a>
   </div>
 
   <!-- Architecture Diagram B -->
-  <div class="arch-diagram section" style="--i:19">
+  <div class="arch-diagram section" style="--i:18">
     <div class="arch-row">
       <div class="arch-node arch-node--accent">
         <div class="arch-title">Mac App</div>
-        <div class="arch-desc">Browser + PAC</div>
+        <div class="arch-desc">Browser + PAC / CLI env</div>
       </div>
     </div>
-    <div class="arch-flow">
-      <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
-      <span class="arch-label">SOCKS5 localhost:1080</span>
-    </div>
+    <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg><span class="arch-label">SOCKS5 localhost:1080</span></div>
     <div class="arch-row">
       <div class="arch-node arch-node--teal">
         <div class="arch-title">Tailscale (Mac)</div>
         <div class="arch-desc">Tailnet member</div>
       </div>
     </div>
-    <div class="arch-flow">
-      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
-      <span class="arch-label">WireGuard mesh (tailnet)</span>
-    </div>
-    <div class="arch-divider"><span>Android Device</span></div>
+    <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg><span class="arch-label">WireGuard mesh (tailnet)</span></div>
+    <div class="arch-divider"><span>Android Device (root)</span></div>
     <div class="arch-row">
       <div class="arch-node arch-node--teal">
-        <div class="arch-title">TailSocks / tailscaled</div>
-        <div class="arch-desc">Userspace networking (no VpnService)</div>
+        <div class="arch-title">tailscaled</div>
+        <div class="arch-desc">userspace networking<br/>--tun=userspace-networking<br/>(no VpnService)</div>
       </div>
-    </div>
-    <div class="arch-flow">
-      <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
-      <span class="arch-label">Forward to SimpleSSHD</span>
-    </div>
-    <div class="arch-row">
+      <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg></div>
       <div class="arch-node arch-node--green">
-        <div class="arch-title">SimpleSSHD :2222</div>
+        <div class="arch-title">SimpleSSHD :8022</div>
         <div class="arch-desc">SSH server</div>
       </div>
-      <div class="arch-flow">
-        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
-      </div>
+    </div>
+    <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg><span class="arch-label">outbound → WARP TUN</span></div>
+    <div class="arch-row">
       <div class="arch-node arch-node--amber">
         <div class="arch-title">WARP VPN</div>
-        <div class="arch-desc">VpnService TUN</div>
+        <div class="arch-desc">VpnService TUN<br/>(captures all outbound)</div>
       </div>
     </div>
-    <div class="arch-flow">
-      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
-      <span class="arch-label">WARP tunnel</span>
-    </div>
+    <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg><span class="arch-label">WARP tunnel</span></div>
     <div class="arch-row">
-      <div class="arch-node arch-node--accent">
-        <div class="arch-title">Cloudflare Gateway &rarr; AWS</div>
-        <div class="arch-desc">Egress IP + posture</div>
-      </div>
+      <div class="arch-node arch-node--accent"><div class="arch-title">Cloudflare Gateway</div><div class="arch-desc">Egress IP công ty</div></div>
+      <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg></div>
+      <div class="arch-node arch-node--rose"><div class="arch-title">AWS + ESS</div></div>
     </div>
   </div>
 
-  <!-- Steps B -->
-  <div class="stack section" style="--i:20">
-    <div class="ve-card ve-card--accent-b">
-      <div class="ve-card__label label-b">Bước 1 &mdash; Android</div>
-      <h3>WARP + TailSocks (hoặc tailscaled)</h3>
-      <p>Cài WARP bình thường (Cách A bước 1). Sau đó cài <strong>TailSocks</strong> (FOSS, userspace Tailscale) hoặc <strong>Magisk tailscaled</strong> module.</p>
-      <p>Login tailnet, nhận tailnet IP (100.x.x.x).</p>
-    </div>
-    <div class="ve-card ve-card--accent-b">
-      <div class="ve-card__label label-b">Bước 2 &mdash; Android</div>
-      <h3>Forward tailnet &rarr; SimpleSSHD</h3>
-      <p>Trong TailSocks/tailscaled, forward incoming tailnet traffic port 2222 đến SimpleSSHD local:</p>
-      <div class="code-block"><span class="cmd">tailscale serve</span> <span class="flag">--tcp</span> 2222 tcp://localhost:2222</div>
-      <p>Hoặc nếu dùng TailSocks built-in SOCKS5 proxy, forward port đó thay thế.</p>
-    </div>
-    <div class="ve-card ve-card--accent-b">
-      <div class="ve-card__label label-b">Bước 3 &mdash; Mac</div>
-      <h3>SSH qua tailnet</h3>
-      <p>Cài Tailscale trên Mac, join cùng tailnet.</p>
-      <div class="code-block"><span class="comment"># Mac SSH đến Android qua tailnet IP</span>
-<span class="cmd">ssh</span> <span class="flag">-D</span> <span class="str">1080</span> <span class="flag">-N</span> <span class="flag">-p</span> <span class="str">2222</span> &lt;android-tailnet-ip&gt;
+  <!-- Actual Android commands -->
+  <div class="ve-card ve-card--accent-b section" style="--i:19">
+    <div class="ve-card__label label-b">Android Setup &mdash; lệnh thực tế (verified)</div>
+    <h3>Cài đặt trên Android (root, Termux)</h3>
+    <p>Chạy các lệnh sau trong Termux trên Android. Yêu cầu <strong>root</strong> (su) cho tailscaled.</p>
+    <div class="code-block" style="font-size:12px"><span class="comment"># 1. Khởi động SSH server (SimpleSSHD hoặc sshd trong Termux)</span>
+sshd
 
-<span class="comment"># Verify tailnet connectivity</span>
-<span class="cmd">tailscale</span> status
-<span class="comment"># Phải thấy Android device online</span></div>
+<span class="comment"># 2. Login Tailscale (cần root)</span>
+su -c <span class="str">'tailscale login'</span>
+
+<span class="comment"># 3. Tắt DNS acceptance (tránh conflict với WARP DNS)</span>
+su -c <span class="str">'tailscale set --accept-dns=false'</span>
+
+<span class="comment"># 4. Kiểm tra tailnet IP</span>
+su -c <span class="str">'tailscale ip'</span>
+<span class="comment"># → 100.x.x.x (tailnet IP của Android)</span>
+
+<span class="comment"># 5. Khởi động tailscaled userspace mode (NO VpnService → không xung đột WARP)</span>
+su -c <span class="str">'tailscaled --tun=userspace-networking \</span>
+<span class="str">    --socks5-server=localhost:1080'</span>
+<span class="comment"># → SOCKS5 proxy tại localhost:1080 trên Android</span>
+<span class="comment"># → outbound traffic đi qua WARP TUN (VpnService captures all outbound)</span>
+
+<span class="comment"># 6. Kiểm tra trạng thái</span>
+su -c <span class="str">'tailscale status'</span></div>
+    <div class="callout callout--success" style="margin:12px 0">
+      <strong>Tại sao hoạt động:</strong> <code>tailscaled --tun=userspace-networking</code> không dùng VpnService →
+      WARP giữ VpnService → không xung đột. Outbound từ tailscaled đi qua network stack bình thường,
+      bị WARP TUN capture → traffic đi qua WARP tunnel.
     </div>
-    <div class="ve-card ve-card--accent-b">
-      <div class="ve-card__label label-b">Bước 4 &mdash; Mac</div>
-      <h3>Trỏ app + verify (giống Cách A bước 4)</h3>
-      <p>SOCKS5 proxy <code>127.0.0.1:1080</code> + PAC file + verify <code>warp=on</code>.</p>
-    </div>
+  </div>
+
+  <!-- Mac side for Tailscale -->
+  <div class="ve-card ve-card--accent-b section" style="--i:20">
+    <div class="ve-card__label label-b">Mac &mdash; kết nối qua tailnet</div>
+    <h3>SSH tunnel qua tailnet IP</h3>
+    <p>Cài Tailscale trên Mac, join cùng tailnet. SSH đến Android qua tailnet IP thay vì local IP.</p>
+    <div class="code-block"><span class="comment"># SSH tunnel qua tailnet (thay blackshark.internal bằng tailnet IP)</span>
+<span class="cmd">ssh</span> <span class="flag">-D</span> <span class="str">1080</span> <span class="flag">-N</span> <span class="flag">-p</span> <span class="str">8022</span> &lt;android-tailnet-ip&gt;
+
+<span class="comment"># Hoặc thêm vào ~/.ssh/config</span>
+Host blackshark-tailnet
+  HostName 100.x.x.x          <span class="comment"># tailnet IP của Android</span>
+  Port 8022
+  User root
+  DynamicForward 1080
+  ServerAliveInterval 60</div>
+    <p style="margin-top:8px">Sau đó dùng <code>bse-on</code> bình thường — PAC + CLI + forward đều hoạt động qua tailnet.</p>
   </div>
 
   <div class="callout section callout--warn" style="--i:21">
@@ -1082,9 +1059,7 @@ tailscale up <span class="flag">--auth-key</span>=&lt;key&gt;</div>
     Nếu cần kết nối từ xa (khác mạng) &mdash; <strong>Cách B là lựa chọn duy nhất</strong>.
   </div>
 
-  <!-- ============================================================== -->
-  <!-- ====== CÁCH C: VM ISOLATION ====== -->
-  <!-- ============================================================== -->
+<!-- ============================================================== -->
   <div class="divider-section section" style="--i:22">
     <span class="divider-section__title">Cách C &mdash; VM Isolation (UTM)</span>
     <div class="divider-section__line"></div>
