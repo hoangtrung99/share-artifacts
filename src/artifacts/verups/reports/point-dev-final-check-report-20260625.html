@@ -40,6 +40,15 @@
   li{margin:4px 0}
   .small{font-size:12.5px;color:var(--muted)}
   footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  pre{background:#0b1220;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd5e1;white-space:pre;margin:8px 0}
+  pre .c{color:#7dd3fc}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:10px 0}
+  details>summary{cursor:pointer;padding:12px 16px;font-weight:600;color:var(--blue);list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"\25B8  ";color:var(--muted)}
+  details[open]>summary::before{content:"\25BE  "}
+  details .ev{padding:0 16px 14px}
+  details .ev p{margin:6px 0;font-size:13px}
 </style>
 </head>
 <body>
@@ -146,6 +155,191 @@
     <li>Sequence the database schema migration (the <code>user_id_type</code> gap in §6A) explicitly into the STG cutover plan — dev shows the app running ahead of the migrated schema, so STG will hit the same error without this step. End-to-end application confirmation and the operational bucket follow on the application team's timeline next week.</li>
   </ul>
 </div>
+
+<h2>Appendix — Evidence</h2>
+<p class="small">Every claim above is backed by the read-only command output below (commands shown as run; values verbatim from 2026-06-25). Click a row to expand. AWS API queries used the read-only dev profile; in-cluster queries ran from the dev bastion; terraform was run plan-only.</p>
+
+<details>
+  <summary>A. Account guard (all queries ran against the correct account)</summary>
+  <div class="ev">
+<pre>$ aws sts get-caller-identity
+{
+    "Account": "905418018638",
+    "Arn": "arn:aws:iam::905418018638:user/bs-developer"
+}</pre>
+  </div>
+</details>
+
+<details>
+  <summary>B. EKS control plane, node groups, add-ons, access entries</summary>
+  <div class="ev">
+<pre>$ aws eks describe-cluster --name point
+{ "name": "point", "version": "1.34", "status": "ACTIVE",
+  "platform": "eks.24", "authMode": "API",
+  "endpointPublic": true, "endpointPrivate": true }
+
+$ aws eks list-nodegroups --cluster-name point   (each: status ACTIVE, version 1.34, health.issues [])
+  node-group-point-admin-1-34-20260428    desired 2   t3.medium
+  node-group-point-api-1-34-20260428      desired 2   t3.medium
+  node-group-point-app-1-34-20260428      desired 2   t3.medium
+  node-group-point-mmh-1-34-20260428      desired 1   c6i.xlarge
+  node-group-point-worker-1-34-20260428   desired 1   c6i.xlarge
+
+$ aws eks list-addons --cluster-name point   (each: status ACTIVE, issues [])
+  vpc-cni v1.21.1-eksbuild.7 · coredns v1.13.2-eksbuild.4 · kube-proxy v1.34.6-eksbuild.2
+  aws-secrets-store-csi-driver-provider v3.0.0-eksbuild.1
+
+$ aws eks list-access-entries --cluster-name point   (auth mode API)
+  custodian-AdministratorRole · custodian-CICDRole · custodian-OperatorRole · custodian-ViewerRole
+  eks-worker-role · point-bastion-role · point-cd-runner-role · user/bs-developer</pre>
+  </div>
+</details>
+
+<details>
+  <summary>C. EKS in-cluster state (kubectl from bastion) — nodes, workloads, pod IAM</summary>
+  <div class="ev">
+<pre>$ kubectl version   →  server v1.34.8-eks-0247562
+$ kubectl get nodes →  8 nodes Ready, v1.34.8-eks, Amazon Linux 2023, containerd 2.2.4
+
+$ kubectl get pods -A
+  default:   point-admin / api / app / mmh / worker  deployment pods  1/1 Running
+  system:    cloudwatch-agent, fluent-bit, aws-node (2/2), coredns, kube-proxy,
+             alb-controller (2/2), cluster-autoscaler, metrics-server, secrets-store-csi  → all Running
+  pods NOT Running/Succeeded: NONE          Warning events: NONE
+
+$ kubectl get sa -o ...   (IRSA service-account → role bindings)
+  aws-node                     -> arn:aws:iam::905418018638:role/point-vpc-cni-aws-node
+  aws-load-balancer-controller -> arn:aws:iam::905418018638:role/point-aws-load-balancer-controller
+  cluster-autoscaler           -> arn:aws:iam::905418018638:role/point-cluster-autoscaler-irsa-role</pre>
+  </div>
+</details>
+
+<details>
+  <summary>D. Stateful stores — AWS settings + live read probes</summary>
+  <div class="ev">
+<pre>$ aws rds describe-db-clusters
+  id point · status available · engine aurora-mysql 8.0.mysql_aurora.3.04.0 · port 13306 · StorageEncrypted True
+
+$ aws elasticache describe-replication-groups
+  id point · status available · TransitEncryption True · AtRestEncryption True · nodes 2
+
+$ aws redshift describe-clusters
+  id point · status available · Encrypted True · node ra3.large
+$ aws redshift describe-cluster-parameters ... require_ssl
+  require_ssl = true
+
+--- live connectivity (read-only viewer users, from bastion) ---
+Aurora MySQL : SELECT 1 = 1   (port 13306, engine 8.0.28)
+Redshift     : SELECT 1 = 1   (SSL)
+Redis        : PING -> PONG   (TLS)</pre>
+  </div>
+</details>
+
+<details>
+  <summary>E. Networking — VPC, secondary CIDR, endpoints, NAT</summary>
+  <div class="ev">
+<pre>$ aws ec2 describe-vpcs --filters Name=tag:Name,Values=point
+  vpc-0f49bf7456fa50d08 · primary 172.18.0.0/16 · secondary 100.64.0.0/16 · available
+
+$ aws ec2 describe-subnets   (free-IP counts healthy: 211–251 per subnet)
+  3 public + 3 private (172.18.x) + 3 secondary-cidr private (100.64.x)
+
+$ aws ec2 describe-nat-gateways           →  nat-0a54b505d27c22527  available   (DEV single-NAT)
+$ aws ec2 describe-vpc-endpoints          →  15 endpoints, all "available"
+   incl. s3(gw), ecr.api, ecr.dkr, sts, kms, secretsmanager, logs, monitoring,
+         ssm/ssmmessages/ec2messages, sqs, sns, email-smtp
+$ aws ec2 describe-security-groups        →  22 security groups</pre>
+  </div>
+</details>
+
+<details>
+  <summary>F. Configuration drift — terraform plan summary lines (plan-only)</summary>
+  <div class="ev">
+<pre>aurora       :  Plan: 0 to add, 1 to change, 0 to destroy.   (KMS key-policy cleanup; cluster untouched)
+redshift     :  Plan: 0 to add, 1 to change, 0 to destroy.   (same KMS key-policy cleanup)
+elasticache  :  No changes. Your infrastructure matches the configuration.
+eks          :  Plan: 0 to add, 5 to change, 0 to destroy.   (node groups roll 1.34.8 -> 1.34.9 AMI, in place)
+waf-customer :  No changes. Your infrastructure matches the configuration.</pre>
+  <p>Zero "to destroy" / zero replace on every stateful resource. The two non-zero diffs are a benign node-AMI patch roll and a security-improving KMS key-policy cleanup.</p>
+  </div>
+</details>
+
+<details>
+  <summary>G. WAF reconciliation (both scopes)</summary>
+  <div class="ev">
+<pre>$ aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1
+  point-cloudfront-admin     rules=9
+  point-cloudfront-customer  rules=11
+$ aws wafv2 list-web-acls --scope REGIONAL --region ap-northeast-1
+  (empty — no regional WebACL on dev)</pre>
+  <p>Only the two CloudFront WebACLs surface on dev. The other WAF stacks (admin-private, maintenance) do not produce an observable WebACL here — confirm them against the STG plan rather than inferring presence from dev.</p>
+  </div>
+</details>
+
+<details>
+  <summary>H. GuardDuty — data features on, runtime off (intended dev posture)</summary>
+  <div class="ev">
+<pre>$ aws guardduty get-detector ...   status ENABLED
+  ENABLED  : CLOUD_TRAIL, DNS_LOGS, FLOW_LOGS, S3_DATA_EVENTS, EKS_AUDIT_LOGS,
+             EBS_MALWARE_PROTECTION, RDS_LOGIN_EVENTS, LAMBDA_NETWORK_LOGS
+  DISABLED : RUNTIME_MONITORING, EKS_RUNTIME_MONITORING, AI_ANALYST   (intended on dev)</pre>
+  </div>
+</details>
+
+<details>
+  <summary>I. IAM custodian roles, ACM, S3, Secrets, ECR</summary>
+  <div class="ev">
+<pre>$ aws iam list-roles ... custodian
+  custodian-AdministratorRole · CICDRole · DeveloperRole · OperatorRole · OperatorViewerRole · ViewerRole
+
+$ aws acm list-certificates --region us-east-1
+  *.backseat-service.com  ISSUED     (active, used by CloudFront)
+  *.backseat-service.com  EXPIRED    (leftover — harmless cleanup item)
+
+$ aws s3 ...   24 project buckets, all with default encryption (AES256 / aws:kms);
+               versioning Enabled on durable buckets (4 transient log/transfer buckets = None, expected)
+$ aws secretsmanager list-secrets ... point/   all present:
+               aurora & redshift {viewer,editor,master}_user · SPRING_DATA_REDIS ·
+               SPRING_DATASOURCE_MASTER · SPRING_DATASOURCE_HISTORICAL
+$ aws ecr describe-repositories →  point-app · point-worker · point-admin · point-mmh · point-api</pre>
+  </div>
+</details>
+
+<details>
+  <summary>J. CloudWatch alarms + the schema-gap error log (§6A)</summary>
+  <div class="ev">
+<pre>$ aws cloudwatch describe-alarms   →  total 97 · in ALARM 12 · insufficient-data 6
+in-ALARM list:
+  log-point-worker-ERROR
+  point-mmh-{posBestPriceMaker,posCoverNIDTMaker,posCoverOrderUpdater}-NOT_STARTED
+  point-worker-{amberOrderbookGetter,spotCopyOrderer,spotCopyTradeGetter,spotCoverOrderUpdater,
+                spotCoverOrderer,spotOrderArchiver,spotOrderExecutor,spotTradeArchiver}-NOT_STARTED
+
+worker error feeding log-point-worker-ERROR:
+  worker sameIpChecker  →  Unknown column 'user_id_type' in 'field list'  (table user_login)
+  i.e. the running app image expects a schema column not yet present in the migrated Aurora.</pre>
+  <p>The 11 <code>*-NOT_STARTED</code> are per-worker heartbeat alarms (the 5 app deployments themselves are <code>1/1</code> Running). They track background-worker jobs not currently active on dev — some disabled here, at least one failing on the schema gap above. Application-layer, pending app-side confirmation; not an infra fault. The presence of the renamed alarm <code>amberOrderbookGetter</code> also confirms the alarm/metrics stack applied with the worker-rename change.</p>
+  </div>
+</details>
+
+<details>
+  <summary>K. Incident closure — EKS 1.31 CNI/IAM deadlock fix (live wiring)</summary>
+  <div class="ev">
+<pre>Original failure: during the 1.31 step the node roll deadlocked because the CNI add-on
+came up before an IRSA-wired aws-node service account existed.
+
+Live proof the permanent fix holds:
+  • cluster completed the ladder to v1.34, ACTIVE
+  • all 5 node groups ACTIVE, health.issues = []
+  • vpc-cni add-on ACTIVE
+  • aws-node service account bound to role/point-vpc-cni-aws-node  ← the exact wiring whose
+    absence caused the deadlock
+
+EC2 fleet (running): point-bastion, bastion-proxy, point-cd-runner, point-data-transfer,
+  lm-auth-ponta-sandbox, and the 5 node-group node sets.
+EICE: eice-0c3853bd0a5762fc2  create-complete  (admin access path ready)</pre>
+  </div>
+</details>
 
 <footer>
   point-dev final environment check · prepared 2026-06-25 · based on live read-only AWS/kubectl queries, database connectivity probes, and plan-only terraform runs against point-dev (account 905418018638). No changes were made to any environment during this check.
