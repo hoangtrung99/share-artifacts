@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluent Bit — Container Insights Log Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1726; --surface:#142235; --surface-2:#1b2c42; --recessed:#0f1c2e;
+  --border:rgba(150,180,220,0.12); --border-strong:rgba(150,180,220,0.22);
+  --text:#e7eef7; --text-dim:#92a4bb; --text-faint:#637691;
+  --grid:rgba(120,160,210,0.05);
+  --input:#3fb6f0; --input-dim:rgba(63,182,240,0.13);
+  --filter:#e0ab3e; --filter-dim:rgba(224,171,62,0.13);
+  --output:#34d39a; --output-dim:rgba(52,211,154,0.13);
+  --drop:#f3736f; --drop-dim:rgba(243,115,111,0.13);
+  --accent:#7fd3e8;
+  --font-body:'DM Sans',system-ui,sans-serif;
+  --font-mono:'Fira Code',ui-monospace,monospace;
+  --maxw:1180px;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#eef2f7; --surface:#ffffff; --surface-2:#f3f6fb; --recessed:#e9eef5;
+    --border:rgba(20,45,80,0.12); --border-strong:rgba(20,45,80,0.2);
+    --text:#16263c; --text-dim:#4a5f7a; --text-faint:#7689a1;
+    --grid:rgba(40,90,150,0.06);
+    --input:#1372b8; --input-dim:rgba(19,114,184,0.10);
+    --filter:#a9760a; --filter-dim:rgba(169,118,10,0.12);
+    --output:#0a8f63; --output-dim:rgba(10,143,99,0.12);
+    --drop:#cc3b36; --drop-dim:rgba(204,59,54,0.10);
+    --accent:#0e6f8a;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--text); font-family:var(--font-body);
+  line-height:1.6; font-size:16px;
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:34px 34px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+.layout{display:grid;grid-template-columns:208px minmax(0,1fr);gap:40px;align-items:start}
+@media(max-width:880px){.layout{grid-template-columns:1fr;gap:0}}
+
+/* ---- header ---- */
+header.hero{padding:64px 0 40px;border-bottom:1px solid var(--border)}
+.kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:10px}
+.kicker::before{content:"";width:26px;height:1px;background:var(--accent)}
+h1{font-size:clamp(30px,4.4vw,50px);line-height:1.08;margin:18px 0 14px;letter-spacing:-.02em;font-weight:700}
+h1 .mono{font-family:var(--font-mono);color:var(--accent);font-weight:500;font-size:.82em}
+.lead{font-size:19px;color:var(--text-dim);max-width:70ch;margin:0}
+.meta-strip{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.chip{font-family:var(--font-mono);font-size:12.5px;padding:6px 11px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-dim)}
+.chip b{color:var(--text);font-weight:500}
+
+/* ---- nav ---- */
+nav.toc{position:sticky;top:24px;font-size:13.5px;padding-top:8px}
+@media(max-width:880px){nav.toc{position:static;display:flex;gap:8px;overflow-x:auto;padding:14px 0;border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch}}
+nav.toc a{display:block;color:var(--text-faint);text-decoration:none;padding:6px 10px;border-left:2px solid transparent;font-family:var(--font-mono);white-space:nowrap;transition:color .15s,border-color .15s}
+nav.toc a:hover{color:var(--text)}
+nav.toc a.active{color:var(--accent);border-left-color:var(--accent)}
+@media(max-width:880px){nav.toc a{border-left:none;border-bottom:2px solid transparent}nav.toc a.active{border-bottom-color:var(--accent)}}
+
+main{padding:40px 0 90px;min-width:0}
+section{margin-bottom:54px;scroll-margin-top:24px}
+.slabel{font-family:var(--font-mono);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.slabel .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--input-dim)}
+h2{font-size:26px;margin:0 0 12px;letter-spacing:-.01em;font-weight:700}
+h3{font-size:18px;margin:26px 0 10px;font-weight:600}
+p{margin:0 0 14px;color:var(--text-dim)}
+p strong,li strong{color:var(--text);font-weight:600}
+a.inline{color:var(--accent)}
+code{font-family:var(--font-mono);font-size:.86em;background:var(--recessed);border:1px solid var(--border);padding:1px 6px;border-radius:5px;color:var(--text);white-space:nowrap}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 24px}
+.card--recessed{background:var(--recessed)}
+.card--hero{background:linear-gradient(140deg,var(--surface),var(--surface-2));border-color:var(--border-strong);box-shadow:0 18px 50px -28px rgba(0,0,0,.6)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+
+/* pipeline tri-cards */
+.pipe{border-radius:12px;border:1px solid var(--border);background:var(--surface);overflow:hidden}
+.pipe__head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pipe__head .name{font-family:var(--font-mono);font-weight:600;font-size:14px}
+.pipe__head .grp{font-family:var(--font-mono);font-size:11px;padding:3px 8px;border-radius:5px}
+.pipe__body{padding:16px 18px;font-size:14.5px}
+.pipe__body ul{margin:0;padding-left:0;list-style:none}
+.pipe__body li{position:relative;padding:5px 0 5px 18px;color:var(--text-dim)}
+.pipe__body li::before{content:"";position:absolute;left:0;top:13px;width:7px;height:7px;border-radius:2px;background:var(--text-faint)}
+.tag-in li::before{background:var(--input)} .tag-fil li::before{background:var(--filter)} .tag-out li::before{background:var(--output)}
+.lg{font-family:var(--font-mono);font-size:12px;color:var(--output)}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:18px;margin:14px 0 6px;font-size:13px;font-family:var(--font-mono);color:var(--text-dim)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{width:13px;height:13px;border-radius:3px;display:inline-block}
+
+/* code block */
+.code{background:var(--recessed);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:14px 0}
+.code__bar{padding:8px 14px;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:12px;color:var(--text-faint);display:flex;justify-content:space-between;align-items:center}
+.code__bar .tag{color:var(--accent)}
+.code pre{margin:0;padding:14px 16px;overflow-x:auto;font-family:var(--font-mono);font-size:13px;line-height:1.65;white-space:pre;color:var(--text)}
+.code pre .c{color:var(--text-faint)} .code pre .k{color:var(--input)} .code pre .v{color:var(--output)} .code pre .h{color:var(--filter)}
+
+/* table */
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+thead th{position:sticky;top:0;background:var(--surface-2);text-align:left;padding:11px 14px;font-family:var(--font-mono);font-size:12px;letter-spacing:.04em;color:var(--text-dim);border-bottom:1px solid var(--border-strong)}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text-dim)}
+tbody tr:nth-child(even){background:rgba(127,160,200,0.035)}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+td b{color:var(--text);font-weight:600}
+
+/* callout */
+.callout{border:1px solid var(--border-strong);border-left:3px solid var(--filter);background:var(--filter-dim);border-radius:0 10px 10px 0;padding:16px 20px;margin:18px 0}
+.callout--drop{border-left-color:var(--drop);background:var(--drop-dim)}
+.callout--out{border-left-color:var(--output);background:var(--output-dim)}
+.callout h4{margin:0 0 6px;font-size:15px;font-family:var(--font-mono);letter-spacing:.02em}
+.callout p{margin:0;color:var(--text-dim);font-size:14.5px}
+
+/* status pills */
+.pill{font-family:var(--font-mono);font-size:11.5px;padding:2px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%}
+.pill.keep{background:var(--output-dim);color:var(--output)} .pill.keep::before{background:var(--output)}
+.pill.drop{background:var(--drop-dim);color:var(--drop)} .pill.drop::before{background:var(--drop)}
+.pill.by{background:var(--input-dim);color:var(--input)} .pill.by::before{background:var(--input)}
+
+/* mermaid shell */
+.diagram-shell{margin:18px 0}
+.mermaid-wrap{position:relative;border:1px solid var(--border);border-radius:12px;background:var(--recessed);overflow:hidden}
+.zoom-controls{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px}
+.zoom-controls button{width:30px;height:30px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:7px;cursor:pointer;font-size:15px;font-family:var(--font-mono);display:flex;align-items:center;justify-content:center;transition:background .15s}
+.zoom-controls button:hover{background:var(--surface-2)}
+.mermaid-viewport{overflow:hidden;cursor:grab;height:560px;display:flex;align-items:center;justify-content:center}
+.mermaid-viewport.grabbing{cursor:grabbing}
+.mermaid-canvas{transform-origin:center center;transition:transform .05s linear}
+.mermaid{display:flex;justify-content:center}
+.hint{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-align:center;margin-top:7px}
+
+footer{border-top:1px solid var(--border);padding:30px 0;color:var(--text-faint);font-family:var(--font-mono);font-size:12.5px}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+section{animation:fadeUp .5s both}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <div class="kicker">AWS Container Insights · DaemonSet</div>
+  <h1>Fluent Bit Log Pipeline<br><span class="mono">k8s-manifests/amazon-cloudwatch/fluent-bit.yaml</span></h1>
+  <p class="lead">Một DaemonSet chạy trên mọi node của EKS cluster <code>exchange</code>, thu log từ container/node/host, enrich metadata Kubernetes, rồi đẩy lên 3 log group CloudWatch riêng biệt. Trang này mổ xẻ toàn bộ file và cơ chế chảy của log từ file trên node tới CloudWatch.</p>
+  <div class="meta-strip">
+    <span class="chip">namespace <b>amazon-cloudwatch</b></span>
+    <span class="chip">image <b>aws-for-fluent-bit:stable</b></span>
+    <span class="chip">kind <b>DaemonSet</b></span>
+    <span class="chip">inputs <b>8</b></span>
+    <span class="chip">log groups <b>3</b></span>
+  </div>
+</div></header>
+
+<div class="wrap"><div class="layout">
+  <nav class="toc" id="toc">
+    <a href="#overview">00 · Overview</a>
+    <a href="#pipeline">01 · Pipeline</a>
+    <a href="#resources">02 · K8s resources</a>
+    <a href="#service">03 · SERVICE</a>
+    <a href="#three">04 · 3 luồng log</a>
+    <a href="#inputs">05 · INPUT params</a>
+    <a href="#tag">06 · Cơ chế Tag</a>
+    <a href="#k8sfilter">07 · Filter kubernetes</a>
+    <a href="#grep">08 · Filter giảm cost</a>
+    <a href="#daemonset">09 · DaemonSet</a>
+    <a href="#scope">10 · Qua vs bypass</a>
+  </nav>
+
+  <main>
+  <!-- 00 -->
+  <section id="overview">
+    <div class="slabel"><span class="dot"></span>00 — Bức tranh tổng thể</div>
+    <h2>Một agent, ba luồng, ba log group</h2>
+    <div class="card card--hero">
+      <p style="font-size:17px;color:var(--text)">File này định nghĩa <strong>agent thu log</strong> của Container Insights. Mô hình xử lý của Fluent Bit luôn là một chuỗi 4 khâu:</p>
+      <p style="font-family:var(--font-mono);font-size:15px;text-align:center;margin:18px 0 6px;color:var(--text)">
+        <span style="color:var(--input)">INPUT</span> &nbsp;→&nbsp; <span style="color:var(--accent)">[Tag]</span> &nbsp;→&nbsp; <span style="color:var(--filter)">FILTER</span> &nbsp;→&nbsp; <span style="color:var(--output)">OUTPUT</span>
+      </p>
+      <p style="margin-top:14px">INPUT đọc dữ liệu và gắn <strong>Tag</strong>; FILTER biến đổi/enrich/lọc theo Tag khớp; OUTPUT gửi đi nơi nào cũng dựa trên <strong>Tag khớp</strong>. Toàn bộ file gom thành 3 luồng độc lập — <code>application</code>, <code>dataplane</code>, <code>host</code> — mỗi luồng ra một log group khác nhau.</p>
+    </div>
+    <div class="grid3" style="margin-top:16px">
+      <div class="card"><div style="font-family:var(--font-mono);color:var(--input);font-size:13px">application.*</div><p style="margin:8px 0 0">Log container của app pods + của fluent-bit & cloudwatch-agent. Luồng volume cao nhất.</p></div>
+      <div class="card"><div style="font-family:var(--font-mono);color:var(--filter);font-size:13px">dataplane.*</div><p style="margin:8px 0 0">Log hạ tầng node: systemd (docker/containerd/kubelet) + aws-node/kube-proxy.</p></div>
+      <div class="card"><div style="font-family:var(--font-mono);color:var(--output);font-size:13px">host.*</div><p style="margin:8px 0 0">Log hệ điều hành node: dmesg, messages, secure (auth/ssh).</p></div>
+    </div>
+  </section>
+
+  <!-- 01 -->
+  <section id="pipeline">
+    <div class="slabel"><span class="dot"></span>01 — Sơ đồ chảy end-to-end</div>
+    <h2>Từ file trên node tới CloudWatch</h2>
+    <p>Mỗi node chạy 1 pod Fluent Bit. Pod mount các path log của node (read-only) rồi chảy theo sơ đồ dưới. Khâu <code>FILTER grep</code> tô vàng là phần thêm vào để giảm cost — chỉ nằm trên luồng <code>application</code>.</p>
+    <div class="legend">
+      <span><i style="background:var(--input)"></i>INPUT (nguồn)</span>
+      <span><i style="background:var(--filter)"></i>FILTER (xử lý)</span>
+      <span><i style="background:var(--output)"></i>OUTPUT (log group)</span>
+    </div>
+    <div class="diagram-shell">
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button data-z="in" title="Phóng to">+</button>
+          <button data-z="out" title="Thu nhỏ">−</button>
+          <button data-z="reset" title="Reset">⟳</button>
+          <button data-z="expand" title="Mở tab mới">⛶</button>
+        </div>
+        <div class="mermaid-viewport" id="vp">
+          <div class="mermaid-canvas" id="cv">
+<pre class="mermaid">
+flowchart TD
+  classDef inp fill:#13314a,stroke:#3fb6f0,stroke-width:1.4px,color:#dbeefb;
+  classDef fil fill:#3a2f12,stroke:#e0ab3e,stroke-width:1.4px,color:#fbeec9;
+  classDef out fill:#0f3a2c,stroke:#34d39a,stroke-width:1.4px,color:#c9f5e6;
+  classDef cost fill:#3a1614,stroke:#f3736f,stroke-width:1.8px,color:#fbd6d4;
+
+  F1["tail · app pods<br/><small>/var/log/containers/*.log</small>"]:::inp
+  F2["tail · fluent-bit*<br/>+ cloudwatch-agent*"]:::inp
+  F3["tail · aws-node*<br/>+ kube-proxy*"]:::inp
+  F4["systemd · docker /<br/>containerd / kubelet"]:::inp
+  F5["tail · dmesg /<br/>messages / secure"]:::inp
+
+  KF["FILTER kubernetes<br/><small>Merge_Log → log_processed</small>"]:::fil
+  GREP["FILTER grep<br/><small>Exclude TRACE/DEBUG/INFO/WARN</small>"]:::cost
+  MOD["FILTER modify<br/><small>rename systemd fields</small>"]:::fil
+  AWS1["FILTER aws<br/><small>imds v2 metadata</small>"]:::fil
+  AWS2["FILTER aws<br/><small>imds v2 metadata</small>"]:::fil
+
+  O1["OUTPUT cloudwatch_logs<br/><b>…/exchange/application</b>"]:::out
+  O2["OUTPUT cloudwatch_logs<br/><b>…/exchange/dataplane</b>"]:::out
+  O3["OUTPUT cloudwatch_logs<br/><b>…/exchange/host</b>"]:::out
+
+  F1 -->|application.*| KF
+  F2 -->|application.*| KF
+  KF --> GREP --> O1
+
+  F4 -->|dataplane.systemd.*| MOD --> AWS1
+  F3 -->|dataplane.tail.*| AWS1
+  AWS1 --> O2
+
+  F5 -->|host.*| AWS2 --> O3
+</pre>
+          </div>
+        </div>
+      </div>
+      <div class="hint">Ctrl/⌘ + cuộn để zoom · kéo để di chuyển · nút ⛶ mở full ở tab mới</div>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section id="resources">
+    <div class="slabel"><span class="dot"></span>02 — Tài nguyên trong file</div>
+    <h2>5 object Kubernetes</h2>
+    <p>File YAML gồm 5 manifest nối bằng <code>---</code>. ConfigMap chứa toàn bộ cấu hình Fluent Bit; DaemonSet chạy agent; 3 object còn lại cấp quyền đọc K8s API.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Kind</th><th>Tên</th><th>Vai trò</th></tr></thead>
+      <tbody>
+        <tr><td><b>ServiceAccount</b></td><td><code>fluent-bit</code></td><td>Danh tính pod dùng để gọi K8s API.</td></tr>
+        <tr><td><b>ClusterRole</b></td><td><code>fluent-bit-role</code></td><td>Cấp quyền <code>get/list/watch</code> trên pods, namespaces, nodes, nodes/proxy + đọc <code>/metrics</code>. Cần cho việc enrich metadata.</td></tr>
+        <tr><td><b>ClusterRoleBinding</b></td><td><code>fluent-bit-role-binding</code></td><td>Gắn Role vào ServiceAccount.</td></tr>
+        <tr><td><b>ConfigMap</b></td><td><code>fluent-bit-config</code></td><td>Chứa 5 file: <code>fluent-bit.conf</code> (chính), <code>application-log.conf</code>, <code>dataplane-log.conf</code>, <code>host-log.conf</code>, <code>parsers.conf</code>.</td></tr>
+        <tr><td><b>DaemonSet</b></td><td><code>fluent-bit</code></td><td>Chạy 1 pod/node, mount path log của node, nạp ConfigMap.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout">
+      <h4>@INCLUDE</h4>
+      <p><code>fluent-bit.conf</code> chỉ khai báo <code>[SERVICE]</code> rồi <code>@INCLUDE</code> 3 file con. Mỗi file con là một luồng hoàn chỉnh (INPUT → FILTER → OUTPUT).</p>
+    </div>
+  </section>
+
+  <!-- 03 -->
+  <section id="service">
+    <div class="slabel"><span class="dot"></span>03 — Khối [SERVICE]</div>
+    <h2>Cấu hình engine chung</h2>
+    <div class="code">
+      <div class="code__bar"><span>fluent-bit.conf — <span class="tag">[SERVICE]</span></span><span>engine</span></div>
+<pre><span class="k">Flush</span>                     <span class="v">5</span>     <span class="c"># gom buffer & đẩy output mỗi 5 giây</span>
+<span class="k">Grace</span>                     <span class="v">30</span>    <span class="c"># chờ 30s flush nốt khi shutdown</span>
+<span class="k">Log_Level</span>                 <span class="v">info</span>  <span class="c"># log của CHÍNH fluent-bit</span>
+<span class="k">Parsers_File</span>              <span class="v">parsers.conf</span>
+<span class="k">storage.path</span>              <span class="v">/var/fluent-bit/state/flb-storage/</span>
+<span class="k">storage.sync</span>              <span class="v">normal</span>
+<span class="k">storage.backlog.mem_limit</span> <span class="v">5M</span>    <span class="c"># trần RAM cho chunk tồn đọng dưới đĩa</span></pre>
+    </div>
+    <p><code>storage.path</code> là thư mục buffer trên đĩa, dùng chung cho mọi INPUT có <code>storage.type filesystem</code>. <code>Flush 5</code> quyết định tần suất gọi PutLogEvents — gom 5 giây/lần để giảm số request.</p>
+  </section>
+
+  <!-- 04 -->
+  <section id="three">
+    <div class="slabel"><span class="dot"></span>04 — Ba luồng log chi tiết</div>
+    <h2>application · dataplane · host</h2>
+    <div class="grid2">
+      <div class="pipe">
+        <div class="pipe__head"><span class="name">application-log.conf</span><span class="grp" style="background:var(--input-dim);color:var(--input)">3 inputs</span></div>
+        <div class="pipe__body">
+          <h3 style="margin-top:0;font-size:13px;color:var(--input);font-family:var(--font-mono)">INPUT (tail)</h3>
+          <ul class="tag-in">
+            <li><b>app pods</b> — <code>*.log</code>, trừ 4 thành phần hệ thống · DB <code>flb_container.db</code> · buffer 50MB + đĩa</li>
+            <li><b>fluent-bit*</b> — log của chính nó · DB <code>flb_log.db</code> · 5MB</li>
+            <li><b>cloudwatch-agent*</b> — DB <code>flb_cwagent.db</code> · 5MB</li>
+          </ul>
+          <h3 style="font-size:13px;color:var(--filter);font-family:var(--font-mono)">FILTER</h3>
+          <ul class="tag-fil"><li><b>kubernetes</b> → merge JSON vào <code>log_processed</code>, enrich pod/ns</li><li><b>grep</b> → bỏ TRACE/DEBUG/INFO/WARN (giảm cost)</li></ul>
+          <h3 style="font-size:13px;color:var(--output);font-family:var(--font-mono)">OUTPUT</h3>
+          <ul class="tag-out"><li class="lg">…/containerinsights/exchange/application</li></ul>
+        </div>
+      </div>
+
+      <div class="pipe">
+        <div class="pipe__head"><span class="name">dataplane-log.conf</span><span class="grp" style="background:var(--filter-dim);color:var(--filter)">2 inputs</span></div>
+        <div class="pipe__body">
+          <h3 style="margin-top:0;font-size:13px;color:var(--input);font-family:var(--font-mono)">INPUT</h3>
+          <ul class="tag-in">
+            <li><b>systemd</b> — journald, lọc <code>docker</code>/<code>containerd</code>/<code>kubelet</code> · đọc từ tail</li>
+            <li><b>tail</b> — <code>aws-node*</code> + <code>kube-proxy*</code> · buffer 50MB + đĩa</li>
+          </ul>
+          <h3 style="font-size:13px;color:var(--filter);font-family:var(--font-mono)">FILTER</h3>
+          <ul class="tag-fil"><li><b>modify</b> → đổi tên field systemd (<code>_HOSTNAME→hostname</code>…), bỏ field thừa bằng <code>Remove_regex</code></li><li><b>aws</b> → gắn metadata EC2 (imds v2)</li></ul>
+          <h3 style="font-size:13px;color:var(--output);font-family:var(--font-mono)">OUTPUT</h3>
+          <ul class="tag-out"><li class="lg">…/containerinsights/exchange/dataplane</li></ul>
+        </div>
+      </div>
+
+      <div class="pipe">
+        <div class="pipe__head"><span class="name">host-log.conf</span><span class="grp" style="background:var(--output-dim);color:var(--output)">3 inputs</span></div>
+        <div class="pipe__body">
+          <h3 style="margin-top:0;font-size:13px;color:var(--input);font-family:var(--font-mono)">INPUT (tail)</h3>
+          <ul class="tag-in">
+            <li><b>dmesg</b> — kernel ring buffer · <code>Key message</code> (no parser)</li>
+            <li><b>messages</b> — <code>/var/log/messages</code> · <code>Parser syslog</code></li>
+            <li><b>secure</b> — <code>/var/log/secure</code> (auth/ssh) · <code>Parser syslog</code></li>
+          </ul>
+          <h3 style="font-size:13px;color:var(--filter);font-family:var(--font-mono)">FILTER</h3>
+          <ul class="tag-fil"><li><b>aws</b> → metadata EC2 (imds v2)</li></ul>
+          <h3 style="font-size:13px;color:var(--output);font-family:var(--font-mono)">OUTPUT</h3>
+          <ul class="tag-out"><li class="lg">…/containerinsights/exchange/host</li></ul>
+        </div>
+      </div>
+    </div>
+    <div class="callout">
+      <h4>Vì sao application tách 3 INPUT?</h4>
+      <p>INPUT chính loại 4 thành phần (<code>cloudwatch-agent</code>, <code>fluent-bit</code>, <code>aws-node</code>, <code>kube-proxy</code>) khỏi glob <code>*.log</code> để chúng không lẫn checkpoint/buffer với app. Sau đó <code>fluent-bit</code> &amp; <code>cloudwatch-agent</code> được nhặt lại vào nhóm <code>application</code> bằng 2 INPUT riêng (DB riêng, buffer 5MB); còn <code>aws-node</code>/<code>kube-proxy</code> chuyển sang nhóm <code>dataplane</code>.</p>
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section id="inputs">
+    <div class="slabel"><span class="dot"></span>05 — Tham số INPUT</div>
+    <h2>Từng tham số <code>tail</code> làm gì</h2>
+    <div class="tw"><table>
+      <thead><tr><th>Tham số</th><th>Ý nghĩa</th></tr></thead>
+      <tbody>
+        <tr><td><code>Name tail</code></td><td>Plugin đọc file trên node (giống <code>tail -f</code>).</td></tr>
+        <tr><td><code>Tag application.*</code></td><td>Nhãn định tuyến. Dấu <code>*</code> được thay bằng <b>đường dẫn file</b> (xem mục 06).</td></tr>
+        <tr><td><code>Path</code></td><td>Glob các file cần đọc, vd <code>/var/log/containers/*.log</code>.</td></tr>
+        <tr><td><code>Exclude_Path</code></td><td>Loại trừ file khỏi <code>Path</code>.</td></tr>
+        <tr><td><code>multiline.parser docker, cri</code></td><td>Parse format runtime <b>và ghép lại</b> các dòng bị runtime cắt (&gt;16KB) thành 1 record — quan trọng cho stack trace.</td></tr>
+        <tr><td><code>DB</code></td><td>File SQLite lưu <b>offset đã đọc</b> của từng file → restart đọc tiếp đúng chỗ, không trùng/mất. Mỗi INPUT một DB riêng.</td></tr>
+        <tr><td><code>Mem_Buf_Limit 50MB</code></td><td>Trần RAM buffer khi OUTPUT chậm (backpressure). Vượt → <b>tạm dừng đọc</b> file đó, chống OOM.</td></tr>
+        <tr><td><code>Skip_Long_Lines On</code></td><td>Dòng dài quá buffer (mặc định 32KB) thì bỏ qua thay vì kẹt.</td></tr>
+        <tr><td><code>Refresh_Interval 10</code></td><td>Mỗi 10s quét <code>Path</code> tìm file mới (pod mới sinh).</td></tr>
+        <tr><td><code>Rotate_Wait 30</code></td><td>Sau logrotate, theo dõi thêm 30s để đọc nốt đuôi file.</td></tr>
+        <tr><td><code>storage.type filesystem</code></td><td>Buffer chunk xuống đĩa (qua <code>storage.path</code>) thay vì chỉ RAM.</td></tr>
+        <tr><td><code>Read_from_Head</code></td><td><code>Off</code> = chỉ đọc log mới (lấy từ ConfigMap cluster-info <code>read.head:"Off"</code>).</td></tr>
+        <tr><td><code>Key message</code></td><td>(dmesg) Không có parser → đặt cả dòng vào field <code>message</code>.</td></tr>
+        <tr><td><code>Parser syslog</code></td><td>(messages/secure) Áp parser regex <code>syslog</code> ở <code>parsers.conf</code>.</td></tr>
+      </tbody>
+    </table></div>
+    <h3>INPUT systemd (dataplane)</h3>
+    <div class="tw"><table>
+      <thead><tr><th>Tham số</th><th>Ý nghĩa</th></tr></thead>
+      <tbody>
+        <tr><td><code>Systemd_Filter _SYSTEMD_UNIT=…</code></td><td>Chỉ lấy log của <code>docker</code>/<code>containerd</code>/<code>kubelet</code> trong journal, bỏ phần còn lại.</td></tr>
+        <tr><td><code>Path /var/log/journal</code></td><td>Thư mục journald của node.</td></tr>
+        <tr><td><code>Read_From_Tail On</code></td><td>Chỉ đọc log mới kể từ lúc agent start.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- 06 -->
+  <section id="tag">
+    <div class="slabel"><span class="dot"></span>06 — Cơ chế Tag</div>
+    <h2>Tag = đường dẫn file, để filter tách metadata</h2>
+    <p>Với <code>tail</code>, <code>*</code> trong Tag được thay bằng đường dẫn tuyệt đối của file, đổi <code>/</code> thành <code>.</code>. Đây là chìa khóa để filter <code>kubernetes</code> biết log thuộc pod/namespace nào.</p>
+    <div class="code">
+      <div class="code__bar"><span>Tag expansion</span><span>tail plugin</span></div>
+<pre><span class="c"># File trên node:</span>
+/var/log/containers/exchange-api-deployment-xxx.log
+
+<span class="c"># Tag application.*  →  * thay bằng path (/ → .):</span>
+application.var.log.containers.exchange-api-deployment-xxx<span class="k">.log</span>
+
+<span class="c"># Filter kubernetes cắt prefix để lấy lại ns / pod / container:</span>
+<span class="k">Kube_Tag_Prefix</span>  <span class="v">application.var.log.containers.</span></pre>
+    </div>
+    <p>OUTPUT và FILTER đều chọn việc bằng <code>Match</code> theo Tag. Vd <code>Match application.*</code> bắt cả 3 INPUT của nhóm application; <code>Match dataplane.*</code> bắt cả systemd lẫn tail của dataplane.</p>
+  </section>
+
+  <!-- 07 -->
+  <section id="k8sfilter">
+    <div class="slabel"><span class="dot"></span>07 — Filter kubernetes</div>
+    <h2>Merge_Log tạo ra <code>log_processed</code></h2>
+    <div class="code">
+      <div class="code__bar"><span>application-log.conf — <span class="tag">[FILTER]</span></span><span>enrich</span></div>
+<pre><span class="k">Name</span>                <span class="v">kubernetes</span>
+<span class="k">Match</span>               <span class="v">application.*</span>
+<span class="k">Merge_Log</span>           <span class="v">On</span>            <span class="c"># nếu dòng log là JSON → parse</span>
+<span class="k">Merge_Log_Key</span>       <span class="v">log_processed</span> <span class="c"># …đặt kết quả dưới key này</span>
+<span class="k">K8S-Logging.Parser</span>  <span class="v">On</span>
+<span class="k">Use_Kubelet</span>         <span class="v">On</span>            <span class="c"># hỏi metadata qua kubelet, giảm tải apiserver</span>
+<span class="k">Kubelet_Port</span>        <span class="v">10250</span></pre>
+    </div>
+    <p>App log dạng JSON (logback) nên sau khi merge, các field như <code>level</code>, <code>message</code>, <code>logger_name</code> nằm dưới <code>log_processed</code>. Đây là lý do filter giảm cost truy được <code>log_processed['level']</code>.</p>
+    <div class="callout--out callout">
+      <h4>log_processed</h4>
+      <p>Dòng log <code>{"level":"INFO","message":"…"}</code> sau merge thành record có <code>log_processed.level = "INFO"</code>. Dòng <b>không phải JSON</b> sẽ không có <code>log_processed</code> → không có <code>level</code>.</p>
+    </div>
+  </section>
+
+  <!-- 08 -->
+  <section id="grep">
+    <div class="slabel"><span class="dot"></span>08 — Filter giảm cost</div>
+    <h2>Chặn DEBUG/INFO/WARN trước khi đẩy lên</h2>
+    <p>Khối <code>[FILTER]</code> này đặt <b>sau</b> filter kubernetes (đã có <code>log_processed</code>) và <b>trước</b> OUTPUT. Record bị loại ngay tại đây nên không bao giờ nằm trong batch PutLogEvents → giảm GB ingest.</p>
+    <div class="code">
+      <div class="code__bar"><span>application-log.conf — <span class="tag">[FILTER] grep</span></span><span>cost ↓</span></div>
+<pre><span class="k">Name</span>     <span class="v">grep</span>
+<span class="k">Match</span>    <span class="v">application.*</span>
+<span class="k">Exclude</span>  <span class="h">$log_processed['level']</span> <span class="v">^(TRACE|DEBUG|INFO|WARN)$</span></pre>
+    </div>
+    <div class="grid3" style="margin-top:6px">
+      <div class="card card--recessed"><span class="pill drop">DROP</span><p style="margin:10px 0 0">TRACE · DEBUG · INFO · WARN — khớp regex, bị loại.</p></div>
+      <div class="card card--recessed"><span class="pill keep">KEEP</span><p style="margin:10px 0 0">ERROR — không khớp → vẫn lên CloudWatch (error tracing OK).</p></div>
+      <div class="card card--recessed"><span class="pill keep">KEEP</span><p style="margin:10px 0 0">Record <b>không có</b> <code>log_processed.level</code> (log hệ thống, non-JSON) → không khớp → giữ.</p></div>
+    </div>
+    <div class="callout--drop callout">
+      <h4>Cơ chế Exclude an toàn</h4>
+      <p><code>Exclude KEY regex</code> chỉ loại record <b>khi key tồn tại VÀ khớp</b>. Key vắng mặt → giữ. Nhờ vậy log non-JSON/infra không bị mất oan, và ERROR luôn được đẩy lên.</p>
+    </div>
+  </section>
+
+  <!-- 09 -->
+  <section id="daemonset">
+    <div class="slabel"><span class="dot"></span>09 — DaemonSet</div>
+    <h2>Agent chạy thế nào trên node</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3 style="margin-top:0">hostPath mounts (read-only)</h3>
+        <div class="tw"><table>
+          <thead><tr><th>Mount</th><th>Để làm gì</th></tr></thead>
+          <tbody>
+            <tr><td><code>/var/log</code></td><td>Đọc container logs + messages/secure/dmesg</td></tr>
+            <tr><td><code>/var/lib/docker/containers</code></td><td>Đọc file log gốc của container</td></tr>
+            <tr><td><code>/run/log/journal</code></td><td>journald (systemd input)</td></tr>
+            <tr><td><code>/var/fluent-bit/state</code></td><td><b>Ghi được</b> — chứa DB checkpoint + buffer đĩa</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Thông số pod</h3>
+        <ul style="list-style:none;padding:0;margin:0">
+          <li style="padding:6px 0;border-bottom:1px solid var(--border)"><code>hostNetwork: true</code> · <code>dnsPolicy: ClusterFirstWithHostNet</code></li>
+          <li style="padding:6px 0;border-bottom:1px solid var(--border)">resources: limit <b>200Mi</b> · request <b>500m CPU / 100Mi</b></li>
+          <li style="padding:6px 0;border-bottom:1px solid var(--border)">env nạp từ ConfigMap <code>fluent-bit-cluster-info</code>: region, cluster.name, read.head/tail</li>
+          <li style="padding:6px 0">image <code>aws-for-fluent-bit:stable</code></li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout">
+      <h4>ConfigMap đổi ≠ pod reload</h4>
+      <p>DaemonSet <b>không</b> tự restart khi ConfigMap thay đổi. Phải <code>kubectl rollout restart daemonset/fluent-bit -n amazon-cloudwatch</code> để agent nạp config mới.</p>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section id="scope">
+    <div class="slabel"><span class="dot"></span>10 — Phạm vi</div>
+    <h2>Cái gì qua Fluent Bit, cái gì không</h2>
+    <p>Fluent Bit này <b>không</b> phải cổng chung cho mọi log lên CloudWatch — nó chỉ gánh các path log nó tail trên node.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Nguồn log</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>
+      <tbody>
+        <tr><td>Container logs (app + system pods)</td><td><span class="pill keep">QUA</span></td><td>→ application / dataplane</td></tr>
+        <tr><td>systemd + host files (node)</td><td><span class="pill keep">QUA</span></td><td>→ dataplane / host</td></tr>
+        <tr><td>stdout của cloudwatch-agent &amp; fluent-bit</td><td><span class="pill keep">QUA</span></td><td>bị tail như container log thường</td></tr>
+        <tr><td>Metrics của CloudWatch Agent</td><td><span class="pill by">BYPASS</span></td><td>cwagent đẩy <b>metrics</b> thẳng lên CloudWatch, không qua Fluent Bit</td></tr>
+        <tr><td>RDS/Aurora audit · slowquery</td><td><span class="pill by">BYPASS</span></td><td>AWS service tự đẩy</td></tr>
+        <tr><td>Lambda · EKS control-plane · WAF · VPC Flow</td><td><span class="pill by">BYPASS</span></td><td>đẩy thẳng tới CloudWatch</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout--out callout">
+      <h4>Hệ quả cho việc giảm cost</h4>
+      <p>Filter <code>grep</code> chỉ <code>Match application.*</code> → chỉ thu hẹp log group <code>application</code>. Nhóm <code>dataplane</code>/<code>host</code> và mọi nguồn bypass <b>không bị ảnh hưởng</b>. Đây cũng là nhóm volume chính, nên đúng chỗ — chỉ là đừng kỳ vọng nó giảm tổng hóa đơn của mọi log group.</p>
+    </div>
+  </section>
+  </main>
+</div></div>
+
+<footer><div class="wrap">Container Insights · Fluent Bit DaemonSet — pipeline reference · INPUT → Tag → FILTER → OUTPUT</div></footer>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+mermaid.initialize({
+  startOnLoad:true, securityLevel:'loose',
+  theme:'base', fontFamily:"'Fira Code', monospace",
+  themeVariables:{
+    fontSize:'15px',
+    primaryColor: dark?'#142235':'#ffffff',
+    primaryTextColor: dark?'#e7eef7':'#16263c',
+    primaryBorderColor: dark?'#2f486a':'#bcd0e8',
+    lineColor: dark?'#5d7a9a':'#7689a1',
+    tertiaryColor: dark?'#0f1c2e':'#eef2f7'
+  }
+});
+
+/* zoom / pan */
+function setup(){
+  const vp=document.getElementById('vp'), cv=document.getElementById('cv');
+  if(!vp||!cv) return;
+  let z=1.05, x=0, y=0, drag=false, sx=0, sy=0, moved=false;
+  const apply=()=>cv.style.transform=`translate(${x}px,${y}px) scale(${z})`;
+  apply();
+  document.querySelectorAll('.zoom-controls button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const a=b.dataset.z;
+      if(a==='in') z=Math.min(z*1.25,5);
+      else if(a==='out') z=Math.max(z/1.25,.3);
+      else if(a==='reset'){z=1.05;x=0;y=0;}
+      else if(a==='expand') return openTab();
+      apply();
+    });
+  });
+  vp.addEventListener('wheel',e=>{
+    if(!(e.ctrlKey||e.metaKey)) return;
+    e.preventDefault();
+    z=Math.min(Math.max(z*(e.deltaY<0?1.1:0.9),.3),5); apply();
+  },{passive:false});
+  vp.addEventListener('mousedown',e=>{drag=true;moved=false;sx=e.clientX-x;sy=e.clientY-y;vp.classList.add('grabbing');});
+  addEventListener('mousemove',e=>{if(!drag)return;x=e.clientX-sx;y=e.clientY-sy;moved=true;apply();});
+  addEventListener('mouseup',()=>{drag=false;vp.classList.remove('grabbing');});
+  vp.addEventListener('click',()=>{ if(!moved) openTab(); });
+  function openTab(){
+    const svg=cv.querySelector('svg'); if(!svg) return;
+    const w=window.open('','_blank'); if(!w) return;
+    w.document.write(`<!doctype html><body style="margin:0;background:${dark?'#0d1726':'#eef2f7'};display:flex;align-items:center;justify-content:center;min-height:100vh">${svg.outerHTML}</body>`);
+    w.document.close();
+  }
+}
+setTimeout(setup, 700);
+
+/* TOC active state */
+const links=[...document.querySelectorAll('#toc a')];
+const map=new Map(links.map(a=>[a.getAttribute('href').slice(1),a]));
+const ob=new IntersectionObserver(es=>{
+  es.forEach(e=>{ if(e.isIntersecting){ links.forEach(l=>l.classList.remove('active')); map.get(e.target.id)?.classList.add('active'); }});
+},{rootMargin:'-20% 0px -70% 0px'});
+document.querySelectorAll('main section').forEach(s=>ob.observe(s));
+</script>
+</body>
+</html>
