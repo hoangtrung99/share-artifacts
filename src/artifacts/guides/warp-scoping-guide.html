@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hướng Dẫn Tuy Chọn Cloudflare WARP — Không Cần Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --surface2: #eef2f6;
+  --surface-elevated: #f0f6ff;
+  --border: rgba(0,0,0,0.07);
+  --border-bright: rgba(0,0,0,0.14);
+  --text: #1a1a2e;
+  --text-dim: #6b7280;
+
+  --accent: #0369a1;
+  --accent-dim: rgba(3,105,161,0.08);
+  --green: #059669;
+  --green-dim: rgba(5,150,105,0.08);
+  --amber: #d97706;
+  --amber-dim: rgba(217,119,6,0.08);
+  --teal: #0d9488;
+  --teal-dim: rgba(13,148,136,0.08);
+  --rose: #be123c;
+  --rose-dim: rgba(190,18,60,0.08);
+  --slate: #475569;
+  --slate-dim: rgba(71,85,105,0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2333;
+    --surface-elevated: #1a2332;
+    --border: rgba(255,255,255,0.06);
+    --border-bright: rgba(255,255,255,0.12);
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+
+    --accent: #38bdf8;
+    --accent-dim: rgba(56,189,248,0.12);
+    --green: #34d399;
+    --green-dim: rgba(52,211,153,0.1);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251,191,36,0.1);
+    --teal: #2dd4bf;
+    --teal-dim: rgba(45,212,191,0.1);
+    --rose: #fb7185;
+    --rose-dim: rgba(251,113,133,0.1);
+    --slate: #94a3b8;
+    --slate-dim: rgba(148,163,184,0.1);
+  }
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 15% 0%, var(--accent-dim) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 100%, var(--teal-dim) 0%, transparent 40%);
+  color: var(--text);
+  font-family: var(--font-body);
+  padding: 40px 24px;
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.section, .flow-arrow {
+  animation: fadeUp 0.4s ease-out both;
+  animation-delay: calc(var(--i, 0) * 0.05s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  margin-bottom: 6px;
+  text-wrap: balance;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  margin-bottom: 32px;
+}
+
+.description {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  margin-bottom: 32px;
+  max-width: 700px;
+}
+
+.description strong { color: var(--text); }
+
+/* === CARD === */
+.ve-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  position: relative;
+  overflow-wrap: break-word;
+}
+
+.ve-card--hero {
+  background: var(--surface-elevated);
+  border-color: color-mix(in srgb, var(--border) 50%, var(--accent) 50%);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  padding: 28px 32px;
+}
+
+.ve-card--recessed {
+  background: var(--surface2);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.ve-card--accent-a { border-left: 3px solid var(--accent); }
+.ve-card--accent-b { border-left: 3px solid var(--green); }
+.ve-card--accent-c { border-left: 3px solid var(--amber); }
+.ve-card--accent-d { border-left: 3px solid var(--slate); }
+
+.ve-card__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ve-card__label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.label-a { color: var(--accent); }
+.label-b { color: var(--green); }
+.label-c { color: var(--amber); }
+.label-d { color: var(--slate); }
+
+.ve-card h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.ve-card p {
+  font-size: 14px;
+  color: var(--text-dim);
+  line-height: 1.65;
+  margin-bottom: 14px;
+}
+
+.ve-card p:last-child { margin-bottom: 0; }
+
+.ve-card strong { color: var(--text); }
+
+/* === STACK === */
+.stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+/* === FLOW ARROW === */
+.flow-arrow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.flow-arrow svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--border-bright);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* === GRID === */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+/* === CODE BLOCK === */
+.code-block {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  margin: 12px 0;
+}
+
+.code-block .comment { color: var(--text-dim); }
+.code-block .cmd { color: var(--accent); font-weight: 500; }
+.code-block .flag { color: var(--teal); }
+.code-block .str { color: var(--green); }
+.code-block .warn { color: var(--amber); }
+
+/* === TABLE === */
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 16px 0;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table thead { position: sticky; top: 0; }
+
+.data-table th {
+  background: var(--surface2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--border-bright);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--text);
+}
+
+.data-table tbody tr:nth-child(even) { background: var(--accent-dim); }
+.data-table tbody tr { transition: background 0.15s; }
+.data-table tbody tr:hover { background: var(--border); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+.data-table code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.data-table .num {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* === STATUS BADGE === */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.status--yes { background: var(--green-dim); color: var(--green); }
+.status--no { background: var(--rose-dim); color: var(--rose); }
+.status--warn { background: var(--amber-dim); color: var(--amber); }
+.status--info { background: var(--accent-dim); color: var(--accent); }
+
+/* === CALLOUT === */
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  padding: 16px 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin: 16px 0;
+}
+
+.callout--warn { border-left-color: var(--amber); }
+.callout--danger { border-left-color: var(--rose); }
+.callout--success { border-left-color: var(--green); }
+
+.callout strong { color: var(--text); }
+
+.callout code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* === CHECKLIST === */
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+
+.checklist li {
+  font-size: 13px;
+  line-height: 1.7;
+  padding-left: 24px;
+  position: relative;
+  color: var(--text-dim);
+}
+
+.checklist li::before {
+  content: '□';
+  position: absolute;
+  left: 0;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.checklist li strong { color: var(--text); }
+
+.checklist code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* === STEP NUMBER === */
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.step-num--b { background: var(--green); }
+.step-num--c { background: var(--amber); }
+.step-num--d { background: var(--slate); }
+
+/* === ARCHITECTURE DIAGRAM === */
+.arch-diagram {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 24px;
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: center;
+}
+
+.arch-node {
+  border: 1.5px solid var(--border-bright);
+  border-radius: 10px;
+  padding: 12px 20px;
+  text-align: center;
+  min-width: 180px;
+  background: var(--surface);
+}
+
+.arch-node .arch-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.arch-node .arch-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.arch-node--accent { border-color: var(--accent); background: var(--accent-dim); }
+.arch-node--accent .arch-title { color: var(--accent); }
+.arch-node--green { border-color: var(--green); background: var(--green-dim); }
+.arch-node--green .arch-title { color: var(--green); }
+.arch-node--amber { border-color: var(--amber); background: var(--amber-dim); }
+.arch-node--amber .arch-title { color: var(--amber); }
+.arch-node--teal { border-color: var(--teal); background: var(--teal-dim); }
+.arch-node--teal .arch-title { color: var(--teal); }
+.arch-node--rose { border-color: var(--rose); background: var(--rose-dim); }
+.arch-node--rose .arch-title { color: var(--rose); }
+
+.arch-flow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.arch-flow svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: var(--border-bright);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.arch-flow .arch-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.arch-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.arch-divider {
+  width: 100%;
+  border-top: 1px dashed var(--border-bright);
+  margin: 8px 0;
+  position: relative;
+  text-align: center;
+}
+
+.arch-divider span {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* === COMPARISON GRID === */
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.compare-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compare-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.compare-card__badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.compare-card__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.compare-card__list li {
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding-left: 12px;
+  position: relative;
+  color: var(--text-dim);
+}
+
+.compare-card__list li::before {
+  content: '·';
+  position: absolute;
+  left: 0;
+  color: var(--text-dim);
+}
+
+/* === DECISION TREE === */
+.decision-tree {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.decision-node {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.decision-node__q {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  padding-top: 2px;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.decision-node__a {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+  min-width: 0;
+}
+
+.decision-node__a code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.decision-node__a .badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 4px;
+}
+
+/* === SECTION DIVIDER === */
+.divider-section {
+  margin: 40px 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.divider-section__line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-bright);
+}
+
+.divider-section__title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+/* === SPACER === */
+.spacer-sm { height: 8px; }
+.spacer-md { height: 16px; }
+
+/* === RESPONSIVE === */
+@media (max-width: 768px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 24px; }
+  .grid-2, .grid-3, .compare-grid { grid-template-columns: 1fr; }
+  .arch-flow { flex-direction: column; gap: 4px; }
+  .arch-flow svg { transform: rotate(90deg); }
+  .decision-node { flex-direction: column; gap: 8px; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ====== HEADER ====== -->
+  <h1 class="section" style="--i:0">Tùy Chọn Cloudflare WARP Không Cần Admin</h1>
+  <p class="subtitle section" style="--i:1">routing có chọn lọc cho macOS &mdash; 4 cách tiếp cận</p>
+
+  <div class="description section" style="--i:2">
+    <p>
+      <strong>Tình huống:</strong> bạn bắt buộc dùng Cloudflare WARP của công ty để truy cập dịch vụ
+      (AWS, private apps), nhưng không muốn WARP ảnh hưởng toàn bộ mạng máy. Bạn <strong>không có quyền admin</strong>
+      trên Zero Trust dashboard, và dịch vụ là <strong>public service</strong> (như AWS) &mdash; chỉ cần egress IP
+      đúng + posture "WARP connected".
+    </p>
+    <p style="margin-top:12px">
+      Tài liệu này trình bày <strong>4 cách</strong> để giải quyết, từ tối ưu nhất đến fallback.
+    </p>
+  </div>
+
+  <!-- ====== OVERVIEW: DECISION TABLE ====== -->
+  <div class="divider-section section" style="--i:3">
+    <span class="divider-section__title">Tổng quan 4 cách</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="table-wrap section" style="--i:4">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Cách</th>
+            <th>Nguyên lý</th>
+            <th>Thiết bị phụ</th>
+            <th>Host network</th>
+            <th>UX</th>
+            <th>Khuyến nghị</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>A &mdash; Android SSH Proxy</strong></td>
+            <td>Android chạy WARP + SimpleSSHD. Mac kết nối SSH tunnel.</td>
+            <td>Android (WiFi/USB)</td>
+            <td><span class="status status--yes">Sạch 100%</span></td>
+            <td>Host browser + PAC</td>
+            <td><span class="status status--info">Tối ưu nhất</span></td>
+          </tr>
+          <tr>
+            <td><strong>B &mdash; Android Tailscale Proxy</strong></td>
+            <td>Giống A, nhưng Mac n &rarr; Android qua tailnet (mesh VPN).</td>
+            <td>Android (tailnet)</td>
+            <td><span class="status status--yes">Sạch 100%</span></td>
+            <td>Host browser + PAC</td>
+            <td><span class="status status--warn">Phức tạp hơn A</span></td>
+          </tr>
+          <tr>
+            <td><strong>C &mdash; VM Isolation</strong></td>
+            <td>WARP cài trong VM (UTM). Host không cài WARP.</td>
+            <td>Không cần</td>
+            <td><span class="status status--yes">Sạch 100%</span></td>
+            <td>Browser trong VM</td>
+            <td><span class="status status--info">Không có Android</span></td>
+          </tr>
+          <tr>
+            <td><strong>D &mdash; Toggle On/Off</strong></td>
+            <td>Bật/tắt WARP theo nhu cầu.</td>
+            <td>Không cần</td>
+            <td><span class="status status--no">Ảnh hưởng khi on</span></td>
+            <td>Toàn máy khi on</td>
+            <td><span class="status status--warn">Fallback cuối cùng</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ====== DECISION TREE ====== -->
+  <div class="divider-section section" style="--i:5">
+    <span class="divider-section__title">Chọn cách nào?</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="decision-tree section" style="--i:6">
+    <div class="decision-node">
+      <div class="decision-node__q">Có Android?</div>
+      <div class="decision-node__a">
+        <strong>Có</strong> &mdash; chọn <strong>Cách A</strong> (Android SSH Proxy). Đơn giản, ổn định, dùng host browser.
+        <br>
+        <strong>Có + muốn kết nối qua tailnet</strong> &mdash; chọn <strong>Cách B</strong> (Android Tailscale Proxy).
+        Phức tạp hơn nhưng kết nối mọi nơi, không cần cùng WiFi/USB.
+      </div>
+    </div>
+    <div class="decision-node">
+      <div class="decision-node__q">Không?</div>
+      <div class="decision-node__a">
+        Chọn <strong>Cách C</strong> (VM Isolation &mdash; UTM). Cài WARP trong VM, host sạch hoàn toàn.
+      </div>
+    </div>
+    <div class="decision-node">
+      <div class="decision-node__q">Cần nhanh?</div>
+      <div class="decision-node__a">
+        Chọn <strong>Cách D</strong> (Toggle On/Off). Bật WARP khi cần, tắt khi xong. Không tối ưu nhưng không cần setup.
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== CONSTRAINTS CHECK ====== -->
+  <div class="callout section callout--success" style="--i:7">
+    <strong>Ràng buộc đã xác nhận:</strong>
+    <ul style="margin:8px 0 0 0; padding-left:1.2em; font-size:12px; line-height:1.7;">
+      <li>Dịch vụ: public service (AWS) &mdash; chỉ cần egress IP + posture "WARP connected"</li>
+      <li>Không cần host-specific posture signals (disk encryption, EDR, managed cert)</li>
+      <li>Không có quyền admin Zero Trust dashboard</li>
+      <li>Bắt buộc dùng Cloudflare công ty</li>
+    </ul>
+    <span class="status status--yes" style="margin-top:8px">Cả 4 cách thỏa mãn</span>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== CÁCH A: ANDROID SSH PROXY ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:8">
+    <span class="divider-section__title">Cách A &mdash; Android SSH Proxy</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="description section" style="--i:9">
+    <p>
+      Android chạy <strong>Cloudflare WARP</strong> (VpnService &mdash; capture toàn bộ outbound traffic) +
+      <strong>SimpleSSHD</strong> (SSH server port 2222). Mac kết nối qua SSH dynamic forwarding (<code>ssh -D</code>)
+      tạo SOCKS5 proxy local. Chỉ app nào trỏ vào proxy mới đi qua WARP.
+    </p>
+    <p style="margin-top:8px"><strong>Root không cần thiết.</strong> SimpleSSHD chạy trên port 2222 (unprivileged).</p>
+  </div>
+
+  <!-- Architecture Diagram A -->
+  <div class="arch-diagram section" style="--i:10">
+    <div class="arch-row">
+      <div class="arch-node arch-node--accent">
+        <div class="arch-title">Mac App (Browser)</div>
+        <div class="arch-desc">Chỉ app cần WARP</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      <span class="arch-label">SOCKS5 localhost:1080</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--teal">
+        <div class="arch-title">SSH Tunnel</div>
+        <div class="arch-desc">ssh -D 1080 -p 2222</div>
+      </div>
+    </div>
+    <div class="arch-divider"><span>Android Device</span></div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">port 2222 (SimpleSSHD)</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--green">
+        <div class="arch-title">SimpleSSHD</div>
+        <div class="arch-desc">SSH server (no root)</div>
+      </div>
+      <div class="arch-flow">
+        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      </div>
+      <div class="arch-node arch-node--amber">
+        <div class="arch-title">WARP VPN</div>
+        <div class="arch-desc">VpnService TUN</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">WARP tunnel</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--accent">
+        <div class="arch-title">Cloudflare Gateway</div>
+        <div class="arch-desc">Egress IP công ty</div>
+      </div>
+      <div class="arch-flow">
+        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      </div>
+      <div class="arch-node arch-node--rose">
+        <div class="arch-title">AWS</div>
+        <div class="arch-desc">Allowlist IP + posture OK</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout section callout--success" style="--i:11">
+    <strong>Tại sao hoạt động:</strong> Android VpnService (WARP) tạo TUN interface capture
+    <strong>toàn bộ outbound traffic</strong>. SimpleSSHD nhận connection từ Mac, forward ra internet
+    &mdash; phần outbound đó đi qua WARP tunnel tự động. Inbound (Mac &rarr; Android) không bị capture.
+  </div>
+
+  <!-- Steps A -->
+  <div class="grid-2 section" style="--i:12">
+    <div class="ve-card ve-card--accent-a">
+      <div class="ve-card__label label-a">Bước 1 &mdash; Android</div>
+      <h3>Cài WARP + enroll</h3>
+      <p>Cài Cloudflare One Agent từ Google Play. Mở app, login bằng credentials công ty. WARP tự kết nối.</p>
+      <div class="code-block"><span class="comment"># Verify trên Android (nếu có Termux):</span>
+<span class="cmd">curl</span> <span class="str">https://www.cloudflare.com/cdn-cgi/trace</span>
+<span class="comment"># Kết quả: warp=on</span></div>
+    </div>
+    <div class="ve-card ve-card--accent-a">
+      <div class="ve-card__label label-a">Bước 2 &mdash; Android</div>
+      <h3>Cài SimpleSSHD</h3>
+      <p>Tải từ F-Droid hoặc galexander.org/software/simplesshd. Mở app, start server (port 2222).</p>
+      <p>Copy public key SSH Mac vào SimpleSSHD (<code>authorized_keys</code>). SimpleSSHD dùng public-key auth only.</p>
+    </div>
+  </div>
+
+  <div class="grid-2 section" style="--i:13">
+    <div class="ve-card ve-card--accent-a">
+      <div class="ve-card__label label-a">Bước 3 &mdash; Mac</div>
+      <h3>Kết nối SSH tunnel</h3>
+      <p><strong>WiFi:</strong> cả 2 cùng mạng</p>
+      <div class="code-block"><span class="cmd">ssh</span> <span class="flag">-D</span> <span class="str">1080</span> <span class="flag">-N</span> <span class="flag">-p</span> <span class="str">2222</span> &lt;android-ip&gt;</div>
+      <p><strong>USB (khuyên dùng):</strong></p>
+      <div class="code-block"><span class="cmd">adb</span> <span class="flag">forward</span> tcp:2222 tcp:2222
+<span class="cmd">ssh</span> <span class="flag">-D</span> <span class="str">1080</span> <span class="flag">-N</span> <span class="flag">-p</span> <span class="str">2222</span> localhost</div>
+      <div class="code-block"><span class="comment"># ~/.ssh/config cho ổn định:</span>
+Host android-warp
+    HostName localhost
+    Port 2222
+    DynamicForward 1080
+    ServerAliveInterval 60</div>
+    </div>
+    <div class="ve-card ve-card--accent-a">
+      <div class="ve-card__label label-a">Bước 4 &mdash; Mac</div>
+      <h3>Trỏ app vào proxy</h3>
+      <p><strong>Browser:</strong> SOCKS5 proxy &rarr; <code>127.0.0.1:1080</code></p>
+      <div class="callout callout--danger" style="margin:8px 0">
+        <strong>Critical:</strong> dùng <code>socks5h://</code> (remote DNS), KHÔNG dùng <code>socks5://</code> (local DNS).
+        Remote DNS đảm bảo Access policies match và không leak DNS.
+      </div>
+      <p style="margin-top:8px"><strong>PAC file</strong> (chỉ route domain cụ thể):</p>
+      <div class="code-block"><span class="comment">// proxy.pac</span>
+function FindProxyForURL(url, host) {
+  if (shExpMatch(host, <span class="str">"*.aws.amazon.com"</span>) ||
+      shExpMatch(host, <span class="str">"*.console.aws.amazon.com"</span>))
+    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
+  return <span class="str">"DIRECT"</span>;
+}</div>
+    </div>
+  </div>
+
+  <!-- Verify A -->
+  <div class="ve-card ve-card--recessed section" style="--i:14">
+    <div class="ve-card__label label-a">Verify</div>
+    <div class="code-block"><span class="comment"># Qua proxy &mdash; phải thấy warp=on</span>
+<span class="cmd">curl</span> <span class="flag">--socks5-hostname</span> 127.0.0.1:1080 https://www.cloudflare.com/cdn-cgi/trace
+
+<span class="comment"># Direct (không proxy) &mdash; phải thấy warp=off (host sạch)</span>
+<span class="cmd">curl</span> https://www.cloudflare.com/cdn-cgi/trace</div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== CÁCH B: ANDROID TAILSCALE PROXY ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:15">
+    <span class="divider-section__title">Cách B &mdash; Android Tailscale Proxy</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="description section" style="--i:16">
+    <p>
+      Giống Cách A, nhưng Mac kết nối đến Android qua <strong>Tailscale tailnet</strong> thay vì WiFi/USB.
+      Lợi ích: kết nối mọi nơi, không cần cùng mạng, encrypted mesh.
+    </p>
+    <p style="margin-top:8px">
+      <strong>Thách thức:</strong> Android chỉ cho phép <strong>một VpnService cùng lúc</strong>. Tailscale app
+      tiêu chuẩn và WARP đều dùng VpnService &mdash; <strong>xung đột</strong>.
+      <strong>Giải pháp:</strong> chạy Tailscale ở chế độ <strong>userspace networking</strong> (không dùng VpnService).
+    </p>
+  </div>
+
+  <div class="callout section callout--danger" style="--i:17">
+    <strong>Conflictt xác nhận:</strong> Tailscale app tiêu chuẩn + WARP = <strong>không thể chạy cùng lúc</strong> trên Android.
+    Cả hai đều dùng VpnService. Android chỉ cho phép 1 VpnService active.
+    <br><br>
+    Nguồn: <a href="https://tailscale.com/docs/reference/faq/other-vpns" style="color:var(--accent)">Tailscale FAQ: Other VPNs</a>,
+    <a href="https://github.com/tailscale/tailscale/issues/410" style="color:var(--accent)">GitHub #410</a>,
+    <a href="https://github.com/tailscale/tailscale/issues/15288" style="color:var(--accent)">GitHub #15288</a>
+  </div>
+
+  <!-- Solution B -->
+  <div class="ve-card ve-card--accent-b section" style="--i:18">
+    <div class="ve-card__label label-b">Giải pháp</div>
+    <h3>Tailscale Userspace Networking + WARP</h3>
+    <p>Chạy Tailscale <strong>không dùng VpnService</strong> &mdash; dùng userspace networking mode.
+    WARP giữ VpnService. Không xung đột.</p>
+
+    <div class="grid-2" style="margin-top:16px">
+      <div>
+        <p><span class="step-num step-num--b">1</span> <strong>TailSocks</strong> (không cần root)</p>
+        <p>App Android chạy Tailscale ở userspace mode (tsnet). Built-in SOCKS5 proxy. Không xung đột WARP.</p>
+        <div class="code-block" style="font-size:11px"><span class="comment"># Cài TailSocks APK</span>
+<span class="comment"># GitHub: bropines/tailsocks</span>
+<span class="comment"># Login tailnet &rarr; nhận tailnet IP</span>
+<span class="comment"># Built-in SOCKS5 proxy local</span></div>
+      </div>
+      <div>
+        <p><span class="step-num step-num--b">2</span> <strong>Magisk tailscaled</strong> (có root)</p>
+        <p>Magisk module chạy tailscaled daemon userspace. hev-socks5-tunnel expose proxy.</p>
+        <div class="code-block" style="font-size:11px"><span class="comment"># tailscaled userspace mode:</span>
+tailscaled <span class="flag">--tun</span>=userspace-networking \
+  <span class="flag">--socks5-server</span>=localhost:1080
+tailscale up <span class="flag">--auth-key</span>=&lt;key&gt;</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Architecture Diagram B -->
+  <div class="arch-diagram section" style="--i:19">
+    <div class="arch-row">
+      <div class="arch-node arch-node--accent">
+        <div class="arch-title">Mac App</div>
+        <div class="arch-desc">Browser + PAC</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      <span class="arch-label">SOCKS5 localhost:1080</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--teal">
+        <div class="arch-title">Tailscale (Mac)</div>
+        <div class="arch-desc">Tailnet member</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">WireGuard mesh (tailnet)</span>
+    </div>
+    <div class="arch-divider"><span>Android Device</span></div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--teal">
+        <div class="arch-title">TailSocks / tailscaled</div>
+        <div class="arch-desc">Userspace networking (no VpnService)</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      <span class="arch-label">Forward to SimpleSSHD</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--green">
+        <div class="arch-title">SimpleSSHD :2222</div>
+        <div class="arch-desc">SSH server</div>
+      </div>
+      <div class="arch-flow">
+        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      </div>
+      <div class="arch-node arch-node--amber">
+        <div class="arch-title">WARP VPN</div>
+        <div class="arch-desc">VpnService TUN</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">WARP tunnel</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--accent">
+        <div class="arch-title">Cloudflare Gateway &rarr; AWS</div>
+        <div class="arch-desc">Egress IP + posture</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps B -->
+  <div class="stack section" style="--i:20">
+    <div class="ve-card ve-card--accent-b">
+      <div class="ve-card__label label-b">Bước 1 &mdash; Android</div>
+      <h3>WARP + TailSocks (hoặc tailscaled)</h3>
+      <p>Cài WARP bình thường (Cách A bước 1). Sau đó cài <strong>TailSocks</strong> (FOSS, userspace Tailscale) hoặc <strong>Magisk tailscaled</strong> module.</p>
+      <p>Login tailnet, nhận tailnet IP (100.x.x.x).</p>
+    </div>
+    <div class="ve-card ve-card--accent-b">
+      <div class="ve-card__label label-b">Bước 2 &mdash; Android</div>
+      <h3>Forward tailnet &rarr; SimpleSSHD</h3>
+      <p>Trong TailSocks/tailscaled, forward incoming tailnet traffic port 2222 đến SimpleSSHD local:</p>
+      <div class="code-block"><span class="cmd">tailscale serve</span> <span class="flag">--tcp</span> 2222 tcp://localhost:2222</div>
+      <p>Hoặc nếu dùng TailSocks built-in SOCKS5 proxy, forward port đó thay thế.</p>
+    </div>
+    <div class="ve-card ve-card--accent-b">
+      <div class="ve-card__label label-b">Bước 3 &mdash; Mac</div>
+      <h3>SSH qua tailnet</h3>
+      <p>Cài Tailscale trên Mac, join cùng tailnet.</p>
+      <div class="code-block"><span class="comment"># Mac SSH đến Android qua tailnet IP</span>
+<span class="cmd">ssh</span> <span class="flag">-D</span> <span class="str">1080</span> <span class="flag">-N</span> <span class="flag">-p</span> <span class="str">2222</span> &lt;android-tailnet-ip&gt;
+
+<span class="comment"># Verify tailnet connectivity</span>
+<span class="cmd">tailscale</span> status
+<span class="comment"># Phải thấy Android device online</span></div>
+    </div>
+    <div class="ve-card ve-card--accent-b">
+      <div class="ve-card__label label-b">Bước 4 &mdash; Mac</div>
+      <h3>Trỏ app + verify (giống Cách A bước 4)</h3>
+      <p>SOCKS5 proxy <code>127.0.0.1:1080</code> + PAC file + verify <code>warp=on</code>.</p>
+    </div>
+  </div>
+
+  <div class="callout section callout--warn" style="--i:21">
+    <strong>Cách B vs Cách A:</strong> Tailscale thêm latency (mesh relay) nhưng giải phóng khỏi WiFi/USB.
+    Nếu Mac và Android luôn cùng WiFi/USB &mdash; <strong>Cách A đơn giản hơn</strong>.
+    Nếu cần kết nối từ xa (khác mạng) &mdash; <strong>Cách B là lựa chọn duy nhất</strong>.
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== CÁCH C: VM ISOLATION ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:22">
+    <span class="divider-section__title">Cách C &mdash; VM Isolation (UTM)</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="description section" style="--i:23">
+    <p>
+      WARP cài <strong>bên trong VM</strong> (UTM + Ubuntu ARM64). Host macOS <strong>không cài WARP</strong> &mdash;
+      routing table hoàn toàn sạch. AWS work diễn ra trong VM browser.
+    </p>
+  </div>
+
+  <!-- Architecture Diagram C -->
+  <div class="arch-diagram section" style="--i:24">
+    <div class="arch-divider"><span>macOS Host (không có WARP)</span></div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--teal">
+        <div class="arch-title">Browser / Slack / Zoom</div>
+        <div class="arch-desc">Direct internet</div>
+      </div>
+    </div>
+    <div class="arch-divider"><span>UTM VM (Ubuntu ARM64)</span></div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--green">
+        <div class="arch-title">Browser trong VM</div>
+        <div class="arch-desc">Firefox/Chrome</div>
+      </div>
+      <div class="arch-flow">
+        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      </div>
+      <div class="arch-node arch-node--amber">
+        <div class="arch-title">WARP VPN</div>
+        <div class="arch-desc">Enrolled team công ty</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">WARP tunnel (trong VM)</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--accent">
+        <div class="arch-title">Cloudflare Gateway</div>
+        <div class="arch-desc">Egress IP công ty</div>
+      </div>
+      <div class="arch-flow">
+        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      </div>
+      <div class="arch-node arch-node--rose">
+        <div class="arch-title">AWS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps C -->
+  <div class="stack section" style="--i:25">
+    <div class="ve-card ve-card--accent-c">
+      <div class="ve-card__label label-c">Bước 1</div>
+      <h3>Cài UTM + tạo VM</h3>
+      <div class="code-block"><span class="cmd">brew install</span> <span class="flag">--cask</span> utm</div>
+      <p>Tải Ubuntu 24.04 Desktop ARM64 ISO. UTM &rarr; New VM &rarr; Virtualize (không Emulate) &rarr; ARM64.</p>
+      <p>RAM: <strong>4GB</strong>, CPU: <strong>2 cores</strong>, Disk: <strong>20GB</strong>.</p>
+    </div>
+    <div class="ve-card ve-card--accent-c">
+      <div class="ve-card__label label-c">Bước 2</div>
+      <h3>Trong VM &mdash; cài WARP</h3>
+      <div class="code-block"><span class="comment"># Thêm repo Cloudflare</span>
+<span class="cmd">curl</span> <span class="flag">-fsSL</span> https://pkg.cloudflareclient.com/pubkey.gpg \
+  | sudo gpg <span class="flag">--yes</span> <span class="flag">--dearmor</span> \
+  <span class="flag">-o</span> /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+
+<span class="cmd">echo</span> <span class="str">"deb [arch=arm64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main"</span> \
+  | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+
+sudo apt update <span class="flag">&&</span> sudo apt install <span class="flag">-y</span> cloudflare-warp</div>
+    </div>
+    <div class="ve-card ve-card--accent-c">
+      <div class="ve-card__label label-c">Bước 3</div>
+      <h3>Enroll + làm việc trong VM</h3>
+      <div class="code-block"><span class="comment"># Enroll team công ty (mở browser trong VM)</span>
+warp-cli registration new &lt;team-cong-ty&gt;
+warp-cli connect
+
+<span class="comment"># Verify</span>
+curl https://www.cloudflare.com/cdn-cgi/trace
+<span class="comment"># warp=on</span></div>
+      <p>Mở browser trong VM &rarr; truy cập AWS. Host macOS hoàn toàn sạch.</p>
+    </div>
+  </div>
+
+  <div class="grid-3 section" style="--i:26">
+    <div class="ve-card ve-card--recessed">
+      <div class="ve-card__label" style="color:var(--text-dim)">Resource</div>
+      <p style="font-size:12px">RAM: ~2GB idle, ~3GB khi dùng browser.<br>CPU: ~0% idle (native virtualization).<br>Disk: ~8GB.</p>
+    </div>
+    <div class="ve-card ve-card--recessed">
+      <div class="ve-card__label" style="color:var(--text-dim)">Ưu điểm</div>
+      <p style="font-size:12px">Không cần Android. Enrollment interactive đơn giản. Posture check pass tự nhiên.</p>
+    </div>
+    <div class="ve-card ve-card--recessed">
+      <div class="ve-card__label" style="color:var(--text-dim)">Nhược điểm</div>
+      <p style="font-size:12px">AWS work trong VM browser (không phải host browser). Tốn RAM/disk.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== CÁCH D: TOGGLE ON/OFF ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:27">
+    <span class="divider-section__title">Cách D &mdash; Toggle On/Off (Fallback)</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="description section" style="--i:28">
+    <p>
+      Không setup phức tạp. Bật WARP khi cần AWS, tắt khi xong. <strong>Giảm blast radius theo thời gian</strong>
+      &mdash; WARP chỉ ảnh hưởng toàn mạng khi bạn đang cần AWS.
+    </p>
+  </div>
+
+  <div class="ve-card ve-card--accent-d section" style="--i:29">
+    <div class="code-block"><span class="comment"># Bật WARP khi cần AWS</span>
+<span class="cmd">warp-cli</span> connect
+
+<span class="comment"># Tắt WARP khi xong</span>
+<span class="cmd">warp-cli</span> disconnect
+
+<span class="comment"># Kiểm tra trạng thái</span>
+<span class="cmd">warp-cli</span> status</div>
+    <p style="margin-top:12px">
+      <strong>Aliases</strong> cho nhanh (thêm vào <code>~/.zshrc</code> hoặc <code>~/.bashrc</code>):
+    </p>
+    <div class="code-block"><span class="comment"># Alias nhanh</span>
+<span class="cmd">alias</span> won=<span class="str">'warp-cli connect'</span>
+<span class="cmd">alias</span> woff=<span class="str">'warp-cli disconnect'</span>
+<span class="cmd">alias</span> wstatus=<span class="str">'warp-cli status'</span></div>
+  </div>
+
+  <div class="callout section callout--warn" style="--i:30">
+    <strong>Hạn chế:</strong> Khi WARP on, <strong>toàn bộ traffic máy</strong> đi qua WARP &mdash; không chỉ AWS.
+    Nếu session AWS cần WARP liên tục (egress IP allowlist), bạn phải giữ WARP on suốt phiên.
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== COMPARISON ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:31">
+    <span class="divider-section__title">So sánh chi tiết</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="table-wrap section" style="--i:32">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Tiêu chí</th>
+            <th>A &mdash; Android SSH</th>
+            <th>B &mdash; Android Tailscale</th>
+            <th>C &mdash; VM UTM</th>
+            <th>D &mdash; Toggle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Cần thiết bị phụ</strong></td>
+            <td>Android (WiFi/USB)</td>
+            <td>Android (tailnet)</td>
+            <td>Không</td>
+            <td>Không</td>
+          </tr>
+          <tr>
+            <td><strong>Host network sạch</strong></td>
+            <td><span class="status status--yes">100%</span></td>
+            <td><span class="status status--yes">100%</span></td>
+            <td><span class="status status--yes">100%</span></td>
+            <td><span class="status status--no">Khi on</span></td>
+          </tr>
+          <tr>
+            <td><strong>Per-app routing</strong></td>
+            <td><span class="status status--yes">PAC/SOCKS5</span></td>
+            <td><span class="status status--yes">PAC/SOCKS5</span></td>
+            <td><span class="status status--warn">Trong VM</span></td>
+            <td><span class="status status--no">Không</span></td>
+          </tr>
+          <tr>
+            <td><strong>Root cần?</strong></td>
+            <td><span class="status status--no">Không</span></td>
+            <td><span class="status status--warn">TailSocks: không</span></td>
+            <td><span class="status status--no">Không</span></td>
+            <td><span class="status status--no">Không</span></td>
+          </tr>
+          <tr>
+            <td><strong>Enrollment</strong></td>
+            <td>App + login</td>
+            <td>App + login</td>
+            <td>Interactive VM</td>
+            <td>App + login</td>
+          </tr>
+          <tr>
+            <td><strong>Kết nối từ xa</strong></td>
+            <td><span class="status status--no">Cần WiFi/USB</span></td>
+            <td><span class="status status--yes">Tailnet</span></td>
+            <td><span class="status status--no">Local</span></td>
+            <td><span class="status status--yes">N/A</span></td>
+          </tr>
+          <tr>
+            <td><strong>UX browser</strong></td>
+            <td>Host browser</td>
+            <td>Host browser</td>
+            <td>VM browser</td>
+            <td>Host browser</td>
+          </tr>
+          <tr>
+            <td><strong>Resource host</strong></td>
+            <td>Zero</td>
+            <td>Zero</td>
+            <td>2-3GB RAM + 8GB disk</td>
+            <td>Zero</td>
+          </tr>
+          <tr>
+            <td><strong>Phức tạp setup</strong></td>
+            <td><span class="status status--warn">Trung bình</span></td>
+            <td><span class="status status--no">Cao</span></td>
+            <td><span class="status status--warn">Trung bình</span></td>
+            <td><span class="status status--yes">Thấp</span></td>
+          </tr>
+          <tr>
+            <td><strong>24/7</strong></td>
+            <td><span class="status status--yes">Phone cắm sạc</span></td>
+            <td><span class="status status--yes">Phone cắm sạc</span></td>
+            <td><span class="status status--warn">VM phải chạy</span></td>
+            <td><span class="status status--yes">N/A</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== DNS LEAK WARNING ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:33">
+    <span class="divider-section__title">Lưu ý quan trọng</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="callout section callout--danger" style="--i:34">
+    <strong>1. DNS Leak &mdash; LUÔN dùng socks5h://</strong><br>
+    Dùng <code>socks5h://</code> (remote DNS resolution) thay vì <code>socks5://</code> (local DNS).
+    Remote DNS đảm bảo: (a) DNS queries đi qua WARP, (b) Access policies match đúng, (c) không leak DNS ra ngoài.
+  </div>
+
+  <div class="callout section callout--warn" style="--i:35">
+    <strong>2. Posture Check &mdash; chỉ hoạt động nếu</strong><br>
+    Công ty chỉ require "WARP connected" posture hoặc egress IP allowlist. <strong>Không</strong> hoạt động nếu
+    posture check yêu cầu host-specific signals (disk encryption, EDR agent, managed-device cert) &mdash;
+    Android/VM sẽ fail posture và bị block Access.
+  </div>
+
+  <div class="callout section callout--warn" style="--i:36">
+    <strong>3. Performance &mdash; chấp nhận được cho console/API</strong><br>
+    WiFi/USB latency + WARP tunnel overhead. Phù hợp cho AWS console, API calls. Có thể chậm cho download lớn
+    hoặc streaming.
+  </div>
+
+  <div class="callout section callout--warn" style="--i:37">
+    <strong>4. SSH Timeout &mdash; thêm keepalive</strong><br>
+    Thêm <code>ServerAliveInterval 60</code> vào SSH config để tránh timeout khi idle.
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== CHECKLIST ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:38">
+    <span class="divider-section__title">Checklist verify</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="ve-card ve-card--recessed section" style="--i:39">
+    <ul class="checklist">
+      <li><strong>WARP connected trên Android/VM</strong> &mdash; app hiện "Connected"</li>
+      <li><strong>SSH tunnel established</strong> &mdash; không lỗi, <code>ssh -D 1080 -N -p 2222 ...</code> chạy không error</li>
+      <li><code>curl --socks5-hostname 127.0.0.1:1080 https://www.cloudflare.com/cdn-cgi/trace</code> hiện <code>warp=on</code></li>
+      <li><code>curl https://www.cloudflare.com/cdn-cgi/trace</code> (direct, không proxy) hiện <code>warp=off</code></li>
+      <li><strong>Browser qua proxy</strong> vào được AWS</li>
+      <li><strong>Browser không qua proxy</strong> không đi qua WARP (kiểm tra IP tại ipleak.net)</li>
+      <li><strong>DNS resolve qua proxy</strong> &mdash; dùng <code>socks5h://</code>, verify DNS server tại dnsleaktest.com</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- ====== TROUBLESHOOTING ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:40">
+    <span class="divider-section__title">Khắc phục sự cố</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="table-wrap section" style="--i:41">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Vấn đề</th>
+            <th>Nguyên nhân</th>
+            <th>Khắc phục</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Connection refused</code> SSH</td>
+            <td>SimpleSSHD không chạy, hoặc port sai</td>
+            <td>Kiểm tra app hiện "Running" trên 2222. Restart SimpleSSHD.</td>
+          </tr>
+          <tr>
+            <td>SSH kết nối nhưng không có internet</td>
+            <td>WARP chưa connect trên Android</td>
+            <td>Mở WARP app, kiểm tra "Connected". Re-authenticate nếu cần.</td>
+          </tr>
+          <tr>
+            <td><code>curl</code> qua proxy hiện <code>warp=off</code></td>
+            <td>SSH tunnel không forward đúng</td>
+            <td>Verify flag <code>-D 1080</code> có mặt. Kiểm tra WARP connected trên Android.</td>
+          </tr>
+          <tr>
+            <td>DNS leak</td>
+            <td>Dùng <code>socks5://</code> thay vì <code>socks5h://</code></td>
+            <td>Đổi sang <code>socks5h://127.0.0.1:1080</code> trong proxy config. Verify dnsleaktest.com.</td>
+          </tr>
+          <tr>
+            <td><code>adb forward</code> không hoạt động</td>
+            <td>USB debugging chưa enable</td>
+            <td>Developer Options &rarr; USB Debugging. Authorize computer trên prompt Android.</td>
+          </tr>
+          <tr>
+            <td>Tailscale + WARP xung đột</td>
+            <td>Cả hai dùng VpnService</td>
+            <td>Dùng <strong>TailSocks</strong> hoặc <strong>tailscaled userspace</strong> (Cách B).</td>
+          </tr>
+          <tr>
+            <td>Posture check fail</td>
+            <td>Yêu cầu host-specific signals</td>
+            <td>Không có fix &mdash; chỉ admin có thể thay đổi posture policy. Liên hệ IT.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ====== FOOTER ====== -->
+  <div class="description section" style="--i:42; margin-top:40px; text-align:center; font-size:12px;">
+    <p>Tài liệu kỹ thuật &mdash; Cloudflare WARP selective routing cho macOS</p>
+  </div>
+
+</div>
+
+</body>
+</html>
