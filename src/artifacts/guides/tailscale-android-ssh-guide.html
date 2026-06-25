@@ -138,7 +138,7 @@
 
   <div class="answer">
     <p style="margin:6px 0;font-size:17px;">❓ <b>Có cần root không?</b> → <strong>KHÔNG.</strong></p>
-    <p style="margin:6px 0;font-size:15px;color:var(--text-dim)">Android không có sẵn SSH server, và Tailscale cũng không biến Android thành SSH server được (Tailscale SSH server chỉ chạy trên Linux). Giải pháp: cài <b>Termux</b> — chạy hoàn toàn trong userspace, không đụng tới root.</p>
+    <p style="margin:6px 0;font-size:15px;color:var(--text-dim)">Android không có sẵn SSH server, và Tailscale cũng không biến Android thành SSH server được (Tailscale SSH server chỉ chạy trên Linux). Giải pháp: cài <b>Termux</b> — chạy hoàn toàn trong userspace, không đụng tới root. Root chỉ cần nếu bạn muốn dùng <b>port 22</b> mặc định (xem mục 5).</p>
   </div>
 
   <div class="flow">
@@ -219,14 +219,48 @@ chmod 600 ~/.ssh/authorized_keys</code></pre>
     </tbody>
   </table>
 
-  <h2><span class="num">5</span> Tóm tắt nhanh</h2>
+  <h2><span class="num">5</span> Nếu Android có root: dùng port 22</h2>
+
+  <p>Root cho phép bind vào <b>privileged port</b> (&lt; 1024), nên bạn có thể dùng port 22 mặc định — không phải gõ <code>-p 8022</code> mỗi lần. Có 2 cách, đều cần root.</p>
+
+  <div class="callout info">
+    <span class="ic">💡</span>
+    <div><p style="margin:0">Root là <b>tùy chọn</b>. Cách không-root ở trên (port 8022) đã đủ dùng và ổn định. Chỉ dùng port 22 nếu bạn muốn lệnh ssh gọn hơn, hoặc cần tương thích công cụ chỉ hỗ trợ port 22.</p></div>
+  </div>
+
+  <h3>Cách A — Redirect 22 → 8022 bằng iptables (khuyến nghị)</h3>
+  <p>Giữ nguyên Termux sshd chạy ở 8022 (vẫn chạy bằng user thường), chỉ mượn root để chuyển hướng port. Sạch và an toàn hơn vì sshd không cần chạy với quyền root.</p>
+  <pre><code><span class="cmt"># cài tsu để có quyền root trong Termux</span>
+pkg install tsu
+
+<span class="cmt"># chuyển mọi kết nối tới port 22 sang 8022 (sshd của Termux)</span>
+sudo iptables -t nat -A PREROUTING -p tcp --dport 22 -j REDIRECT --to-ports 8022</code></pre>
+  <p>Từ Mac mini giờ ssh không cần chỉ định port:</p>
+  <pre><code>ssh <span class="blu">u0_a234</span>@<span class="blu">&lt;tailscale-ip-android&gt;</span></code></pre>
+
+  <h3>Cách B — Chạy sshd thẳng trên port 22 bằng root</h3>
+  <pre><code><span class="cmt"># mở config sshd của Termux, đổi cổng</span>
+nano $PREFIX/etc/ssh/sshd_config
+<span class="cmt"># sửa dòng:  Port 8022   ->   Port 22</span>
+
+<span class="cmt"># chạy sshd với quyền root để bind được port 22</span>
+sudo sshd</code></pre>
+  <div class="callout warn">
+    <span class="ic">⚠️</span>
+    <div><p style="margin:0">Khi sshd chạy bằng root, nó vẫn drop quyền về user Termux lúc bạn đăng nhập — nên <code>~/.ssh/authorized_keys</code> phải thuộc đúng user đó (đừng để root sở hữu). Nếu sai quyền, đăng nhập bằng key sẽ thất bại do <code>StrictModes</code>.</p></div>
+  </div>
+
+  <h3>Giữ qua reboot</h3>
+  <p>Rule iptables và sshd-chạy-root <b>không tự sống lại</b> sau khi khởi động. Dùng <b>Termux:Boot</b> để chạy lại lệnh ở Cách A/B khi boot, hoặc đặt làm <b>Magisk service script</b> (đặt vào <code>/data/adb/service.d/</code>) nếu bạn dùng Magisk.</p>
+
+  <h2><span class="num">6</span> Tóm tắt nhanh</h2>
 
   <div class="card">
     <table style="border:none;margin:8px 0">
       <tbody>
-        <tr><td>Cần root?</td><td>Không</td></tr>
+        <tr><td>Cần root?</td><td>Không bắt buộc — chỉ cần nếu muốn dùng port 22 (mục 5)</td></tr>
         <tr><td>Android cần gì?</td><td>Termux + openssh (sshd) + curl + app Tailscale, cùng tailnet</td></tr>
-        <tr><td>Port SSH</td><td>8022 (không phải 22)</td></tr>
+        <tr><td>Port SSH</td><td>8022 (không root) · 22 nếu có root — xem mục 5</td></tr>
         <tr><td>Username</td><td>kết quả của <code>whoami</code> trong Termux (vd <code>u0_a234</code>)</td></tr>
         <tr><td>Trở ngại chính</td><td>Giữ Termux + Tailscale không bị Android tắt nền</td></tr>
       </tbody>
