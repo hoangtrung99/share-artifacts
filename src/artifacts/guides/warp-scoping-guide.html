@@ -1724,7 +1724,81 @@ bse-ip-add() { echo "$1" >> "$BSE_IP_LIST"; }</code></pre>
     </div>
   </div>
 
-  <!-- Gotchas -->
+    <!-- ============================================================== -->
+  <!-- ====== SOCKS EXPLAINER ====== -->
+  <!-- ============================================================== -->
+  <div class="divider-section section" style="--i:39n0">
+    <span class="divider-section__title">SOCKS vs SOCKS5 &mdash; giải thích</span>
+    <div class="divider-section__line"></div>
+  </div>
+
+  <div class="description section" style="--i:39n1">
+    <p>
+      <strong>SOCKS</strong> là protocol proxy ở tầng TCP &mdash; chuyển tiếp kết nối TCP từ client qua proxy server đến đích.
+      Không quan tâm nội dung traffic (HTTP, RDP, MySQL, ...). Khác với HTTP proxy (chỉ HTTP/HTTPS).
+    </p>
+  </div>
+
+  <div class="grid-2 section" style="--i:39n2">
+    <div class="ve-card ve-card--accent-a">
+      <div class="ve-card__label label-a">SOCKS4</div>
+      <h3>SOCKS (không có version)</h3>
+      <p>Phiên bản đầu tiên. Chỉ hỗ trợ TCP. <strong>Không hỗ trợ authentication</strong> và <strong>không hỗ trợ UDP</strong>.</p>
+      <p>Trong PAC file: <code>"SOCKS host:port"</code> &mdash; browser thường hiểu là SOCKS4.</p>
+      <p style="color:var(--text-dim);font-size:12px">Safari trên macOS yêu cầu <code>"SOCKS"</code> (không phải <code>"SOCKS5"</code>).</p>
+    </div>
+    <div class="ve-card ve-card--accent-b">
+      <div class="ve-card__label label-b">SOCKS5</div>
+      <h3>SOCKS5</h3>
+      <p>Phiên bản cải tiến. Hỗ trợ <strong>authentication</strong> (user/pass), <strong>UDP</strong>, và <strong>IPv6</strong>.</p>
+      <p>Trong PAC file: <code>"SOCKS5 host:port"</code> &mdash; Chrome chấp nhận.</p>
+      <p style="color:var(--text-dim);font-size:12px"><code>socks5h://</code> = DNS resolve ở proxy server (remote DNS) &mdash; quan trọng cho Access policies.</p>
+    </div>
+  </div>
+
+  <div class="ve-card ve-card--recessed section" style="--i:39n3">
+    <div class="ve-card__label" style="color:var(--text-dim)">Tại sao PAC dùng cả hai?</div>
+    <div class="grid-3" style="margin-top:8px">
+      <div>
+        <p style="font-size:13px"><strong>Chrome</strong></p>
+        <p style="font-size:12px">Hiểu <code>"SOCKS5"</code>. DNS resolve ở proxy side (remote DNS). Nếu PAC trả <code>"SOCKS"</code>, Chrome có thể hiểu là SOCKS4.</p>
+      </div>
+      <div>
+        <p style="font-size:13px"><strong>Safari</strong></p>
+        <p style="font-size:12px">Yêu cầu <code>"SOCKS"</code>. <strong>Bỏ qua silently</strong> nếu PAC trả <code>"SOCKS5"</code> &mdash; traffic đi DIRECT thay vì qua proxy.</p>
+      </div>
+      <div>
+        <p style="font-size:13px"><strong>Fix</strong></p>
+        <p style="font-size:12px">Return cả hai cách: <code>"SOCKS5 127.0.0.1:1080; SOCKS 127.0.0.1:1080"</code>. Browser thử cái đầu, fail thì thử cái thứ hai (PAC failover).</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout section callout--warn" style="--i:39n4">
+    <strong>socks5 vs socks5h (trong env vars / curl):</strong><br>
+    <code>socks5://127.0.0.1:1080</code> &mdash; DNS resolve <strong>ở client</strong> (local DNS). Có thể leak DNS, Access policies không match.<br>
+    <code>socks5h://127.0.0.1:1080</code> &mdash; DNS resolve <strong>ở proxy server</strong> (remote DNS). An toàn, không leak. <strong>Luôn dùng <code>socks5h://</code> trong HTTPS_PROXY.</strong>
+  </div>
+
+  <div class="table-wrap section" style="--i:39n5">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr><th>Context</th><th>Directive</th><th>Ý nghĩa</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>PAC file (Chrome)</td><td><code>SOCKS5 host:port</code></td><td>SOCKS5, remote DNS</td></tr>
+          <tr><td>PAC file (Safari)</td><td><code>SOCKS host:port</code></td><td>SOCKS4, browser negotiate</td></tr>
+          <tr><td>PAC file (cả hai)</td><td><code>SOCKS5 ...; SOCKS ...</code></td><td>Failover: thử SOCKS5 trước, fail → SOCKS</td></tr>
+          <tr><td>Env var / curl</td><td><code>socks5h://host:port</code></td><td>SOCKS5, remote DNS (không leak)</td></tr>
+          <tr><td>Env var / curl</td><td><code>socks5://host:port</code></td><td>SOCKS5, local DNS (có thể leak)</td></tr>
+          <tr><td>networksetup</td><td>SOCKS proxy</td><td>System-wide SOCKS (tất cả TCP)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+<!-- Gotchas -->
   <div class="callout section callout--warn" style="--i:39n">
     <strong>Gotchas đã fix (verified):</strong><br>
     1. <strong>file:// PAC không hoạt động</strong> → serve qua HTTP (:8799)<br>
