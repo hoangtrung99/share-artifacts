@@ -1376,7 +1376,7 @@ curl https://www.cloudflare.com/cdn-cgi/trace
   </div>
 
 
-  <!-- ============================================================== -->
+    <!-- ============================================================== -->
   <!-- ====== MAC SETUP GUIDE (BSE PROXY) ====== -->
   <!-- ============================================================== -->
   <div class="divider-section section" style="--i:39b">
@@ -1386,65 +1386,108 @@ curl https://www.cloudflare.com/cdn-cgi/trace
 
   <div class="description section" style="--i:39c">
     <p>
-      Setup hoàn toàn qua terminal &mdash; không cần GUI. Sau khi setup, chỉ cần <strong>2 lệnh</strong>
-      hàng ngày: <code>bse-on</code> (bật) và <code>bse-off</code> (tắt).
+      Setup hoàn toàn qua terminal. Sau khi setup, chỉ cần <strong>2 lệnh</strong> hàng ngày:
+      <code>bse-on</code> (bật) và <code>bse-off</code> (tắt). PAC mode mặc định &mdash; chỉ AWS + backseat IPs qua WARP, phần còn lại direct.
     </p>
   </div>
 
-  <!-- Files -->
-  <div class="grid-2 section" style="--i:39d">
-    <div class="ve-card ve-card--accent-a">
-      <div class="ve-card__label label-a">File 1</div>
-      <h3>~/.proxy/aws-proxy.pac</h3>
-      <p>PAC file &mdash; quyết định domain nào đi qua proxy (AWS), domain nào direct.</p>
-      <div class="code-block" style="font-size:11px"><span class="comment">// Route AWS traffic qua SOCKS5, phần còn lại direct</span>
-function FindProxyForURL(url, host) {
-  <span class="comment">// AWS Sign-In + Console</span>
-  if (dnsDomainIs(host, <span class="str">".signin.aws"</span>) ||
-      dnsDomainIs(host, <span class="".console.aws.amazon.com<span class="str">"))
-    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
-
-  <span class="comment">// Static assets + CloudFront</span>
-  if (dnsDomainIs(host, <span class="str">".awsstatic.com"</span>) ||
-      dnsDomainIs(host, <span class="str">".cloudfront.net"</span>))
-    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
-
-  <span class="comment">// SSO / Identity Center</span>
-  if (dnsDomainIs(host, <span class="str">".awsapps.com"</span>) ||
-      dnsDomainIs(host, <span class="str">".sso.amazonaws.com"</span>))
-    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
-
-  <span class="comment">// Service APIs (EC2, S3, SSM, ...)</span>
-  if (dnsDomainIs(host, <span class="str">".amazonaws.com"</span>) ||
-      dnsDomainIs(host, <span class="str">".api.aws"</span>))
-    return <span class="str">"SOCKS5 127.0.0.1:1080"</span>;
-
-  return <span class="str">"DIRECT"</span>;
-}</div>
+  <!-- Architecture Diagram -->
+  <div class="arch-diagram section" style="--i:39d">
+    <div class="arch-divider"><span>macOS Host (không có WARP)</span></div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--teal">
+        <div class="arch-title">Browser</div>
+        <div class="arch-desc">Chrome / Safari / Edge</div>
+      </div>
+      <div class="arch-flow">
+        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      </div>
+      <div class="arch-node arch-node--accent">
+        <div class="arch-title">System PAC</div>
+        <div class="arch-desc">networksetup<br/>HTTP :8799</div>
+      </div>
     </div>
-    <div class="ve-card ve-card--accent-a">
-      <div class="ve-card__label label-a">File 2</div>
-      <h3>~/.proxy/bse-aliases.sh</h3>
-      <p>Alias script &mdash; điều khiển tunnel + proxy + CLI. Source trong <code>~/.zshrc</code>.</p>
-      <div class="code-block" style="font-size:11px"><span class="comment"># Thêm vào ~/.zshrc:</span>
-[ -f ~/.proxy/bse-aliases.sh ] <span class="flag">&&</span> source ~/.proxy/bse-aliases.sh
-
-<span class="comment"># Lệnh chính:</span>
-bse-on      <span class="comment"># bật toàn bộ</span>
-bse-off     <span class="comment"># tắt toàn bộ</span>
-bse-status  <span class="comment"># kiểm tra</span>
-
-<span class="comment"># Lệnh chi tiết:</span>
-bse-connect     <span class="comment"># chỉ SSH tunnel</span>
-bse-proxy-on    <span class="comment"># chỉ system PAC (browser)</span>
-bse-cli-on      <span class="comment"># chỉ CLI env vars</span></div>
+    <div class="arch-row" style="margin-top:8px">
+      <div class="arch-node arch-node--slate" style="opacity:0.6">
+        <div class="arch-title">CLI (aws, curl)</div>
+        <div class="arch-desc">HTTPS_PROXY env var</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">SOCKS5 127.0.0.1:1080</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--green">
+        <div class="arch-title">SSH Tunnel</div>
+        <div class="arch-desc">ssh -fN blackshark<br/>DynamicForward 1080</div>
+      </div>
+    </div>
+    <div class="arch-divider"><span>Android Device (blackshark)</span></div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">port 8022 (SimpleSSHD)</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--amber">
+        <div class="arch-title">WARP VPN</div>
+        <div class="arch-desc">VpnService TUN<br/>captures all outbound</div>
+      </div>
+    </div>
+    <div class="arch-flow">
+      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
+      <span class="arch-label">WARP tunnel</span>
+    </div>
+    <div class="arch-row">
+      <div class="arch-node arch-node--accent">
+        <div class="arch-title">Cloudflare Gateway</div>
+        <div class="arch-desc">Egress IP công ty</div>
+      </div>
+      <div class="arch-flow">
+        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
+      </div>
+      <div class="arch-node arch-node--rose">
+        <div class="arch-title">AWS + ESS</div>
+        <div class="arch-desc">Allowlist + posture OK</div>
+      </div>
     </div>
   </div>
 
-  <!-- SSH Config -->
-  <div class="ve-card ve-card--accent-a section" style="--i:39e">
-    <div class="ve-card__label label-a">SSH Config</div>
-    <h3>~/.ssh/config &mdash; Android host</h3>
+  <!-- File Structure -->
+  <div class="ve-card ve-card--recessed section" style="--i:39e">
+    <div class="ve-card__label" style="color:var(--text-dim)">Cấu trúc files</div>
+    <pre style="font-family:var(--font-mono);font-size:12px;line-height:1.7;color:var(--text-dim);padding:8px 0">~/.proxy/
+├── aws-proxy.pac        <span style="color:var(--accent)">PAC file (auto-generated, không edit)</span>
+├── bse-ip-list.conf     <span style="color:var(--green)">IP list config (edit this)</span>
+├── bse-aliases.sh       <span style="color:var(--accent)">Aliases (source in ~/.zshrc)</span>
+└── .pac-server.pid      <span style="color:var(--text-dim)">(auto, PID của PAC HTTP server)</span>
+
+~/.ssh/config:
+└── Host blackshark      <span style="color:var(--accent)">SSH tunnel config (DynamicForward 1080)</span>
+
+~/.zshrc:
+└── source line          <span style="color:var(--accent)">[ -f ~/.proxy/bse-aliases.sh ] && source ...</span></pre>
+  </div>
+
+  <!-- File 1: bse-ip-list.conf -->
+  <div class="ve-card ve-card--accent-b section" style="--i:39f">
+    <div class="ve-card__label label-b">File 1 &mdash; IP Config</div>
+    <h3>~/.proxy/bse-ip-list.conf</h3>
+    <p>Thêm/bớt IP backseat tại đây. Format: IP hoặc CIDR per dòng, <code>#</code> = comment. Chạy <code>bse-on</code> để regenerate PAC.</p>
+    <div class="code-block" style="font-size:12px"><span class="comment"># ~/.proxy/bse-ip-list.conf</span>
+<span class="comment"># Backseat internal IPs &mdash; PAC file tự động pickup</span>
+<span class="comment"># Format: IP hoặc CIDR per dòng, # = comment</span>
+
+<span class="comment"># ESS Admin, Remote Desktop ESS</span>
+172.25.137.7
+172.25.0.0/16</div>
+    <p style="margin-top:8px">Thêm IP mới: <code>bse-ip-add 10.0.1.5</code> &rarr; rồi <code>bse-on</code></p>
+  </div>
+
+  <!-- File 2: SSH config -->
+  <div class="ve-card ve-card--accent-a section" style="--i:39g">
+    <div class="ve-card__label label-a">File 2 &mdash; SSH Config</div>
+    <h3>~/.ssh/config &mdash; blackshark host</h3>
     <p>Android device chạy SimpleSSHD (port 8022) + WARP. Mac kết nối SSH tunnel.</p>
     <div class="code-block"><span class="comment"># ~/.ssh/config</span>
 Host blackshark
@@ -1455,112 +1498,198 @@ Host blackshark
   ServerAliveInterval 60</div>
   </div>
 
-  <!-- How it works -->
-  <div class="ve-card ve-card--recessed section" style="--i:39f">
-    <div class="ve-card__label" style="color:var(--text-dim)">Cách hoạt động</div>
-    <div class="grid-2" style="margin-top:8px">
-      <div>
-        <p style="font-size:13px"><strong>Browser traffic:</strong></p>
-        <p style="font-size:12px">Browser &rarr; System PAC &rarr; <code>dnsDomainIs</code> check &rarr;
-        AWS domain? &rarr; SOCKS5 127.0.0.1:1080 &rarr; SSH tunnel &rarr; Android WARP &rarr; Gateway &rarr; AWS.<br>
-        Non-AWS? &rarr; DIRECT (không qua WARP).</p>
-      </div>
-      <div>
-        <p style="font-size:13px"><strong>CLI traffic:</strong></p>
-        <p style="font-size:12px"><code>aws ssm start-session</code> &rarr; <code>HTTPS_PROXY</code> env var &rarr;
-        SOCKS5 127.0.0.1:1080 &rarr; SSH tunnel &rarr; Android WARP &rarr; Gateway &rarr; AWS.<br>
-        PAC <strong>không ảnh hưởng CLI</strong> &mdash; cần env var riêng.</p>
-      </div>
-    </div>
+  <!-- File 3: bse-aliases.sh -->
+  <div class="ve-card ve-card--accent-a section" style="--i:39h">
+    <div class="ve-card__label label-a">File 3 &mdash; Aliases (chính)</div>
+    <h3>~/.proxy/bse-aliases.sh</h3>
+    <p>Điều khiển toàn bộ: SSH tunnel + PAC server + system proxy + CLI env vars. Source trong <code>~/.zshrc</code>.</p>
+    <details class="collapsible" style="margin-top:12px">
+      <summary>Full source code (bse-aliases.sh)</summary>
+      <pre class="code-block code-block--scroll" style="max-height:500px;font-size:11px"><code>#!/bin/bash
+# BSE Proxy Toggle &mdash; selective WARP routing via PAC
+# Default: bse-on = PAC mode (selective)
+# Fallback: bse-socks = SOCKS mode (all traffic)
+
+BSE_SSH_HOST="blackshark"
+BSE_PROXY_PORT=1080
+BSE_PAC_FILE="$HOME/.proxy/aws-proxy.pac"
+BSE_IP_LIST="$HOME/.proxy/bse-ip-list.conf"
+BSE_PAC_PORT=8799
+BSE_PAC_URL="http://127.0.0.1:${BSE_PAC_PORT}/aws-proxy.pac"
+
+# Detect active network service from default route
+_bse_net_service() {
+  local intf svc
+  intf=$(route -n get default 2>/dev/null | awk &apos;/interface:/{print $2}&apos;)
+  if [ -n "$intf" ]; then
+    svc=$(networksetup -listnetworkserviceorder 2>/dev/null | \
+      grep "Device: ${intf})" -B1 | head -1 | sed &apos;s/(.*) //&apos;)
+  fi
+  [ -z "$svc" ] && svc="Wi-Fi"
+  echo "$svc"
+}
+
+# SSH tunnel
+bse-connect() {
+  lsof -i :${BSE_PROXY_PORT} -sTCP:LISTEN >/dev/null 2>&1 && return 0
+  ssh -fN "${BSE_SSH_HOST}"
+}
+
+# PAC generation from IP config
+bse-gen-pac() {
+  # Reads bse-ip-list.conf, generates PAC file with
+  # shExpMatch + isInNet for each IP/CIDR entry
+  # AWS domains are hardcoded in the template
+  ...
+}
+
+# PAC HTTP server (macOS browsers don&apos;t load file:// PAC)
+bse-pac-serve() {
+  python3 -c "..." &  # serves on 127.0.0.1:8799
+}
+
+# PAC mode (default)
+bse-pac-on() {
+  bse-gen-pac         # generate PAC from IP list
+  bse-pac-serve       # start HTTP server
+  networksetup -setautoproxyurl "$net" "$BSE_PAC_URL"
+  networksetup -setautoproxystate "$net" on
+}
+
+# SOCKS mode (fallback)
+bse-proxy-on() {
+  networksetup -setsocksfirewallproxy "$net" 127.0.0.1 1080
+  networksetup -setsocksfirewallproxystate "$net" on
+}
+
+# CLI env vars (PAC doesn&apos;t affect CLI)
+bse-cli-on() {
+  export HTTPS_PROXY=socks5h://127.0.0.1:1080
+  export ALL_PROXY=socks5h://127.0.0.1:1080
+}
+
+# All-in-one commands
+bse-on()    { bse-connect; bse-pac-on; bse-cli-on; bse-status; }
+bse-socks() { bse-connect; bse-proxy-on; bse-cli-on; bse-status; }
+bse-off()   { bse-cli-off; bse-pac-off; bse-proxy-off; bse-disconnect; }
+
+# Add IP to list
+bse-ip-add() { echo "$1" >> "$BSE_IP_LIST"; }
+bse-status() { ... }  # show tunnel + PAC + SOCKS + CLI + WARP verify
+bse-help()   { ... }</code></pre>
+    </details>
+    <p style="margin-top:8px">Full file tại: <code>~/.proxy/bse-aliases.sh</code></p>
   </div>
 
-  <!-- Daily usage -->
-  <div class="ve-card ve-card--accent-b section" style="--i:39g">
-    <div class="ve-card__label label-b">Sử dụng hàng ngày</div>
-    <h3>2 lệnh duy nhất</h3>
-    <div class="code-block"><span class="comment"># Bật &mdash; tunnel + PAC + CLI env vars</span>
-bse-on
+  <!-- File 4: Generated PAC -->
+  <div class="ve-card ve-card--accent-a section" style="--i:39i">
+    <div class="ve-card__label label-a">File 4 &mdash; PAC File (auto-generated)</div>
+    <h3>~/.proxy/aws-proxy.pac</h3>
+    <p>Auto-generated bởi <code>bse-gen-pac</code>. Không edit trực tiếp &mdash; sửa <code>bse-ip-list.conf</code> rồi chạy <code>bse-on</code>.</p>
+    <div class="code-block" style="font-size:11px"><span class="comment">// AUTO-GENERATED &mdash; sửa ~/.proxy/bse-ip-list.conf rồi chạy bse-gen-pac</span>
+<span class="comment">// "SOCKS5 ...; SOCKS ..." covers both Chrome (SOCKS5) and Safari (SOCKS)</span>
 
-<span class="comment"># Kiểm tra</span>
-bse-status
-<span class="comment"># → SSH tunnel: ✓ RUNNING</span>
-<span class="comment"># → System PAC: ✓ ON</span>
-<span class="comment"># → WARP check: warp=on ✓</span>
-<span class="comment"># → Direct check: warp=off ✓ (host sạch)</span>
+function FindProxyForURL(url, host) {
+    <span class="comment">// AWS Sign-In + Console + Static + CloudFront + SSO + APIs</span>
+    if (dnsDomainIs(host, <span class="str">".signin.aws"</span>) || ...) <span class="cmd">return</span> <span class="str">"SOCKS5 127.0.0.1:1080; SOCKS 127.0.0.1:1080"</span>;
+    if (dnsDomainIs(host, <span class="str">".console.aws.amazon.com"</span>) || ...) <span class="cmd">return</span> <span class="str">"SOCKS5 ...; SOCKS ..."</span>;
+    if (dnsDomainIs(host, <span class="str">".awsstatic.com"</span>) || ...) <span class="cmd">return</span> <span class="str">"SOCKS5 ...; SOCKS ..."</span>;
+    if (dnsDomainIs(host, <span class="str">".cloudfront.net"</span>)) <span class="cmd">return</span> <span class="str">"SOCKS5 ...; SOCKS ..."</span>;
+    if (dnsDomainIs(host, <span class="str">".awsapps.com"</span>) || ...) <span class="cmd">return</span> <span class="str">"SOCKS5 ...; SOCKS ..."</span>;
+    if (dnsDomainIs(host, <span class="str">".amazonaws.com"</span>) || dnsDomainIs(host, <span class="str">".api.aws"</span>)) <span class="cmd">return</span> <span class="str">"SOCKS5 ...; SOCKS ..."</span>;
 
-<span class="comment"># Tắt</span>
-bse-off</div>
+    <span class="comment">// Backseat IPs from bse-ip-list.conf (auto-generated)</span>
+    if (
+        shExpMatch(host, <span class="str">"172.25.137.7"</span>) ||
+        isInNet(host, <span class="str">"172.25.137.7"</span>, <span class="str">"255.255.255.255"</span>) ||
+        isInNet(host, <span class="str">"172.25.0.0"</span>, <span class="str">"255.255.0.0"</span>)
+    )
+        <span class="cmd">return</span> <span class="str">"SOCKS5 127.0.0.1:1080; SOCKS 127.0.0.1:1080"</span>;
+
+    <span class="comment">// Everything else: direct (no WARP)</span>
+    <span class="cmd">return</span> <span class="str">"DIRECT"</span>;
+}</div>
+  </div>
+
+  <!-- zshrc -->
+  <div class="ve-card ve-card--recessed section" style="--i:39j">
+    <div class="ve-card__label" style="color:var(--text-dim)">~/.zshrc</div>
+    <p>Thêm 1 dòng để source aliases tự động mỗi terminal mới:</p>
+    <div class="code-block">[ -f ~/.proxy/bse-aliases.sh ] && source ~/.proxy/bse-aliases.sh</div>
   </div>
 
   <!-- Commands reference -->
-  <div class="table-wrap section" style="--i:39h">
+  <div class="table-wrap section" style="--i:39k">
     <div class="table-scroll">
       <table class="data-table">
         <thead>
-          <tr>
-            <th>Lệnh</th>
-            <th>Tác dụng</th>
-            <th>Cách toggle</th>
-          </tr>
+          <tr><th>Lệnh</th><th>Tác dụng</th><th>Cách toggle</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td><code>bse-on</code></td>
-            <td>Bật toàn bộ: SSH tunnel + system PAC + CLI env vars</td>
-            <td><code>bse-off</code></td>
-          </tr>
-          <tr>
-            <td><code>bse-connect</code></td>
-            <td>Chỉ bật SSH tunnel (port 1080)</td>
-            <td><code>bse-disconnect</code></td>
-          </tr>
-          <tr>
-            <td><code>bse-proxy-on</code></td>
-            <td>Chỉ bật system PAC proxy (browser)</td>
-            <td><code>bse-proxy-off</code></td>
-          </tr>
-          <tr>
-            <td><code>bse-cli-on</code></td>
-            <td>Chỉ bật CLI env vars (<code>HTTPS_PROXY</code>)</td>
-            <td><code>bse-cli-off</code></td>
-          </tr>
-          <tr>
-            <td><code>bse-status</code></td>
-            <td>Kiểm tra trạng thái + verify WARP</td>
-            <td>&mdash;</td>
-          </tr>
-          <tr>
-            <td><code>bse-help</code></td>
-            <td>Hiển thị hướng dẫn</td>
-            <td>&mdash;</td>
-          </tr>
+          <tr><td><code>bse-on</code></td><td>Bật PAC mode: SSH tunnel + PAC server + system PAC + CLI env vars</td><td><code>bse-off</code></td></tr>
+          <tr><td><code>bse-socks</code></td><td>Bật SOCKS mode: all traffic qua WARP (fallback khi PAC không work)</td><td><code>bse-off</code></td></tr>
+          <tr><td><code>bse-status</code></td><td>Kiểm tra: network, tunnel, PAC, SOCKS, CLI, WARP verify</td><td>&mdash;</td></tr>
+          <tr><td><code>bse-ip-add</code></td><td>Thêm IP/CIDR vào list (vd: <code>bse-ip-add 10.0.1.5</code>)</td><td>Edit <code>bse-ip-list.conf</code></td></tr>
+          <tr><td><code>bse-gen-pac</code></td><td>Regenerate PAC file từ IP config</td><td>&mdash;</td></tr>
+          <tr><td><code>bse-help</code></td><td>Hiển thị hướng dẫn</td><td>&mdash;</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <!-- System PAC vs CLI -->
-  <div class="callout section callout--warn" style="--i:39i">
-    <strong>PAC file (browser) vs env vars (CLI):</strong><br>
-    PAC file chỉ ảnh hưởng <strong>browser</strong> (Chrome, Safari, Edge). CLI tools
-    (<code>aws</code>, <code>curl</code>) <strong>không đọc PAC</strong> &mdash; cần <code>HTTPS_PROXY</code> env var.
-    <code>bse-on</code> set cả hai. Nếu chỉ cần browser &rarr; <code>bse-connect &amp;&amp; bse-proxy-on</code>.
-    Nếu chỉ cần CLI &rarr; <code>bse-connect &amp;&amp; bse-cli-on</code>.
+  <!-- How PAC routing works -->
+  <div class="ve-card ve-card--recessed section" style="--i:39l">
+    <div class="ve-card__label" style="color:var(--text-dim)">Cách PAC routing hoạt động</div>
+    <div class="grid-2" style="margin-top:8px">
+      <div>
+        <p style="font-size:13px"><strong>Browser traffic:</strong></p>
+        <p style="font-size:12px">Browser &rarr; System PAC (<code>http://127.0.0.1:8799/aws-proxy.pac</code>) &rarr;
+        <code>FindProxyForURL(url, host)</code> &rarr;<br>
+        AWS domain? &rarr; <code>SOCKS5 127.0.0.1:1080</code> &rarr; SSH tunnel &rarr; WARP &rarr; AWS<br>
+        Backseat IP? &rarr; <code>SOCKS5 127.0.0.1:1080</code> &rarr; SSH tunnel &rarr; WARP &rarr; ESS<br>
+        Other? &rarr; <code>DIRECT</code> (không qua WARP)</p>
+      </div>
+      <div>
+        <p style="font-size:13px"><strong>CLI traffic:</strong></p>
+        <p style="font-size:12px"><code>aws ssm start-session</code> &rarr; <code>HTTPS_PROXY</code> env var &rarr;
+        <code>socks5h://127.0.0.1:1080</code> &rarr; SSH tunnel &rarr; WARP &rarr; AWS.<br><br>
+        PAC <strong>không ảnh hưởng CLI</strong> &mdash; cần env var riêng (<code>bse-cli-on</code>).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAC gotchas -->
+  <div class="callout section callout--warn" style="--i:39m">
+    <strong>3 gotchas đã fix (verified):</strong><br>
+    1. <strong>file:// PAC không hoạt động trên macOS</strong> &mdash; Chrome/Safari không load <code>file:///path.pac</code>. Fix: serve qua HTTP local (port 8799).<br>
+    2. <strong>SOCKS5 vs SOCKS</strong> &mdash; Safari cần <code>"SOCKS"</code>, Chrome cần <code>"SOCKS5"</code>. Fix: return cả hai <code>"SOCKS5 ...; SOCKS ..."</code>.<br>
+    3. <strong>IP literal matching</strong> &mdash; <code>isInNet</code> có thể fail. Fix: triple match <code>shExpMatch + isInNet exact + isInNet CIDR</code>.
+  </div>
+
+  <!-- PAC vs SOCKS -->
+  <div class="callout section callout--warn" style="--i:39n">
+    <strong>PAC (browser) vs env vars (CLI):</strong><br>
+    PAC chỉ ảnh hưởng <strong>browser</strong>. CLI (<code>aws</code>, <code>curl</code>) cần <code>HTTPS_PROXY</code> env var.
+    <code>bse-on</code> set cả hai. Nếu chỉ cần browser &rarr; <code>bse-connect &amp;&amp; bse-pac-on</code>.
+    Nếu PAC không work với browser &rarr; <code>bse-socks</code> (all traffic, fallback).
   </div>
 
   <!-- Verified status -->
-  <div class="callout section callout--success" style="--i:39j">
-    <strong>Đã verify hoạt động:</strong>
+  <div class="callout section callout--success" style="--i:39o">
+    <strong>Verified hoạt động (2026-06-25):</strong>
     <ul style="margin:8px 0 0 0; padding-left:1.2em; font-size:12px; line-height:1.7;">
-      <li>SSH tunnel: <code>blackshark.internal:8022</code> &rarr; port 1080 ✓</li>
-      <li>Qua proxy: <code>warp=on</code>, <code>gateway=on</code> ✓</li>
-      <li>Direct (host): <code>warp=off</code> ✓ &mdash; host sạch</li>
-      <li>System PAC: <code>networksetup</code> Wi-Fi ✓</li>
+      <li>Network: <code>USB 10/100/1000 LAN</code> (auto-detected from <code>en8</code>)</li>
+      <li>SSH tunnel: <code>blackshark.internal:8022</code> &rarr; port 1080 &nbsp;✓</li>
+      <li>PAC server: <code>http://127.0.0.1:8799/aws-proxy.pac</code> &nbsp;✓</li>
+      <li>PAC proxy: ON (selective) &nbsp;✓</li>
+      <li>WARP check qua proxy: <code>warp=on</code> &nbsp;✓</li>
+      <li>Direct check: <code>warp=off</code> (host sạch) &nbsp;✓</li>
+      <li>ESS Admin (172.25.137.7) qua proxy: reachable &nbsp;✓</li>
+      <li>AWS Console qua proxy: reachable &nbsp;✓</li>
     </ul>
   </div>
 
-
-  <!-- ============================================================== -->
+<!-- ============================================================== -->
   <!-- ====== TROUBLESHOOTING ====== -->
   <!-- ============================================================== -->
   <div class="divider-section section" style="--i:40">
