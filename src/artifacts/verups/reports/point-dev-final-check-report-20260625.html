@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>point-dev Final Environment Check — STG Readiness (2026-06-25)</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#243449; --ink:#e2e8f0; --muted:#94a3b8;
+    --line:#334155; --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --blue:#38bdf8;
+    --greenbg:#052e16; --amberbg:#3a2a06; --redbg:#3a0a0a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:19px;margin:36px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;margin:20px 0 8px;color:var(--blue)}
+  .sub{color:var(--muted);font-size:13.5px}
+  .verdict{display:flex;gap:18px;align-items:center;background:var(--greenbg);border:1px solid var(--green);border-radius:12px;padding:20px 24px;margin:8px 0 4px}
+  .verdict .badge{font-size:30px;font-weight:800;color:var(--green);letter-spacing:1px;white-space:nowrap}
+  .verdict .txt{font-size:14.5px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  .card .v{font-size:22px;font-weight:700;margin-top:4px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px;background:var(--panel2)}
+  tr:hover td{background:#1a2740}
+  code{background:#0b1220;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd5e1}
+  .pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .ok{background:var(--greenbg);color:#4ade80;border:1px solid #166534}
+  .warn{background:var(--amberbg);color:#fbbf24;border:1px solid #92660a}
+  .info{background:#0c2a3a;color:#7dd3fc;border:1px solid #0e5a7a}
+  .note{background:var(--panel);border-left:3px solid var(--blue);border-radius:0 8px 8px 0;padding:12px 16px;margin:12px 0}
+  .defer{background:var(--panel);border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:12px 16px;margin:12px 0}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  .small{font-size:12.5px;color:var(--muted)}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>point-dev — Final Environment Check before STG Rehearsal</h1>
+  <div class="sub">Environment: point-dev (AWS account 905418018638, ap-northeast-1) &nbsp;·&nbsp; Check date: 2026-06-25 &nbsp;·&nbsp; Target: STG rehearsal start (Fri 2026-06-26)</div>
+</header>
+
+<div class="verdict">
+  <div class="badge">GO ✅</div>
+  <div class="txt">
+    <strong>Everything we can verify on the infrastructure layer of point-dev is healthy — no infra blocker for starting the STG rehearsal.</strong><br>
+    The migration applied to point-dev (2026-06-11 → 2026-06-18) is stable: zero destructive configuration drift, all stateful stores reachable with the migrated settings, the EKS cluster and all workloads healthy, and the one apply-time incident fully closed. Application-level confirmation (and the operational bucket feature) remain deliberately out of scope this week — see <em>Deferred</em>.
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="k">EKS cluster</div><div class="v">v1.34 · ACTIVE</div><div class="small">8 nodes Ready · auth mode API</div></div>
+  <div class="card"><div class="k">Workloads</div><div class="v">all Running</div><div class="small">5 app + system pods · 0 non-Running · 0 warnings</div></div>
+  <div class="card"><div class="k">Config drift</div><div class="v">0 destructive</div><div class="small">5/5 components checked</div></div>
+  <div class="card"><div class="k">Stateful stores</div><div class="v">reachable</div><div class="small">Aurora · Redshift · Redis</div></div>
+</div>
+
+<h2>1. Scope &amp; method</h2>
+<p>The check was framed around three questions, answered with read-only AWS API queries, read-only in-cluster <code>kubectl</code> queries, read-only database connectivity probes, and <code>terraform plan</code> (plan-only, never apply):</p>
+<table>
+  <tr><th>Pillar</th><th>Question</th><th>Result</th></tr>
+  <tr><td><strong>Completeness</strong></td><td>Was everything planned actually applied to point-dev?</td><td><span class="pill ok">PASS</span> — every component whose output is observable on live AWS is present &amp; healthy (see WAF note below)</td></tr>
+  <tr><td><strong>Drift</strong></td><td>Does live point-dev still match the migrated configuration? (STG will apply the same code)</td><td><span class="pill ok">PASS</span> — 5/5 targeted components, zero destructive drift</td></tr>
+  <tr><td><strong>Health &amp; incident closure</strong></td><td>Are resources functioning, no abnormal alarms, and every apply incident closed?</td><td><span class="pill ok">PASS</span> — workloads healthy, the one apply incident closed</td></tr>
+</table>
+<p class="small"><strong>In scope:</strong> everything verifiable from the infrastructure side. &nbsp; <strong>Out of scope this week (deferred):</strong> end-to-end application confirmation and the operational bucket feature (see §6).</p>
+
+<h2>2. Health evidence (live, 2026-06-25)</h2>
+<table>
+  <tr><th>Area</th><th>Status</th><th>Evidence</th></tr>
+  <tr><td>EKS control plane</td><td><span class="pill ok">OK</span></td><td>Cluster <code>point</code> v1.34 ACTIVE, platform <code>eks.24</code>, authentication mode <code>API</code>. Server build <code>v1.34.8-eks</code>.</td></tr>
+  <tr><td>EKS nodes</td><td><span class="pill ok">OK</span></td><td>8 nodes <code>Ready</code> on v1.34.8 (Amazon Linux 2023). 5 managed node groups (admin/api/app/mmh/worker) ACTIVE, no health issues.</td></tr>
+  <tr><td>EKS add-ons</td><td><span class="pill ok">OK</span></td><td>coredns, kube-proxy, vpc-cni, secrets-store-csi-driver all ACTIVE, no issues.</td></tr>
+  <tr><td>Workloads</td><td><span class="pill ok">OK</span></td><td>All 5 application deployments (admin/api/app/mmh/worker) <code>1/1</code> Running; all system pods Running; <strong>0 pods not Running</strong>; <strong>0 Warning events</strong> cluster-wide.</td></tr>
+  <tr><td>Pod IAM (IRSA)</td><td><span class="pill ok">OK</span></td><td>Service accounts correctly bound: aws-node → <code>point-vpc-cni-aws-node</code>, load-balancer-controller → <code>point-aws-load-balancer-controller</code>, cluster-autoscaler → <code>point-cluster-autoscaler-irsa-role</code>.</td></tr>
+  <tr><td>Aurora (MySQL)</td><td><span class="pill ok">OK</span></td><td>Cluster <code>point</code> available, encrypted at rest; serving on the migrated port <code>13306</code>. Live read probe (<code>SELECT 1</code>) succeeded, engine 8.0.28.</td></tr>
+  <tr><td>ElastiCache (Redis)</td><td><span class="pill ok">OK</span></td><td>Replication group <code>point</code> available, in-transit + at-rest encryption enabled. Live TLS <code>PING → PONG</code>.</td></tr>
+  <tr><td>Redshift</td><td><span class="pill ok">OK</span></td><td>Cluster <code>point</code> available, encrypted, <code>require_ssl=true</code>. Live SSL read probe (<code>SELECT 1</code>) succeeded.</td></tr>
+  <tr><td>Networking</td><td><span class="pill ok">OK</span></td><td>VPC with primary CIDR <code>172.18.0.0/16</code> + secondary <code>100.64.0.0/16</code> (data-pipeline ENI pool); 15 VPC endpoints available (incl. SMTP, STS, KMS, ECR, monitoring); subnets have ample free IPs; NAT gateway available.</td></tr>
+  <tr><td>Admin access path</td><td><span class="pill ok">OK</span></td><td>EC2 Instance Connect Endpoint <code>eice-0c3853bd0a5762fc2</code> create-complete; bastion reachable.</td></tr>
+  <tr><td>S3</td><td><span class="pill ok">OK</span></td><td>24 project buckets, all with default encryption (AES256 / KMS); versioning enabled on durable buckets.</td></tr>
+  <tr><td>Secrets Manager</td><td><span class="pill ok">OK</span></td><td>All application secrets present (Aurora / Redshift viewer·editor·master, Redis, datasource master &amp; historical).</td></tr>
+  <tr><td>WAF</td><td><span class="pill ok">OK</span></td><td>Two CloudFront WebACLs present and reconciled: customer (11 rules), admin (9 rules). No regional WebACL is observable on dev — the remaining WAF stacks (admin-private, maintenance) do not surface a live WebACL in this environment; their presence should be confirmed against the STG plan rather than inferred here.</td></tr>
+  <tr><td>GuardDuty</td><td><span class="pill ok">OK</span></td><td>Detector ENABLED; data-source features (CloudTrail, DNS, flow logs, S3, EKS audit, malware, RDS login) ENABLED; runtime monitoring OFF (the intended dev posture).</td></tr>
+  <tr><td>IAM</td><td><span class="pill ok">OK</span></td><td>All custodian roles present; EKS access entries correctly mapped (admin / operator / viewer / CICD + bastion + cd-runner).</td></tr>
+  <tr><td>CloudWatch alarms</td><td><span class="pill info">SEE NOTE</span></td><td>97 alarms; the only alarms in ALARM state are worker <code>*-NOT_STARTED</code> heartbeat alarms. The application deployments themselves are running (all 5 are <code>1/1</code>); these heartbeats track individual background-worker jobs that are not currently active on dev — some likely disabled in this environment, and at least one (<code>sameIpChecker</code>) is failing on the schema gap in §6A. This is an application-layer item pending app-side confirmation, not an infrastructure fault.</td></tr>
+</table>
+
+<h2>3. Configuration drift (terraform plan, plan-only)</h2>
+<p>Targeted the five highest-risk components (the three stateful stores plus the two most-recently-troubled components). <strong>Result: 5/5 PASS, zero destructive drift</strong> — no replace or destroy on any stateful resource.</p>
+<table>
+  <tr><th>Component</th><th>Plan</th><th>What (if anything) differs</th><th>Risk</th></tr>
+  <tr><td>Aurora</td><td>0 add · 1 change · 0 destroy</td><td>KMS key policy cleanup: removes a stale principal (the old source-environment account root) from the key policy. Cluster itself unchanged.</td><td><span class="pill ok">LOW</span></td></tr>
+  <tr><td>Redshift</td><td>0 add · 1 change · 0 destroy</td><td>Same benign KMS key policy cleanup. Cluster unchanged.</td><td><span class="pill ok">LOW</span></td></tr>
+  <tr><td>ElastiCache</td><td>No changes</td><td>Zero drift.</td><td><span class="pill ok">LOW</span></td></tr>
+  <tr><td>EKS</td><td>0 add · 5 change · 0 destroy</td><td>Node groups would roll to a newer 1.34 patch AMI (<code>1.34.8 → 1.34.9</code>), in place. Cluster version stays 1.34; no node-group replacement, no CNI/auth change. Routine AMI freshness, not migration drift.</td><td><span class="pill ok">LOW</span></td></tr>
+  <tr><td>WAF (customer)</td><td>No changes</td><td>All 11 rules reconciled; the first-apply recovery is confirmed complete.</td><td><span class="pill ok">LOW</span></td></tr>
+</table>
+<p class="small">The only non-zero diffs are (a) a benign node AMI patch roll and (b) a security-improving KMS key-policy cleanup. Neither touches data or availability.</p>
+
+<h2>4. Incident closure</h2>
+<table>
+  <tr><th>Incident</th><th>Status</th><th>Evidence</th></tr>
+  <tr><td>EKS upgrade apply failure during the 1.31 step (node roll failed twice on a CNI/IAM ordering deadlock)</td><td><span class="pill ok">CLOSED</span></td><td>The permanent fix (provision the CNI add-on before the node groups, with an IRSA-wired service account) worked: the cluster completed the ladder to v1.34, all node groups are ACTIVE/healthy, and the <code>aws-node</code> service account is now correctly bound to its dedicated IAM role — the exact wiring whose absence caused the original deadlock.</td></tr>
+  <tr><td>Customer WAF first-apply "inconsistent result" on 3 rules</td><td><span class="pill ok">CLOSED</span></td><td>Drift plan returns "No changes"; all 11 rules present and reconciled.</td></tr>
+  <tr><td>Login-manager callback hang (missing egress allowance on port 80)</td><td><span class="pill ok">FIX APPLIED</span></td><td>The egress network-policy fix is in place; application pods are running with no related warning events. Full user-flow validation belongs to the application-side confirmation next week.</td></tr>
+</table>
+
+<h2>5. Observations (non-blocking)</h2>
+<ul>
+  <li><strong>EKS API endpoint is publicly reachable</strong> (public + private both enabled) on dev. Recommend confirming this is the intended dev posture before STG, where the endpoint policy may differ.</li>
+  <li><strong>One expired CloudFront certificate</strong> for the wildcard domain remains alongside the active issued one — a harmless cleanup item; the active certificate is in use.</li>
+  <li><strong>Worker heartbeat alarms in ALARM</strong> are an application-layer signal: the app deployments run, but several background-worker jobs are not active on dev (some likely disabled here, at least one failing on the §6A schema gap). They are expected to resolve as part of the application-side confirmation, not by any infrastructure change.</li>
+</ul>
+
+<h2>6. Deferred — deliberately out of scope this week</h2>
+<div class="defer">
+  <strong>A. Application-side confirmation (next week, pending app-team feedback).</strong>
+  One concrete data point worth flagging now: the <code>sameIpChecker</code> worker logs a recurring SQL error —
+  <code>Unknown column 'user_id_type' in 'field list'</code> on table <code>user_login</code>. The application image expects a schema column that is not yet present in the migrated Aurora database. This is an <strong>application / database-schema gap (a pending schema migration)</strong>, not an infrastructure fault — the Aurora cluster itself is healthy and reachable.
+  <br><br>
+  <strong>This is also a STG input, not only a dev clean-up.</strong> Because dev shows the running application out of sync with the migrated schema, the STG Aurora cutover will reproduce the identical error unless the database schema migration is an explicit step in the STG apply/cutover runbook. Recommended action before the rehearsal closes: confirm with the app/DB owners that (a) the pending schema migration is applied on the point-dev database, and (b) the same migration step is sequenced into the STG cutover plan. Detailed app-flow validation still belongs to the application-side confirmation scheduled for next week.
+</div>
+<div class="defer">
+  <strong>B. Operational bucket.</strong> The corresponding application feature is not yet complete on dev, so it cannot be promoted to STG yet. To be re-confirmed with the application team; tracked separately, not a blocker for the infrastructure rehearsal.
+</div>
+
+<h2>7. Recommendation for STG</h2>
+<div class="note">
+  <strong>Infrastructure: GO for the STG rehearsal.</strong> point-dev is a faithful, stable, drift-free reference of the migrated configuration, which gives high confidence that the same apply will behave predictably on STG.
+  <br><br>
+  Carry these point-dev learnings into the STG apply (details already in the STG plan):
+  <ul>
+    <li>Apply the EKS upgrade with the CNI add-on provisioned <em>before</em> the node groups (and in-cluster access bindings applied first) — the procedure that resolved the dev incident.</li>
+    <li>Remember the STG-specific deltas vs dev: smaller VPC range, multiple NAT gateways, the database cutover plan, and any STG-only manual resources that must not be touched.</li>
+    <li>Sequence the database schema migration (the <code>user_id_type</code> gap in §6A) explicitly into the STG cutover plan — dev shows the app running ahead of the migrated schema, so STG will hit the same error without this step. End-to-end application confirmation and the operational bucket follow on the application team's timeline next week.</li>
+  </ul>
+</div>
+
+<footer>
+  point-dev final environment check · prepared 2026-06-25 · based on live read-only AWS/kubectl queries, database connectivity probes, and plan-only terraform runs against point-dev (account 905418018638). No changes were made to any environment during this check.
+</footer>
+
+</div>
+</body>
+</html>
