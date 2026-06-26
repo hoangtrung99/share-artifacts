@@ -1509,15 +1509,40 @@ mysql  172.25.137.7  3306</div>
 
   <!-- SSH config -->
   <div class="ve-card ve-card--accent-a section" style="--i:39i">
+    <div class="ve-card ve-card--accent-a section" style="--i:39i">
     <div class="ve-card__label label-a">SSH Config</div>
-    <h3>~/.ssh/config &mdash; blackshark</h3>
-    <div class="code-block"><span class="comment"># ~/.ssh/config</span>
+    <h3>~/.ssh/config &mdash; tunnel + direct</h3>
+    <p>Host <code>blackshark</code> cho SSH tunnel (DynamicForward). Host <code>-tunnel</code> cho SSH qua forwarded port.</p>
+    <div class="code-block"><span class="comment"># ~/.ssh/config — SSH tunnel (Android WARP proxy)</span>
 Host blackshark
   HostName blackshark.internal
   Port 8022
   User root
   DynamicForward 1080
-  ServerAliveInterval 60</div>
+  ServerAliveInterval 60
+
+<span class="comment"># SSH qua tunnel — bse-forward --ssh → localhost:10022</span>
+Host ess-tunnel
+  HostName localhost
+  Port 10022
+  User root
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+
+<span class="comment"># SSH qua tunnel — bse-forward --ssh-cb → localhost:10023</span>
+Host coinbook-dev-tunnel
+  HostName localhost
+  Port 10023
+  User coinbook
+  IdentityFile ~/.ssh/trungnh
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null</div>
+    <div class="callout callout--warn" style="margin:8px 0">
+      <strong>Tại sao cần Host <code>-tunnel</code> riêng:</strong> Khi SSH đến <code>localhost:10023</code>,
+      SSH config match Host <code>localhost</code> &mdash; không match <code>coinbook-dev</code>.
+      User, IdentityFile, Port từ config gốc không được áp dụng. Host <code>-tunnel</code> riêng đảm bảo
+      đúng user + key + port. <code>StrictHostKeyChecking no</code> vì host key thay đổi khi forward đến target khác.
+    </div>
   </div>
 
   <!-- Generated PAC -->
@@ -1669,6 +1694,8 @@ bse-ip-add() { echo "$1" >> "$BSE_IP_LIST"; }</code></pre>
           <tr><td><code>bse-forward --rdp</code></td><td>Forward RDP riêng</td></tr>
           <tr><td><code>bse-forward --all</code></td><td>Forward tất cả riêng</td></tr>
           <tr><td><code>bse-forward &lt;ip&gt; &lt;port&gt;</code></td><td>Forward tùy chỉnh</td></tr>
+          <tr><td><code>ssh ess-tunnel</code></td><td>SSH vào 172.25.137.7 qua tunnel</td></tr>
+          <tr><td><code>ssh coinbook-dev-tunnel</code></td><td>SSH vào 54.95.168.220 qua tunnel</td></tr>
           <tr><td><code>bse-forward-list</code></td><td>Liệt kê forwards</td></tr>
           <tr><td><code>bse-forward-kill &lt;port&gt;</code></td><td>Tắt 1 forward</td></tr>
           <tr><td><code>bse-forward-killall</code></td><td>Tắt tất cả forwards</td></tr>
