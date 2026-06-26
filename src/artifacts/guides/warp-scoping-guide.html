@@ -1454,13 +1454,17 @@ bse-status</div>
   <!-- Forward commands -->
   <div class="ve-card ve-card--accent-a section" style="--i:39g">
     <div class="ve-card__label label-a">Port Forward (RDP, SSH, MySQL, ...)</div>
-    <h3>bse-forward</h3>
+    <h3>bse-forward / bse-rdp</h3>
     <p>PAC chỉ ảnh hưởng HTTP (browser). RDP/SSH/MySQL là TCP non-HTTP &mdash; cần SSH local port forward.</p>
     <div class="code-block"><span class="comment"># Forward từ config</span>
 bse-forward <span class="flag">--rdp</span>          <span class="comment"># localhost:13389 → 172.25.137.7:3389</span>
 bse-forward <span class="flag">--ssh</span>          <span class="comment"># localhost:10022 → 172.25.137.7:22</span>
 bse-forward <span class="flag">--mysql</span>        <span class="comment"># localhost:13306 → 172.25.137.7:3306</span>
 bse-forward <span class="flag">--all</span>          <span class="comment"># forward tất cả từ config</span>
+
+<span class="comment"># RDP shortcut: forward + tạo .rdp file (NLA disabled) + mở Windows App</span>
+bse-rdp                        <span class="comment"># tự động forward + mở Windows App</span>
+bse-rdp 10.0.1.5 3389           <span class="comment"># RDP đến IP khác</span>
 
 <span class="comment"># Forward tùy chỉnh</span>
 bse-forward 172.25.137.7 6379     <span class="comment"># Redis → localhost:16379</span>
@@ -1469,13 +1473,17 @@ bse-forward 172.25.137.7 5432 15432 <span class="comment"># PostgreSQL → local
 <span class="comment"># Quản lý</span>
 bse-forward-list                 <span class="comment"># xem forwards đang chạy</span>
 bse-forward-kill 13389           <span class="comment"># tắt 1 forward</span>
-bse-forward-killall              <span class="comment"># tắt tất cả</span></div>
+bse-forward-killall              <span class="comment"># tắt tấtả</span></div>
     <p style="margin-top:8px">Local port mặc định: <code>10000 + remote_port</code> (RDP 3389→13389, SSH 22→10022, MySQL 3306→13306)</p>
-    <p>Kết nối RDP: mở Microsoft Remote Desktop → nhập <code>localhost:13389</code></p>
+    <div class="callout callout--warn" style="margin:12px 0">
+      <strong>bse-rdp vs bse-forward --rdp:</strong>
+      <code>bse-forward --rdp</code> chỉ tạo SSH tunnel. <code>bse-rdp</code> tạo tunnel <strong>+ tạo .rdp file</strong>
+      (với <code>enablecredsspsupport:i:0</code> &mdash; NLA disabled) <strong>+ mở Windows App</strong> tự động.
+      Windows App cần .rdp file với NLA disabled để kết nối qua tunnel.
+    </div>
   </div>
 
-  <!-- Config files -->
-  <div class="grid-2 section" style="--i:39h">
+<div class="grid-2 section" style="--i:39h">
     <div class="ve-card ve-card--accent-b">
       <div class="ve-card__label label-b">bse-ip-list.conf</div>
       <h3>IP list cho PAC</h3>
