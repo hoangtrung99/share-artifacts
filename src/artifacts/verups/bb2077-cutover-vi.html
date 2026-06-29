@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB-2077 — Thứ tự cắt chuyển DNS / SSL / WebSocket·API</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #0c1320;
+    --surface: #131c2b;
+    --surface2: #18233480;
+    --surface-elevated: #182438;
+    --border: rgba(255,255,255,0.08);
+    --border-bright: rgba(255,255,255,0.16);
+    --text: #e7eef7;
+    --text-dim: #93a4ba;
+    --accent: #38bdf8;
+    --accent-dim: rgba(56,189,248,0.12);
+    --green: #4ade80;
+    --green-dim: rgba(74,222,128,0.12);
+    --red: #fb7185;
+    --red-dim: rgba(251,113,133,0.12);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251,191,36,0.12);
+    --infra: #38bdf8;
+    --infra-dim: rgba(56,189,248,0.12);
+    --app: #c084fc;
+    --app-dim: rgba(192,132,252,0.14);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eef3f9;
+      --surface: #ffffff;
+      --surface2: #f1f5fb;
+      --surface-elevated: #ffffff;
+      --border: rgba(15,30,55,0.10);
+      --border-bright: rgba(15,30,55,0.20);
+      --text: #14233a;
+      --text-dim: #56657d;
+      --accent: #0369a1;
+      --accent-dim: rgba(3,105,161,0.08);
+      --green: #15803d;
+      --green-dim: rgba(21,128,61,0.09);
+      --red: #be123c;
+      --red-dim: rgba(190,18,60,0.08);
+      --amber: #b45309;
+      --amber-dim: rgba(180,83,9,0.09);
+      --infra: #0369a1;
+      --infra-dim: rgba(3,105,161,0.08);
+      --app: #7c3aed;
+      --app-dim: rgba(124,58,237,0.08);
+    }
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px),
+      radial-gradient(ellipse at 50% -10%, var(--accent-dim) 0%, transparent 55%);
+    background-size: 32px 32px, 32px 32px, 100% 100%;
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px 20px 80px;
+    min-height: 100vh;
+    overflow-wrap: break-word;
+    line-height: 1.6;
+  }
+  .container { max-width: 1080px; margin: 0 auto; }
+  .grid > *, .flex > * { min-width: 0; }
+
+  @keyframes fadeUp { from {opacity:0; transform:translateY(12px);} to {opacity:1; transform:translateY(0);} }
+  .animate { animation: fadeUp .4s ease-out both; animation-delay: calc(var(--i,0)*.05s); }
+  @media (prefers-reduced-motion: reduce){ *,*::before,*::after{ animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+
+  .eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .eyebrow::before { content:''; width:22px; height:1px; background:var(--accent); display:inline-block; }
+  h1 { font-size:30px; font-weight:700; letter-spacing:-0.4px; line-height:1.2; margin-bottom:10px; }
+  h1 .ticket { color:var(--accent); }
+  .sub { color:var(--text-dim); font-size:15px; max-width:75ch; }
+  .meta-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .chip { font-family:var(--font-mono); font-size:11px; padding:4px 10px; border-radius:6px; background:var(--surface); border:1px solid var(--border); color:var(--text-dim); }
+  .chip b { color:var(--text); font-weight:600; }
+
+  section { margin-top:42px; }
+  .slabel { font-family:var(--font-mono); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1.6px; color:var(--accent); display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+  .slabel::before { content:''; width:8px; height:8px; border-radius:50%; background:currentColor; }
+  h2 { font-size:21px; font-weight:600; letter-spacing:-0.2px; margin-bottom:14px; }
+  .lede { color:var(--text-dim); font-size:14px; margin-bottom:18px; max-width:80ch; }
+
+  .callout { padding:16px 20px; border-radius:10px; border-left:4px solid var(--cb); background:var(--cbg); margin:18px 0; }
+  .callout--warn { --cb:var(--amber); --cbg:var(--amber-dim); }
+  .callout--info { --cb:var(--accent); --cbg:var(--accent-dim); }
+  .callout__t { font-weight:700; margin-bottom:6px; color:var(--cb); font-size:14px; display:flex; align-items:center; gap:8px; }
+  .callout p { font-size:14px; }
+  .callout code { font-family:var(--font-mono); font-size:12.5px; background:var(--surface); padding:1px 6px; border-radius:4px; }
+
+  .kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; }
+  .kpi { background:var(--surface-elevated); border:1px solid var(--border); border-radius:12px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,0.18); }
+  .kpi__v { font-size:30px; font-weight:700; letter-spacing:-0.5px; line-height:1; font-variant-numeric:tabular-nums; }
+  .kpi__l { font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:var(--text-dim); margin-top:8px; }
+  .v-infra{color:var(--infra);} .v-app{color:var(--app);} .v-red{color:var(--red);} .v-amber{color:var(--amber);} .v-green{color:var(--green);}
+
+  .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table.dt { width:100%; border-collapse:collapse; font-size:13px; }
+  .dt thead { position:sticky; top:0; z-index:2; }
+  .dt th { background:var(--surface2); font-family:var(--font-mono); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:1px; color:var(--text-dim); text-align:left; padding:13px 15px; border-bottom:2px solid var(--border-bright); white-space:nowrap; }
+  .dt td { padding:13px 15px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .dt tbody tr:last-child td { border-bottom:none; }
+  .dt tbody tr:nth-child(even){ background:var(--accent-dim); }
+  .dt code { font-family:var(--font-mono); font-size:11.5px; background:var(--surface-elevated); color:var(--accent); padding:1px 6px; border-radius:4px; word-break:break-all; }
+  .dt .old code { color:var(--red); background:var(--red-dim); }
+  .dt .new code { color:var(--green); background:var(--green-dim); }
+  .dt small { display:block; color:var(--text-dim); font-size:11px; margin-top:4px; }
+  .dt .wide { min-width:200px; }
+  .arrow { color:var(--text-dim); font-family:var(--font-mono); padding:0 6px; }
+
+  .badge { display:inline-flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:10px; font-weight:600; padding:3px 9px; border-radius:6px; white-space:nowrap; letter-spacing:.3px; }
+  .badge::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .b-infra{ background:var(--infra-dim); color:var(--infra); } .b-app{ background:var(--app-dim); color:var(--app); }
+  .b-both{ background:var(--accent-dim); color:var(--accent); }
+  .b-red{ background:var(--red-dim); color:var(--red); } .b-amber{ background:var(--amber-dim); color:var(--amber); } .b-green{ background:var(--green-dim); color:var(--green); }
+  .b-plain{ background:var(--surface-elevated); color:var(--text-dim); }
+
+  .phase { font-family:var(--font-mono); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--text-dim); margin:22px 0 12px; display:flex; align-items:center; gap:10px; }
+  .phase span { background:var(--surface); border:1px solid var(--border); padding:3px 10px; border-radius:6px; color:var(--text); }
+  .steps { list-style:none; counter-reset:step; display:flex; flex-direction:column; gap:10px; }
+  .steps li { position:relative; counter-increment:step; padding:14px 18px 14px 56px; background:var(--surface); border:1px solid var(--border); border-radius:10px; font-size:13.5px; }
+  .steps li::before { content:counter(step); position:absolute; left:14px; top:13px; width:28px; height:28px; border-radius:8px; background:var(--accent-dim); color:var(--accent); font-family:var(--font-mono); font-weight:600; font-size:13px; display:flex; align-items:center; justify-content:center; }
+  .steps li b { color:var(--text); }
+  .steps li code { font-family:var(--font-mono); font-size:12px; background:var(--surface-elevated); color:var(--accent); padding:1px 5px; border-radius:4px; word-break:break-all; }
+  .steps.prep li::before { background:var(--amber-dim); color:var(--amber); }
+  .steps.after li::before { background:var(--green-dim); color:var(--green); }
+  .stepnote { display:block; color:var(--text-dim); font-size:12px; margin-top:4px; }
+
+  .cards2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; }
+  .card h3 { font-size:15px; margin-bottom:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .card p { font-size:13.5px; color:var(--text-dim); }
+  .card code { font-family:var(--font-mono); font-size:12px; background:var(--surface-elevated); color:var(--accent); padding:1px 5px; border-radius:4px; word-break:break-all; }
+  .tag { font-family:var(--font-mono); font-size:10px; padding:2px 8px; border-radius:5px; font-weight:600; }
+  .tag-dir{ background:var(--green-dim); color:var(--green); } .tag-bridge{ background:var(--amber-dim); color:var(--amber); }
+  @media (max-width:760px){ .cards2 { grid-template-columns:1fr; } }
+
+  footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); font-size:12px; color:var(--text-dim); }
+  footer code { font-family:var(--font-mono); font-size:11px; color:var(--text-dim); }
+  .lang-switch b { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="animate" style="--i:0">
+    <div class="eyebrow">verup migration · lập kế hoạch cắt chuyển</div>
+    <h1><span class="ticket">BB-2077</span> — Thứ tự cắt chuyển DNS / SSL / WebSocket · API</h1>
+    <p class="sub">Đổi domain nào sang domain nào, trạng thái before/after của từng thành phần, và <b>thứ tự an toàn</b> để cắt chuyển khi release verup mà không gây đứt traffic.</p>
+    <div class="meta-row">
+      <span class="chip">Người tạo: <b>Masuda</b></span>
+      <span class="chip">Người nhận: <b>Shuku</b></span>
+      <span class="chip">Phụ trách: <b>Trung + Shuku (đều infra)</b></span>
+      <span class="chip">Trạng thái: <b>未着手 / To Do</b></span>
+      <span class="chip lang-switch">Ngôn ngữ: <b>VI</b> · bản EN riêng</span>
+    </div>
+  </div>
+
+  <section class="animate" style="--i:1">
+    <div class="callout callout--info">
+      <div class="callout__t">Tóm tắt 1 câu</div>
+      <p>Khi release verup, web customer/admin và kết nối API + WebSocket của frontend chuyển từ domain cũ <code>*.coinbook.co.jp</code> sang domain mới <code>backseat-service.com</code>. Nếu cắt sai thứ tự, site sẽ sập. Ticket này dùng để chốt <b>thứ tự</b>.</p>
+    </div>
+    <div class="callout callout--warn">
+      <div class="callout__t">Quy tắc quyết định thứ tự</div>
+      <p><b>SSL phải sẵn sàng trên domain mới TRƯỚC khi flip DNS.</b> Chính phần rủi ro của ticket đã ghi: flip DNS khi domain mới chưa có cert hợp lệ → toàn bộ HTTPS chết. Vậy thứ tự thực thi an toàn là <b>SSL (chuẩn bị) → DNS (flip) → WebSocket/API (verify)</b> — không phải DNS trước.</p>
+    </div>
+  </section>
+
+  <section class="animate" style="--i:2">
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi__v v-infra">3</div><div class="kpi__l">Hạng mục infra — Trung + Shuku</div></div>
+      <div class="kpi"><div class="kpi__v v-app">1</div><div class="kpi__l">Phụ thuộc app/frontend (BB-2069)</div></div>
+      <div class="kpi"><div class="kpi__v v-red">4</div><div class="kpi__l">Blocker / tiền đề đang mở</div></div>
+      <div class="kpi"><div class="kpi__v v-green">2 / 3</div><div class="kpi__l">Frontend đã ở backseat (build config)</div></div>
+    </div>
+  </section>
+
+  <section class="animate" style="--i:3">
+    <div class="slabel">確認事項 ①</div>
+    <h2>Đổi domain nào → domain nào (tên thật)</h2>
+    <p class="lede">Cutover production là <b>coinbook → backseat-service.com</b>. <code>dev-ex</code>/<code>stg-ex</code> là môi trường test verup song song ở account AWS riêng — KHÔNG phải đổi tên của dev/stg.</p>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="dt">
+          <thead><tr><th>Bề mặt</th><th>Env</th><th>Before (cũ)</th><th></th><th>After (mới)</th></tr></thead>
+          <tbody>
+            <tr><td>Web customer (URL người dùng truy cập)</td><td>prd</td><td class="old"><code>service.coinbook.co.jp</code></td><td class="arrow">→</td><td class="new"><code>backseat-service.com</code></td></tr>
+            <tr><td>Web customer</td><td>stg</td><td class="old"><code>service-stg.coinbook.co.jp</code></td><td class="arrow">→</td><td class="new"><code>stg.backseat-service.com</code></td></tr>
+            <tr><td>Web customer</td><td>dev</td><td class="old"><code>service-dev.coinbook.co.jp</code></td><td class="arrow">→</td><td class="new"><code>dev.backseat-service.com</code></td></tr>
+            <tr><td>Admin (back office)</td><td>prd</td><td class="old"><code>backoffice.coinbook.co.jp</code></td><td class="arrow">→</td><td class="new"><code>bo.backseat-service.com</code></td></tr>
+            <tr><td>API + WebSocket <small>(đích kết nối của frontend — BB-2069)</small></td><td>prd</td><td class="old"><code>service.coinbook.co.jp/websocket</code> · <code>/exchange</code></td><td class="arrow">→</td><td class="new"><code>backseat-service.com/websocket</code> · <code>/exchange</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="lede" style="margin-top:14px"><b>Độ chi tiết (granularity) quan trọng:</b> API + app + WebSocket + exchange dùng chung <b>1 hostname customer</b> → 1 CloudFront → 1 ALB, nên phải cắt <b>cùng lúc</b>. Admin (<code>bo-*</code>) là hostname riêng, cắt độc lập.</p>
+  </section>
+
+  <section class="animate" style="--i:4">
+    <div class="slabel">確認事項 ②</div>
+    <h2>Kết quả mong đợi — before / after từng thành phần</h2>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="dt">
+          <thead><tr><th>Thành phần</th><th class="wide">Before (trước)</th><th class="wide">After (sau)</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>DNS</b><small>Route53</small></td>
+              <td class="wide">Record phân giải domain cũ trỏ về hạ tầng <b>cũ</b> (coinbook).</td>
+              <td class="wide">Record phân giải domain mới trỏ về hạ tầng <b>mới</b> (CloudFront edge). Thực hiện qua hạ TTL → flip → kiểm tra propagation.</td>
+            </tr>
+            <tr>
+              <td><b>SSL / ACM</b></td>
+              <td class="wide">Chỉ cert <code>*.coinbook.co.jp</code> còn hợp lệ.</td>
+              <td class="wide">Cert <code>*.backseat-service.com</code> được issue + attach trên CloudFront (us-east-1, <b>import-only</b>) và ALB (ap-northeast-1). HTTPS hoạt động trên domain mới.</td>
+            </tr>
+            <tr>
+              <td><b>WebSocket / API</b><small>build frontend</small></td>
+              <td class="wide">Build production trỏ tới <code>service.coinbook.co.jp</code> (hardcode trong <code>next.config.js</code>).</td>
+              <td class="wide">Rebuild + redeploy để trỏ <code>backseat-service.com</code>. WebSocket giá real-time + đặt lệnh giữ kết nối.</td>
+            </tr>
+            <tr>
+              <td><b>Truy cập URL cũ</b></td>
+              <td class="wide">Truy cập trực tiếp / bookmark URL cũ có thể thành 404.</td>
+              <td class="wide">URL cũ được redirect 301/302 sang URL mới, giữ được đường vào (BB-2068).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="animate" style="--i:5">
+    <div class="slabel">Chuỗi cắt chuyển</div>
+    <h2>Thứ tự an toàn — SSL chuẩn bị trước, rồi DNS, rồi verify</h2>
+
+    <div class="phase">Phase 0 <span>Chuẩn bị — trước cửa sổ cắt</span></div>
+    <ol class="steps prep">
+      <li><b>Hạ DNS TTL</b> xuống ~60s ở parent zone / NS-delegation, <b>≥ 24h trước</b> cửa sổ để record cũ hết hạn nhanh.<span class="stepnote">Đòn bẩy TTL nằm NGOÀI repo Terraform (record alias không có TTL) → verify live trên registrar.</span></li>
+      <li><b>Provision / verify cert SSL</b> cho <code>*.backseat-service.com</code> trên cả CloudFront (us-east-1) và ALB (ap-northeast-1), theo từng env.<span class="stepnote">Đang bị chặn bởi gap cert ALB (xem blocker) → verify live trước cửa sổ.</span></li>
+      <li><b>(Lớp app/frontend — BB-2069)</b> Sửa 3 dòng production trong <code>next.config.js</code> sang domain mới, dựng prd pipeline, rồi rebuild + redeploy. <span class="stepnote">Việc ở repo frontend; infra (Trung + Shuku) nắm timing so với lúc flip DNS.</span></li>
+    </ol>
+
+    <div class="phase">Phase 1 <span>Cửa sổ cắt chuyển</span></div>
+    <ol class="steps">
+      <li><b>Xác nhận SSL đã sẵn sàng</b> trên edge mới (cert ISSUED + attached). Phải đúng <b>trước</b> khi flip DNS.</li>
+      <li><b>Deploy frontend đã rebuild</b> — host mới đã live và backend trả lời <code>/websocket</code>, <code>/api</code>, <code>/app</code>, <code>/exchange</code>.</li>
+      <li><b>Flip DNS</b> — trỏ record Route53 sang CloudFront mới. Host customer cắt api + app + websocket + exchange cùng lúc; admin (<code>bo-*</code>) riêng.</li>
+      <li><b>Verify</b> — <code>dig</code> trả về edge mới → bắt tay HTTPS → WebSocket live trên <code>/websocket</code> → smoke test login + đặt lệnh.</li>
+    </ol>
+
+    <div class="phase">Phase 2 <span>Sau cắt chuyển</span></div>
+    <ol class="steps after">
+      <li><b>Bật redirect URL cũ</b> (301/302) từ coinbook sang backseat (BB-2068).</li>
+      <li><b>Drain</b> — giữ host cũ còn phân giải tới khi bundle cũ đã cache ngừng gọi API/WebSocket cũ.</li>
+      <li><b>Decommission</b> domain coinbook theo kế hoạch xoá bỏ (BB-2047).</li>
+    </ol>
+  </section>
+
+  <section class="animate" style="--i:6">
+    <div class="slabel">Hạng mục cần làm</div>
+    <h2>Ai làm gì (4 完了条件)</h2>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="dt">
+          <thead><tr><th>Hạng mục</th><th>Phụ trách</th><th>Trạng thái</th><th class="wide">Hành động</th></tr></thead>
+          <tbody>
+            <tr><td>(a) Thủ tục cắt DNS <small>TTL → flip → propagation</small></td><td><span class="badge b-infra">Infra</span></td><td><span class="badge b-amber">Một phần</span></td><td class="wide">Viết 1 SOP có thứ tự thống nhất. Xác nhận TTL live trên NS-delegation.</td></tr>
+            <tr><td>(b) Lấy + gắn cert SSL</td><td><span class="badge b-infra">Infra</span></td><td><span class="badge b-red">Blocker</span></td><td class="wide">Verify <code>*.backseat-service.com</code> đã ISSUED ở us-east-1 (CloudFront) VÀ ap-northeast-1 (ALB), theo từng account.</td></tr>
+            <tr><td>(c) Domain WebSocket / API + timing</td><td><span class="badge b-app">App/frontend</span> <small>BB-2069</small></td><td><span class="badge b-amber">Đã khoanh vùng</span></td><td class="wide">Thay đổi ở repo frontend (infra điều phối timing): sửa 3 dòng <code>next.config.js</code>, dựng prd pipeline, rebuild + redeploy.</td></tr>
+            <tr><td>(d) Phản ánh thứ tự vào runbook + rehearsal</td><td><span class="badge b-infra">Infra</span></td><td><span class="badge b-amber">Một phần</span></td><td class="wide">Thêm bài rehearsal cắt DNS / CloudFront vào release runbook (rehearsal data-tier đã có).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="animate" style="--i:7">
+    <div class="slabel">Blocker đang mở</div>
+    <h2>4 điều phải thông trước khi flip prod</h2>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="dt">
+          <thead><tr><th>#</th><th>Blocker</th><th class="wide">Vì sao chặn</th><th>Bước tiếp</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><b>Cert ALB (ap-northeast-1)</b></td><td class="wide">ALB terminate HTTPS:443 cho <code>*.backseat-service.com</code> nhưng không có cert gắn tường minh; inventory báo rỗng ở dev. Listener HTTPS sẽ fail nếu thiếu.</td><td><span class="badge b-red">Verify live</span><small>theo account 905 / 471 / 211</small></td></tr>
+            <tr><td>2</td><td><b>verup chưa có prd pipeline</b></td><td class="wide">CI chỉ deploy dev / stg. Đường build/deploy production chưa tồn tại → giá trị domain prd đang nằm im (dormant).</td><td><span class="badge b-app">App/frontend</span></td></tr>
+            <tr><td>3</td><td><b>3 dòng frontend còn domain cũ</b></td><td class="wide">Chỉ <code>bs-exchange-front</code> prod còn trỏ coinbook (<code>next.config.js</code> :22/:31/:40). Domain inline lúc build → phải rebuild.</td><td><span class="badge b-app">App/frontend · BB-2069</span></td></tr>
+            <tr><td>4</td><td><b>DNS TTL không có trong repo</b></td><td class="wide">Record là alias Route53 (không có field TTL). Đòn bẩy hạ TTL nằm ở NS-delegation / registrar.</td><td><span class="badge b-infra">Verify live</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="animate" style="--i:8">
+    <div class="slabel">Chiến lược</div>
+    <h2>Hướng đi là đổi domain; coinbook chỉ là cầu nối tạm</h2>
+    <div class="cards2">
+      <div class="card">
+        <h3><span class="tag tag-dir">Hướng đi</span> Option B — đổi domain</h3>
+        <p>Frontend trỏ <code>backseat-service.com</code>; rebuild + redeploy; DNS domain mới phục vụ traffic. Căn cứ: BB-2047 (kế hoạch xoá coinbook), BB-2068 (redirect cũ→mới), và 2/3 frontend đã cấu hình sang backseat.</p>
+      </div>
+      <div class="card">
+        <h3><span class="tag tag-bridge">Chỉ là cầu nối</span> Option A — giữ coinbook qua DNS</h3>
+        <p>Repoint DNS <code>service.coinbook.co.jp</code> sang edge mới để bookmark còn chạy trong cửa sổ. <b>Không miễn phí:</b> cert edge mới là <code>*.backseat-service.com</code>, <b>không</b> phủ coinbook → phải import thêm cert coinbook + thêm alias.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="animate" style="--i:9">
+    Liên quan: <code>BB-2047</code> domain policy (完了) · <code>BB-2068</code> redirect cũ→mới · <code>BB-2069</code> WebSocket/API cố định domain cũ (hạng mục c) · <code>BB-1968</code> tài liệu thủ tục release.
+    <br>Các fact live-AWS (inventory cert ALB, TTL NS-delegation) được đánh dấu "verify live" — kiểm tra read-only trong cửa sổ cắt chuyển.
+  </footer>
+
+</div>
+</body>
+</html>
