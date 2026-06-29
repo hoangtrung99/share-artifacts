@@ -297,6 +297,7 @@ footer{padding:30px 0 60px;color:var(--faint);font-size:13px;font-family:"IBM Pl
   <div class="sec-label">04 — Quyết định: Auth / Enrollment</div>
   <h2>Dùng auth official như session kia</h2>
   <p class="sub">Bạn đã test auth official ở <code>container/bse-container.sh</code> và <b>thành công</b>. Hướng mới: dùng đúng flow official đó, rồi <b>rút WireGuard config</b> ra cho wireproxy — bỏ tool reverse-engineer phía Mac.</p>
+  <div class="card hero reveal" style="margin:14px 0"><h4>✓ Triển khai cuối: enroll API-direct (đơn giản hơn Flow B)</h4><p>Bản chạy thật rút gọn hơn khuyến nghị ban đầu: <code>enroll.sh</code> dùng <code>openssl</code> sinh khoá X25519 rồi <code>POST api.cloudflareclient.com/v0a2483/reg</code> với header <code>Cf-Access-Jwt-Assertion=&lt;JWT&gt;</code> → ghi thẳng <code>teams.conf</code>. <b>Không cần warp-cli, không cần container</b> để enroll (container chỉ là fallback <code>--with-container</code> khi Mac thiếu tool). JWT lấy từ trang Success qua <b>clipboard-watcher</b> (token ~1 KB dài, dán terminal bị cắt). Đã verify chạy thật: <code>gateway=on</code>, <code>account_type=team</code>.</p></div>
 
   <h3>Sự thật về vòng đời (Cloudflare docs — không đoán)</h3>
   <div class="grid2">
@@ -402,7 +403,7 @@ footer{padding:30px 0 60px;color:var(--faint);font-size:13px;font-family:"IBM Pl
   <div class="sec-label">07 — Cần verify (không đoán)</div>
   <h2>Điểm còn mở</h2>
   <div class="grid2">
-    <div class="card reveal"><h4>reg.json của TEAMS → wireproxy config</h4><p>Cách rút key đã verified cho WARP tiêu dùng; cần xác nhận bản TEAMS sinh ra <code>teams.conf</code> chạy được. <span class="pill p-warn">đang test</span></p></div>
+    <div class="card reveal"><h4>API /reg (TEAMS) → wireproxy config</h4><p>Đã verify: <code>POST /reg</code> với JWT org sinh <code>teams.conf</code> chạy thật (<code>gateway=on</code>, <code>account_type=team</code>) — không cần warp-cli/reg.json. <span class="pill p-pass">verified ✓</span></p></div>
     <div class="card reveal"><h4>proxy mode không cần TUN?</h4><p>Option C chỉ khả thi nếu warp-svc proxy mode chạy không cần <code>/dev/net/tun</code> trên Apple container. <span class="pill p-warn">đang kiểm bse-warp</span></p></div>
     <div class="card reveal"><h4>Session timeout của org</h4><p>Nếu org đặt client session duration → cần enroll lại định kỳ. Mặc định unlimited thì config chạy mãi. <span class="pill p-info">tùy policy org</span></p></div>
     <div class="card reveal"><h4>Restructure đụng session kia</h4><p>Move file/đổi <code>bse-on</code> chỉ làm sau khi bạn xác nhận + nên dừng <code>bse-warp</code> trước. <span class="pill p-warn">gated</span></p></div>

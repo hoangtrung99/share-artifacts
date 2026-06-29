@@ -164,24 +164,24 @@ footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--border);color
 <p class="sub"><code>bse-on</code> uỷ quyền cho lớp <code>bse-wp-*</code>. Lệnh phụ hữu ích: <code>bse-wp-status</code> (egress + warp state), <code>bse-wp-logs</code>, <code>bse-wp-restart</code>, <code>bse-wp-genconf</code> (sau khi sửa <code>bse-forward.conf</code>).</p>
 
 <!-- 04 -->
-<div class="sec-label" id="enroll">04 — Enroll: auth chính thức rồi rút config</div>
-<h2>warp-cli đăng ký, wireproxy chạy</h2>
-<p class="sub">Enroll dùng client Cloudflare <b>chính thức</b> trong một container warp-svc <b>tạm thời</b> — chỉ để đăng ký thiết bị, rồi <b>rút</b> WireGuard config ra cho wireproxy. Container enroll bị xoá ngay; runtime vẫn chỉ là wireproxy nhẹ.</p>
+<div class="sec-label" id="enroll">04 — Enroll: API-direct sinh teams.conf</div>
+<h2>Một POST có JWT → teams.conf</h2>
+<p class="sub">Enroll chạy <b>thẳng trên Mac</b> bằng <code>enroll.sh</code> (chỉ cần <code>openssl</code> + <code>curl</code> + <code>jq</code>) — <b>không</b> warp-svc daemon, <b>không</b> container. Nó gọi đúng API đăng ký thiết bị của Cloudflare, gắn JWT của org. Cờ <code>--with-container</code> là <b>fallback</b>: chạy cùng <code>enroll.sh</code> bên trong image khi Mac thiếu tool. Registration vĩnh viễn → <code>teams.conf</code> tái dùng lâu dài, không enroll lại liên tục.</p>
 <div class="pipe">
-  <div class="stage"><div class="t">1 · registration new</div><div class="d"><code>warp-cli registration new &lt;team&gt;</code> in ra một URL.</div></div>
-  <div class="arrow">│ mở URL trên browser, đăng nhập SSO công ty</div>
-  <div class="stage"><div class="t">2 · token</div><div class="d">Browser chuyển tới <code>com.cloudflare.warp://...token=...</code>; dán URL đó vào: <code>warp-cli registration token &lt;url&gt;</code>.</div></div>
-  <div class="arrow">│ client ghi /var/lib/cloudflare-warp/{reg.json, conf.json}</div>
-  <div class="stage dst"><div class="t">3 · rút → teams.conf</div><div class="d">Đọc 2 file JSON, map sang config WireGuard chuẩn cho wireproxy (private key không in ra, file chmod 600).</div></div>
+  <div class="stage"><div class="t">1 · JWT</div><div class="d">Mở <code>https://&lt;team&gt;.cloudflareaccess.com/warp</code> → login SSO → trang Success. <b>COPY</b> token (Copy Link); clipboard-watcher tự bắt khi clipboard đổi — <b>không dán terminal</b> (token ~1 KB bị zsh cắt cụt).</div></div>
+  <div class="arrow">│ JWT sống ~60 s → dùng ngay</div>
+  <div class="stage"><div class="t">2 · keygen + POST /reg</div><div class="d"><code>openssl</code> sinh cặp khoá X25519, rồi <code>POST api.cloudflareclient.com/v0a2483/reg</code> với header <code>Cf-Access-Jwt-Assertion: &lt;JWT&gt;</code> + public key.</div></div>
+  <div class="arrow">│ response 200 = JSON phẳng (<code>.config</code> ở top-level)</div>
+  <div class="stage dst"><div class="t">3 · ghi teams.conf</div><div class="d">Map response → config WireGuard chuẩn cho wireproxy (private key chmod 600, không in ra). <code>account_type=team</code> xác nhận đã gắn org.</div></div>
 </div>
-<h3>Mapping schema (đã verify từ dữ liệu enroll thật)</h3>
+<h3>Mapping schema (đã verify từ response <code>/reg</code> thật)</h3>
 <table>
-  <thead><tr><th>Nguồn (JSON)</th><th>Đích (teams.conf)</th></tr></thead>
+  <thead><tr><th>Nguồn</th><th>Đích (teams.conf)</th></tr></thead>
   <tbody>
-    <tr><td><code>reg.json .secret_key</code></td><td><code>[Interface] PrivateKey</code></td></tr>
-    <tr><td><code>conf.json .interface.v4 / .v6</code></td><td><code>[Interface] Address</code> (<code>/32</code>, <code>/128</code>)</td></tr>
-    <tr><td><code>conf.json .public_key</code></td><td><code>[Peer] PublicKey</code> (peer Cloudflare)</td></tr>
-    <tr><td><code>conf.json .endpoints[0].v4</code></td><td><code>[Peer] Endpoint</code> (vd <code>162.159.193.4:2408</code>)</td></tr>
+    <tr><td><code>openssl X25519 private (DER 32B → base64)</code></td><td><code>[Interface] PrivateKey</code></td></tr>
+    <tr><td><code>.config.interface.addresses.v4 / .v6</code></td><td><code>[Interface] Address</code> (<code>/32</code>, <code>/128</code>)</td></tr>
+    <tr><td><code>.config.peers[0].public_key</code></td><td><code>[Peer] PublicKey</code> (peer Cloudflare)</td></tr>
+    <tr><td><code>.config.peers[0].endpoint.host + .ports[0]</code></td><td><code>[Peer] Endpoint</code> — port thật <code>2408</code> (lưu ý <code>endpoint.v4</code> trả port <code>0</code> placeholder)</td></tr>
   </tbody>
 </table>
 <div class="callout y"><span class="bang">MTU 1280</span>WARP cần MTU ~1280; wireproxy mặc định 1420 sẽ treo TLS/AWS. teams.conf luôn ghi <code>MTU = 1280</code>.</div>
@@ -239,7 +239,7 @@ WG=/data/teams.conf
 <div class="fname">container/bse-wireproxy.sh  ·  biến + dựng cổng (security fix)</div>
 <pre><span class="v">BSE_WP_NAME</span>=<span class="s">"bse-wp"</span>
 <span class="v">BSE_WP_IMAGE</span>=<span class="s">"bse-wireproxy:latest"</span>
-<span class="v">BSE_WP_ENROLL_IMAGE</span>=<span class="s">"bse-warp:latest"</span>   <span class="c"># warp-svc chỉ dùng lúc enroll</span>
+<span class="v">BSE_WP_ENROLL_SH</span>=<span class="s">"$HOME/.proxy/container/enroll.sh"</span>   <span class="c"># enroll API-direct (Mac); container chỉ là fallback</span>
 <span class="v">BSE_WP_DATA</span>=<span class="s">"$HOME/.proxy/container/warp-data"</span>
 <span class="v">BSE_WP_PROXY_PORT</span>=1080
 <span class="v">BSE_WP_PAC_PORT</span>=8788
@@ -257,49 +257,38 @@ WG=/data/teams.conf
   <span class="k">done</span> &lt; <span class="s">"$BSE_FORWARD_CONF"</span>
 }</pre>
 
-<div class="fname">container/bse-wireproxy.sh  ·  enroll (auth OFFICIAL warp-cli)</div>
-<pre><span class="c"># Rút reg.json+conf.json → teams.conf chuẩn wireproxy.</span>
-<span class="f">_bse_wp_write_teamsconf</span>() {
-  <span class="k">local</span> reg=<span class="s">"$1"</span> conf=<span class="s">"$2"</span> priv addr4 addr6 peer endpoint addr
-  priv=$(printf '%s' <span class="s">"$reg"</span>  | jq -r '.secret_key // empty')
-  addr4=$(printf '%s' <span class="s">"$conf"</span> | jq -r '.interface.v4 // empty')
-  addr6=$(printf '%s' <span class="s">"$conf"</span> | jq -r '.interface.v6 // empty')
-  peer=$(printf '%s' <span class="s">"$conf"</span>  | jq -r '.public_key // empty')
-  endpoint=$(printf '%s' <span class="s">"$conf"</span> | jq -r '.endpoints[0].v4 // empty')
-  [ -z <span class="s">"$priv"</span> ] || [ -z <span class="s">"$peer"</span> ] || [ -z <span class="s">"$endpoint"</span> ] || [ -z <span class="s">"$addr4"</span> ] \
-    && { echo <span class="s">"✗ Thiếu field"</span>; <span class="k">return</span> 1; }
-  addr=<span class="s">"${addr4}/32"</span>; [ -n <span class="s">"$addr6"</span> ] && addr=<span class="s">"${addr}, ${addr6}/128"</span>
-  ( umask 077; cat &gt; <span class="s">"$BSE_WP_DATA/teams.conf"</span> &lt;&lt;EOF
-[Interface]
-MTU = 1280
-PrivateKey = $priv
-Address = $addr
-DNS = 1.1.1.1
+<div class="fname">container/enroll.sh  ·  enroll API-direct (dùng chung Mac &amp; container)</div>
+<pre><span class="c"># openssl X25519 keygen → POST /reg với JWT → teams.conf. POSIX sh; chạy trên Mac (mặc định)
+# hoặc trong image khi --with-container. Chỉ cần openssl + curl + jq.</span>
+JWT=<span class="s">"$1"</span>; OUT_DIR=<span class="s">"$2"</span>; body=$(mktemp); TOS=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+key=$(mktemp); openssl genpkey -algorithm X25519 -out <span class="s">"$key"</span>
+PRIV=$(openssl pkey -in <span class="s">"$key"</span> -outform DER | tail -c 32 | base64)
+PUB=$(openssl pkey -in <span class="s">"$key"</span> -pubout -outform DER | tail -c 32 | base64)
+<span class="c"># gắn device vào org qua header Cf-Access-Jwt-Assertion</span>
+code=$(curl -sS -m20 --compressed -o <span class="s">"$body"</span> -w '%{http_code}' -X POST \
+  <span class="s">"https://api.cloudflareclient.com/v0a2483/reg"</span> \
+  -H <span class="s">"CF-Client-Version: a-6.10-2158"</span> -H <span class="s">"Cf-Access-Jwt-Assertion: $JWT"</span> \
+  -d <span class="s">"{\"key\":\"$PUB\",\"tos\":\"$TOS\",\"model\":\"Linux\",\"type\":\"Linux\"}"</span>)
+<span class="k">if</span> [ <span class="s">"$code"</span> != 200 ]; <span class="k">then</span> echo <span class="s">"✗ /reg HTTP $code (401=JWT hết hạn)"</span>; <span class="k">exit</span> 2; <span class="k">fi</span>
+<span class="c"># response 200 = JSON phẳng: .config ở top-level (response lỗi mới bọc envelope)</span>
+A4=$(jq -r '.config.interface.addresses.v4 // empty' <span class="s">"$body"</span>)
+PEER=$(jq -r '.config.peers[0].public_key // empty' <span class="s">"$body"</span>)
+EP_IP=$(jq -r '.config.peers[0].endpoint.v4 // empty' <span class="s">"$body"</span> | sed 's/:[0-9]*$//')
+EP_PORT=$(jq -r '.config.peers[0].endpoint.ports[0] // 2408' <span class="s">"$body"</span>)  <span class="c"># endpoint.v4 trả :0 placeholder</span>
+<span class="c"># → ghi teams.conf: PrivateKey=$PRIV · Endpoint=$EP_IP:$EP_PORT · MTU 1280 · chmod 600</span></pre>
 
-[Peer]
-PublicKey = $peer
-AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = $endpoint
-PersistentKeepalive = 25
-EOF
-  )
-  chmod 600 <span class="s">"$BSE_WP_DATA/teams.conf"</span>
-}
-
-<span class="f">bse-wp-enroll</span>() {
-  <span class="k">local</span> team=<span class="s">"$1"</span>; [ -z <span class="s">"$team"</span> ] && { echo <span class="s">"Usage: bse-wp-enroll &lt;team&gt;"</span>; <span class="k">return</span> 1; }
-  <span class="k">local</span> tmpd; tmpd=$(mktemp -d)
-  <span class="c"># container enroll TẠM THỜI (warp-svc chính thức), xoá ngay sau khi xong</span>
-  container run -d --name bse-wp-enroll --cap-add NET_ADMIN \
-    -v <span class="s">"$tmpd:/var/lib/cloudflare-warp"</span> <span class="s">"$BSE_WP_ENROLL_IMAGE"</span>
-  <span class="c"># đợi daemon, rồi: registration new → URL browser → registration token</span>
-  reg_out=$(container exec bse-wp-enroll warp-cli registration new <span class="s">"$team"</span> 2&gt;&amp;1)
-  <span class="c"># ... user dán token URL ...</span>
-  container exec bse-wp-enroll warp-cli --accept-tos registration token <span class="s">"$token_url"</span>
-  reg_json=$(container exec bse-wp-enroll cat /var/lib/cloudflare-warp/reg.json)
-  conf_json=$(container exec bse-wp-enroll cat /var/lib/cloudflare-warp/conf.json)
-  _bse_wp_write_teamsconf <span class="s">"$reg_json"</span> <span class="s">"$conf_json"</span>
-  container stop bse-wp-enroll; container rm bse-wp-enroll; rm -rf <span class="s">"$tmpd"</span>
+<div class="fname">container/bse-wireproxy.sh  ·  bse-wp-enroll: clipboard-watcher + --with-container</div>
+<pre><span class="f">bse-wp-enroll</span>() {   <span class="c"># [--with-container] &lt;team&gt;</span>
+  <span class="k">local</span> use_ctr=0; [ <span class="s">"$1"</span> = <span class="s">"--with-container"</span> ] &amp;&amp; { use_ctr=1; shift; }
+  <span class="k">local</span> team=<span class="s">"$1"</span> jwt
+  open <span class="s">"https://$team.cloudflareaccess.com/warp"</span>   <span class="c"># login SSO → trang Success</span>
+  <span class="c"># COPY token (Copy Link) — watcher tự bắt khi clipboard đổi; fallback dán tay</span>
+  jwt=$(_bse_wp_wait_jwt 120) || jwt=$(_bse_wp_manual_paste) || <span class="k">return</span> 1
+  <span class="k">if</span> [ <span class="s">"$use_ctr"</span> = 1 ]; <span class="k">then</span>   <span class="c"># fallback: enroll trong image (Mac thiếu openssl/curl/jq)</span>
+    container run --rm -v <span class="s">"$BSE_WP_DATA:/data"</span> --entrypoint /enroll.sh <span class="s">"$BSE_WP_IMAGE"</span> <span class="s">"$jwt"</span> /data
+  <span class="k">else</span>                       <span class="c"># mặc định: enroll ngay trên Mac</span>
+    <span class="s">"$BSE_WP_ENROLL_SH"</span> <span class="s">"$jwt"</span> <span class="s">"$BSE_WP_DATA"</span>
+  <span class="k">fi</span>
 }</pre>
 
 <div class="fname">container/bse-wireproxy.sh  ·  genconf + start</div>
@@ -312,7 +301,8 @@ EOF
 }
 
 <span class="f">bse-wp-start</span>() {
-  container ls 2&gt;/dev/null | grep -q <span class="s">"$BSE_WP_NAME"</span> && { echo <span class="s">"đã chạy"</span>; <span class="k">return</span> 0; }
+  <span class="c"># khớp TÊN chính xác (^bse-wp[space]) — substring grep sẽ nhầm bse-wp-enroll là bse-wp</span>
+  _bse_wp_running &amp;&amp; { echo <span class="s">"đã chạy"</span>; <span class="k">return</span> 0; }
   bse-wp-genconf
   <span class="k">local</span> pub; pub=$(_bse_wp_publish_args)
   <span class="k">eval</span> <span class="s">"container run -d --name \"$BSE_WP_NAME\" $pub -v \"$BSE_WP_DATA:/data\" \"$BSE_WP_IMAGE\""</span>
