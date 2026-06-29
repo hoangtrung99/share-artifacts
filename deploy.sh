@@ -22,6 +22,15 @@ BRANCH="main"
 
 [ -d "$ARTIFACTS_DIR" ] || { echo "❌ Không thấy thư mục nguồn: $ARTIFACTS_DIR" >&2; exit 1; }
 
+# Pull code mới nhất để src/artifacts/ không lệch khi deploy từ nhiều máy.
+# Chỉ pull khi working tree sạch — tránh rebase conflict/ghi đè thay đổi local chưa commit.
+if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+  echo "⬇️  git pull --rebase…"
+  git pull --rebase --quiet || echo "⚠️ git pull thất bại — tiếp tục với state local." >&2
+else
+  echo "⚠️ Working tree không sạch — bỏ qua git pull (commit/stash thủ công để tránh lệch)." >&2
+fi
+
 echo "🏗  Build site (prepare-static + astro build + pagefind)…"
 pnpm run build
 
@@ -29,3 +38,15 @@ pnpm run build
 
 echo "🚀 Deploy lên Cloudflare Pages (project=artifacts, branch=$BRANCH)…"
 npx wrangler pages deploy --branch="$BRANCH" --commit-dirty=true
+
+# Commit + push toàn bộ src/artifacts vào git để các máy khác sync (share-artifacts là repo sync giữa các máy).
+# deploy.sh deploy cả thư mục nên stage cả src/artifacts + protected/ghost list + functions sinh ra.
+git add src/artifacts protected.list ghost.list functions/protected-folders.js functions/ghost-folders.js 2>/dev/null || true
+if git diff --cached --quiet 2>/dev/null; then
+  echo "ℹ️  Không có thay đổi để commit."
+else
+  echo "📤 git commit + push…"
+  git commit -m "feat(artifacts): deploy site" --quiet \
+    && git push --quiet \
+    || echo "⚠️ git commit/push thất bại — web đã deploy, nhưng cần commit/push thủ công." >&2
+fi
