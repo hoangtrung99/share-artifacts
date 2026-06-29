@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bse-on — Selective WARP routing qua Apple container</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1620; --grid:rgba(120,160,200,.06); --surface:#121f2c; --surface2:#16263542;
+  --border:rgba(130,170,210,.16); --border2:rgba(130,170,210,.28);
+  --text:#dbe7f0; --dim:#8ca3b6; --faint:#5d7282;
+  --accent:#3fa7d6; --accent-dim:rgba(63,167,214,.13);
+  --gold:#d4a73a; --gold-dim:rgba(212,167,58,.13);
+  --green:#5bbf7b; --green-dim:rgba(91,191,123,.13);
+  --rose:#d6604f; --rose-dim:rgba(214,96,79,.13);
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+}
+@media(prefers-color-scheme:light){
+  :root{ --bg:#eef3f7; --grid:rgba(40,80,120,.07); --surface:#ffffff; --surface2:#f4f8fb;
+    --border:rgba(30,70,110,.16); --border2:rgba(30,70,110,.3); --text:#16242f; --dim:#4a627a; --faint:#7d93a6;}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:32px 32px;}
+.wrap{max-width:1080px;margin:0 auto;padding:46px 22px 90px}
+header.hero{border:1px solid var(--border2);background:linear-gradient(135deg,var(--accent-dim),transparent 60%),var(--surface);
+  border-radius:14px;padding:34px 30px;margin-bottom:30px;position:relative;overflow:hidden}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+h1{margin:0 0 8px;font-size:34px;font-weight:700;letter-spacing:-.01em}
+h1 .cmd{font-family:var(--mono);color:var(--gold)}
+.lede{font-size:17px;color:var(--dim);max-width:74ch;margin:0}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.pill{font-family:var(--mono);font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--border2);background:var(--surface2);color:var(--dim)}
+.pill.a{color:var(--accent);border-color:var(--accent)}
+.pill.g{color:var(--green);border-color:var(--green)}
+.pill.y{color:var(--gold);border-color:var(--gold)}
+.sec-label{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:46px 0 6px}
+h2{font-size:24px;font-weight:700;margin:2px 0 14px;letter-spacing:-.01em}
+h3{font-size:16px;font-weight:600;margin:24px 0 8px}
+p{margin:0 0 12px}
+.sub{color:var(--dim);font-size:15px}
+b,strong{color:var(--text);font-weight:600}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--accent)}
+.card{border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:20px 22px;margin:14px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+/* pipeline */
+.pipe{display:flex;flex-direction:column;gap:0;margin:18px 0}
+.stage{border:1px solid var(--border2);background:var(--surface);border-radius:10px;padding:14px 18px;position:relative}
+.stage .t{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.04em}
+.stage .d{font-size:14px;color:var(--dim);margin-top:3px}
+.stage b{color:var(--text)}
+.arrow{align-self:center;color:var(--faint);font-family:var(--mono);font-size:13px;padding:5px 0}
+.stage.warp{border-color:var(--gold);background:linear-gradient(120deg,var(--gold-dim),transparent 70%),var(--surface)}
+.stage.dst{border-color:var(--green);background:linear-gradient(120deg,var(--green-dim),transparent 70%),var(--surface)}
+/* code */
+pre{font-family:var(--mono);font-size:12.5px;line-height:1.62;background:#0a121b;border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;overflow-x:auto;margin:10px 0;color:#c6d6e4}
+@media(prefers-color-scheme:light){pre{background:#0d1822;color:#cbdae8}}
+pre .c{color:#5d7585;font-style:italic}
+pre .k{color:#d6604f}
+pre .s{color:#5bbf7b}
+pre .v{color:#d4a73a}
+pre .f{color:#3fa7d6}
+.fname{font-family:var(--mono);font-size:12px;color:var(--gold);background:var(--gold-dim);border:1px solid var(--border);
+  border-bottom:none;border-radius:8px 8px 0 0;padding:6px 14px;display:inline-block;margin:14px 0 -10px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border)}
+th{font-family:var(--mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);background:var(--surface2)}
+td code{font-size:.86em}
+.mono{font-family:var(--mono)}
+.tag{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px}
+.tag.new{background:var(--green-dim);color:var(--green);border:1px solid var(--green)}
+.callout{border-left:3px solid var(--accent);background:var(--accent-dim);border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0;font-size:14px}
+.callout.y{border-color:var(--gold);background:var(--gold-dim)}
+.callout.g{border-color:var(--green);background:var(--green-dim)}
+.bang{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--accent);font-weight:600;display:block;margin-bottom:3px}
+.callout.y .bang{color:var(--gold)} .callout.g .bang{color:var(--green)}
+.toc{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--border);padding:9px 0;margin-bottom:6px;z-index:5;
+  display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:12px}
+.toc a{color:var(--dim);text-decoration:none}
+.toc a:hover{color:var(--accent)}
+.note{font-size:13px;color:var(--faint);font-family:var(--mono)}
+footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--border);color:var(--faint);font-size:13px;font-family:var(--mono)}
+.num{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <p class="kicker">Selective WARP routing · Apple container · userspace WireGuard</p>
+  <h1><span class="cmd">bse-on</span> — một lệnh, định tuyến chọn lọc qua WARP</h1>
+  <p class="lede">Một container Linux siêu nhẹ trên Apple <code>container</code> chạy <b>wireproxy</b> (WireGuard ở user-space). Nó phơi ra một SOCKS5 cục bộ; macOS dùng PAC để chỉ đẩy đúng các đích cần thiết (AWS, mạng nội bộ) qua WARP, còn lại đi thẳng. RDP/SSH/MySQL được forward bằng TCP tunnel ngay trong container.</p>
+  <div class="pills">
+    <span class="pill a">wireproxy 9.4&nbsp;MB image</span>
+    <span class="pill g">không TUN / không NET_ADMIN</span>
+    <span class="pill y">auth official warp-cli</span>
+    <span class="pill">SOCKS bind 127.0.0.1</span>
+    <span class="pill">egress = WARP org gateway</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#what">01 Khái quát</a>
+  <a href="#arch">02 Kiến trúc</a>
+  <a href="#life">03 Vòng đời lệnh</a>
+  <a href="#enroll">04 Enroll (auth)</a>
+  <a href="#route">05 Định tuyến chọn lọc</a>
+  <a href="#code">06 Toàn bộ code</a>
+  <a href="#sec">07 Bảo mật & tài nguyên</a>
+</nav>
+
+<!-- 01 -->
+<div class="sec-label" id="what">01 — Khái quát</div>
+<h2>bse-on làm gì</h2>
+<p class="sub">Gõ <code>bse-on</code>, ba việc xảy ra tuần tự, mỗi việc một dòng đơn giản:</p>
+<div class="grid2">
+  <div class="card">
+    <h3 style="margin-top:0">① Sinh config &amp; dựng container</h3>
+    <p class="sub"><code>bse-wp-genconf</code> đọc <code>bse-forward.conf</code> → viết <code>wireproxy.conf</code>; container <code>bse-wp</code> khởi động từ image <code>bse-wireproxy:latest</code>, publish các cổng về <code>127.0.0.1</code>.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">② Bật PAC + CLI proxy</h3>
+    <p class="sub">Một PAC file phục vụ tại <code>127.0.0.1:8788</code> được gắn làm auto-proxy của macOS; biến môi trường <code>HTTPS_PROXY=socks5h://127.0.0.1:1080</code> cho CLI.</p>
+  </div>
+</div>
+<div class="card">
+  <h3 style="margin-top:0">③ Lưu lượng đi đúng đường</h3>
+  <p class="sub">Trình duyệt &amp; CLI hỏi PAC: đích thuộc danh sách AWS / nội bộ → đi SOCKS <code>127.0.0.1:1080</code> → container → <b>WireGuard tới org WARP</b> → Cloudflare → đích. Mọi thứ khác đi thẳng, không qua proxy. RDP/SSH/MySQL nối vào cổng loopback (vd <code>127.0.0.1:13389</code>) và được tunnel qua cùng đường WARP.</p>
+</div>
+
+<!-- 02 -->
+<div class="sec-label" id="arch">02 — Kiến trúc</div>
+<h2>Đường đi của một gói tin</h2>
+<div class="pipe">
+  <div class="stage"><div class="t">Mac · ứng dụng</div><div class="d">Trình duyệt (PAC), CLI (<code>HTTPS_PROXY</code>), RDP/SSH client (nối <code>127.0.0.1:1&lt;port&gt;</code>)</div></div>
+  <div class="arrow">│ SOCKS5 / TCP · chỉ bind 127.0.0.1</div>
+  <div class="stage"><div class="t">Apple container · <b>bse-wp</b></div><div class="d"><b>wireproxy</b> = WireGuard user-space. <code>[Socks5]</code> :1080 + một <code>[TCPClientTunnel]</code> cho mỗi forward. Không cần <code>/dev/net/tun</code>, không <code>NET_ADMIN</code>.</div></div>
+  <div class="arrow">│ WireGuard (UDP 2408) tới peer Cloudflare</div>
+  <div class="stage warp"><div class="t">Cloudflare WARP · org (Zero Trust Gateway)</div><div class="d">teams.conf gắn thiết bị vào tổ chức → egress qua <b>gateway của công ty</b> (<span class="mono">warp=on gateway=on</span>).</div></div>
+  <div class="arrow">│</div>
+  <div class="stage dst"><div class="t">Đích</div><div class="d">AWS console / API · mạng nội bộ <code>10.0.0.0/16</code> (RDP <code>10.0.0.10:3389</code>, SSH, web nội bộ) · jump host <code>203.0.113.20:22</code></div></div>
+</div>
+<div class="callout"><span class="bang">VÌ SAO USERSPACE</span>wireproxy gói toàn bộ WireGuard trong tiến trình (wireguard-go) nên <b>không đụng kernel</b> — chạy unprivileged trên kernel mặc định của Apple container. Image chỉ <span class="num">9.4&nbsp;MB</span> (1 binary Go tĩnh trên Alpine), RSS sống ~<span class="num">59&nbsp;MB</span>.</div>
+
+<!-- 03 -->
+<div class="sec-label" id="life">03 — Vòng đời lệnh</div>
+<h2>Ba lệnh bạn thật sự gõ</h2>
+<table>
+  <thead><tr><th>Lệnh</th><th>Khi nào</th><th>Làm gì</th></tr></thead>
+  <tbody>
+    <tr><td><code>bse-wp-enroll &lt;team&gt;</code></td><td>Một lần (hoặc khi đổi org)</td><td>Đăng ký thiết bị vào WARP-for-Teams bằng <b>warp-cli chính thức</b> → sinh <code>teams.conf</code>. Device registration là vĩnh viễn.</td></tr>
+    <tr><td><code>bse-on</code></td><td>Mỗi lần bật</td><td>genconf → (xoá container cũ) → start container → PAC on → CLI on → in status.</td></tr>
+    <tr><td><code>bse-off</code></td><td>Khi xong</td><td>Tắt CLI proxy + PAC + stop container. Mạng về thẳng.</td></tr>
+  </tbody>
+</table>
+<p class="sub"><code>bse-on</code> uỷ quyền cho lớp <code>bse-wp-*</code>. Lệnh phụ hữu ích: <code>bse-wp-status</code> (egress + warp state), <code>bse-wp-logs</code>, <code>bse-wp-restart</code>, <code>bse-wp-genconf</code> (sau khi sửa <code>bse-forward.conf</code>).</p>
+
+<!-- 04 -->
+<div class="sec-label" id="enroll">04 — Enroll: auth chính thức rồi rút config</div>
+<h2>warp-cli đăng ký, wireproxy chạy</h2>
+<p class="sub">Enroll dùng client Cloudflare <b>chính thức</b> trong một container warp-svc <b>tạm thời</b> — chỉ để đăng ký thiết bị, rồi <b>rút</b> WireGuard config ra cho wireproxy. Container enroll bị xoá ngay; runtime vẫn chỉ là wireproxy nhẹ.</p>
+<div class="pipe">
+  <div class="stage"><div class="t">1 · registration new</div><div class="d"><code>warp-cli registration new &lt;team&gt;</code> in ra một URL.</div></div>
+  <div class="arrow">│ mở URL trên browser, đăng nhập SSO công ty</div>
+  <div class="stage"><div class="t">2 · token</div><div class="d">Browser chuyển tới <code>com.cloudflare.warp://...token=...</code>; dán URL đó vào: <code>warp-cli registration token &lt;url&gt;</code>.</div></div>
+  <div class="arrow">│ client ghi /var/lib/cloudflare-warp/{reg.json, conf.json}</div>
+  <div class="stage dst"><div class="t">3 · rút → teams.conf</div><div class="d">Đọc 2 file JSON, map sang config WireGuard chuẩn cho wireproxy (private key không in ra, file chmod 600).</div></div>
+</div>
+<h3>Mapping schema (đã verify từ dữ liệu enroll thật)</h3>
+<table>
+  <thead><tr><th>Nguồn (JSON)</th><th>Đích (teams.conf)</th></tr></thead>
+  <tbody>
+    <tr><td><code>reg.json .secret_key</code></td><td><code>[Interface] PrivateKey</code></td></tr>
+    <tr><td><code>conf.json .interface.v4 / .v6</code></td><td><code>[Interface] Address</code> (<code>/32</code>, <code>/128</code>)</td></tr>
+    <tr><td><code>conf.json .public_key</code></td><td><code>[Peer] PublicKey</code> (peer Cloudflare)</td></tr>
+    <tr><td><code>conf.json .endpoints[0].v4</code></td><td><code>[Peer] Endpoint</code> (vd <code>162.159.193.4:2408</code>)</td></tr>
+  </tbody>
+</table>
+<div class="callout y"><span class="bang">MTU 1280</span>WARP cần MTU ~1280; wireproxy mặc định 1420 sẽ treo TLS/AWS. teams.conf luôn ghi <code>MTU = 1280</code>.</div>
+
+<!-- 05 -->
+<div class="sec-label" id="route">05 — Định tuyến chọn lọc</div>
+<h2>Cái gì đi WARP, cái gì đi thẳng</h2>
+<div class="grid2">
+  <div class="card">
+    <h3 style="margin-top:0">PAC + socks5h (trình duyệt &amp; CLI)</h3>
+    <p class="sub">PAC chỉ trả về proxy cho các đích trong danh sách (AWS ranges, domain nội bộ, <code>10.0.0.0/16</code>). <code>socks5h</code> giải DNS <b>phía proxy</b> → không rò DNS, tên nội bộ resolve đúng.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">TCP tunnel (RDP/SSH/MySQL)</h3>
+    <p class="sub">Mỗi dòng trong <code>bse-forward.conf</code> thành một <code>[TCPClientTunnel]</code>: cổng loopback cục bộ → đích nội bộ, đi qua WARP. Nối RDP tới <code>127.0.0.1:13389</code> là chạm tới máy nội bộ.</p>
+  </div>
+</div>
+<div class="fname">~/.proxy/bse-forward.conf  (ví dụ — IP đã ẩn danh)</div>
+<pre><span class="c"># name   host          rport  [lport]</span>
+rdp     10.0.0.10     3389
+ssh     10.0.0.10     22
+mysql   10.0.0.10     3306
+ssh-cb  203.0.113.20  22     10023</pre>
+<p class="note">lport mặc định = 10000 + rport (rdp→13389, ssh→10022, mysql→13306); cột 4 ghi đè (ssh-cb→10023). Cùng công thức dùng ở cả publish-args lẫn wireproxy.conf nên cổng publish luôn khớp cổng tunnel.</p>
+
+<!-- 06 -->
+<div class="sec-label" id="code">06 — Toàn bộ code</div>
+<h2>Các file tạo nên bse-on</h2>
+<p class="sub">Cây thư mục: <code>~/.proxy/container/</code> chứa toàn bộ phần wireproxy; <code>~/.proxy/bse-aliases.sh</code> định nghĩa <code>bse-on</code> và nạp backend.</p>
+
+<div class="fname">container/Containerfile</div>
+<pre><span class="c"># wireproxy = userspace WireGuard → SOCKS5 + TCP tunnels.</span>
+<span class="k">FROM</span> alpine:3.20
+<span class="k">ARG</span> WIREPROXY_VERSION=v1.1.2
+<span class="k">ARG</span> TARGETARCH=arm64
+<span class="k">RUN</span> apk add --no-cache ca-certificates wget \
+ && wget -O /tmp/wp.tar.gz \
+      <span class="s">"https://github.com/windtf/wireproxy/releases/download/${WIREPROXY_VERSION}/wireproxy_linux_${TARGETARCH}.tar.gz"</span> \
+ && tar -xzf /tmp/wp.tar.gz -C /usr/local/bin wireproxy \
+ && rm /tmp/wp.tar.gz && /usr/local/bin/wireproxy --version
+<span class="k">COPY</span> entrypoint.sh /entrypoint.sh
+<span class="k">RUN</span> chmod +x /entrypoint.sh
+<span class="c"># /data (mount từ Mac): teams.conf (enroll) + wireproxy.conf (genconf)</span>
+<span class="k">ENTRYPOINT</span> [<span class="s">"/entrypoint.sh"</span>]</pre>
+
+<div class="fname">container/entrypoint.sh  (PID 1 trong container)</div>
+<pre><span class="k">#!/bin/sh</span>
+<span class="k">set</span> -e
+CONF=/data/wireproxy.conf
+WG=/data/teams.conf
+<span class="k">if</span> [ ! -f <span class="s">"$WG"</span> ]; <span class="k">then</span> echo <span class="s">"✗ Thiếu $WG — chạy bse-wp-enroll"</span>; <span class="k">exit</span> 1; <span class="k">fi</span>
+<span class="k">if</span> [ ! -f <span class="s">"$CONF"</span> ]; <span class="k">then</span> echo <span class="s">"✗ Thiếu $CONF — chạy bse-wp-genconf"</span>; <span class="k">exit</span> 1; <span class="k">fi</span>
+<span class="k">exec</span> wireproxy -c <span class="s">"$CONF"</span></pre>
+
+<div class="fname">container/bse-wireproxy.sh  ·  biến + dựng cổng (security fix)</div>
+<pre><span class="v">BSE_WP_NAME</span>=<span class="s">"bse-wp"</span>
+<span class="v">BSE_WP_IMAGE</span>=<span class="s">"bse-wireproxy:latest"</span>
+<span class="v">BSE_WP_ENROLL_IMAGE</span>=<span class="s">"bse-warp:latest"</span>   <span class="c"># warp-svc chỉ dùng lúc enroll</span>
+<span class="v">BSE_WP_DATA</span>=<span class="s">"$HOME/.proxy/container/warp-data"</span>
+<span class="v">BSE_WP_PROXY_PORT</span>=1080
+<span class="v">BSE_WP_PAC_PORT</span>=8788
+
+<span class="c"># Build "-p host:ctr" cho SOCKS + mọi forward. Bind 127.0.0.1 → KHÔNG lộ ra LAN.</span>
+<span class="f">_bse_wp_publish_args</span>() {
+  printf -- <span class="s">"-p 127.0.0.1:%s:%s "</span> <span class="s">"$BSE_WP_PROXY_PORT"</span> <span class="s">"$BSE_WP_PROXY_PORT"</span>
+  [ -f <span class="s">"$BSE_FORWARD_CONF"</span> ] || <span class="k">return</span> 0
+  <span class="k">local</span> name ip rport lport _rest
+  <span class="k">while</span> read -r name ip rport lport _rest; <span class="k">do</span>
+    <span class="k">case</span> <span class="s">"$name"</span> <span class="k">in</span> ''|\#*) <span class="k">continue</span> ;; <span class="k">esac</span>
+    [ -n <span class="s">"$rport"</span> ] || <span class="k">continue</span>
+    [ -z <span class="s">"$lport"</span> ] && lport=$((10000 + rport))
+    printf -- <span class="s">"-p 127.0.0.1:%s:%s "</span> <span class="s">"$lport"</span> <span class="s">"$lport"</span>
+  <span class="k">done</span> &lt; <span class="s">"$BSE_FORWARD_CONF"</span>
+}</pre>
+
+<div class="fname">container/bse-wireproxy.sh  ·  enroll (auth OFFICIAL warp-cli)</div>
+<pre><span class="c"># Rút reg.json+conf.json → teams.conf chuẩn wireproxy.</span>
+<span class="f">_bse_wp_write_teamsconf</span>() {
+  <span class="k">local</span> reg=<span class="s">"$1"</span> conf=<span class="s">"$2"</span> priv addr4 addr6 peer endpoint addr
+  priv=$(printf '%s' <span class="s">"$reg"</span>  | jq -r '.secret_key // empty')
+  addr4=$(printf '%s' <span class="s">"$conf"</span> | jq -r '.interface.v4 // empty')
+  addr6=$(printf '%s' <span class="s">"$conf"</span> | jq -r '.interface.v6 // empty')
+  peer=$(printf '%s' <span class="s">"$conf"</span>  | jq -r '.public_key // empty')
+  endpoint=$(printf '%s' <span class="s">"$conf"</span> | jq -r '.endpoints[0].v4 // empty')
+  [ -z <span class="s">"$priv"</span> ] || [ -z <span class="s">"$peer"</span> ] || [ -z <span class="s">"$endpoint"</span> ] || [ -z <span class="s">"$addr4"</span> ] \
+    && { echo <span class="s">"✗ Thiếu field"</span>; <span class="k">return</span> 1; }
+  addr=<span class="s">"${addr4}/32"</span>; [ -n <span class="s">"$addr6"</span> ] && addr=<span class="s">"${addr}, ${addr6}/128"</span>
+  ( umask 077; cat &gt; <span class="s">"$BSE_WP_DATA/teams.conf"</span> &lt;&lt;EOF
+[Interface]
+MTU = 1280
+PrivateKey = $priv
+Address = $addr
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = $peer
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = $endpoint
+PersistentKeepalive = 25
+EOF
+  )
+  chmod 600 <span class="s">"$BSE_WP_DATA/teams.conf"</span>
+}
+
+<span class="f">bse-wp-enroll</span>() {
+  <span class="k">local</span> team=<span class="s">"$1"</span>; [ -z <span class="s">"$team"</span> ] && { echo <span class="s">"Usage: bse-wp-enroll &lt;team&gt;"</span>; <span class="k">return</span> 1; }
+  <span class="k">local</span> tmpd; tmpd=$(mktemp -d)
+  <span class="c"># container enroll TẠM THỜI (warp-svc chính thức), xoá ngay sau khi xong</span>
+  container run -d --name bse-wp-enroll --cap-add NET_ADMIN \
+    -v <span class="s">"$tmpd:/var/lib/cloudflare-warp"</span> <span class="s">"$BSE_WP_ENROLL_IMAGE"</span>
+  <span class="c"># đợi daemon, rồi: registration new → URL browser → registration token</span>
+  reg_out=$(container exec bse-wp-enroll warp-cli registration new <span class="s">"$team"</span> 2&gt;&amp;1)
+  <span class="c"># ... user dán token URL ...</span>
+  container exec bse-wp-enroll warp-cli --accept-tos registration token <span class="s">"$token_url"</span>
+  reg_json=$(container exec bse-wp-enroll cat /var/lib/cloudflare-warp/reg.json)
+  conf_json=$(container exec bse-wp-enroll cat /var/lib/cloudflare-warp/conf.json)
+  _bse_wp_write_teamsconf <span class="s">"$reg_json"</span> <span class="s">"$conf_json"</span>
+  container stop bse-wp-enroll; container rm bse-wp-enroll; rm -rf <span class="s">"$tmpd"</span>
+}</pre>
+
+<div class="fname">container/bse-wireproxy.sh  ·  genconf + start</div>
+<pre><span class="f">bse-wp-genconf</span>() {   <span class="c"># bse-forward.conf → wireproxy.conf</span>
+  { echo <span class="s">"WGConfig = /data/teams.conf"</span>; echo; echo <span class="s">"[Socks5]"</span>
+    echo <span class="s">"BindAddress = 0.0.0.0:$BSE_WP_PROXY_PORT"</span>; } &gt; <span class="s">"$BSE_WP_DATA/wireproxy.conf"</span>
+  <span class="k">while</span> read -r name ip rport lport _rest; <span class="k">do</span>
+    <span class="c"># ... mỗi đích → [TCPClientTunnel] BindAddress=0.0.0.0:$lport Target=$ip:$rport</span>
+  <span class="k">done</span> &lt; <span class="s">"$BSE_FORWARD_CONF"</span>
+}
+
+<span class="f">bse-wp-start</span>() {
+  container ls 2&gt;/dev/null | grep -q <span class="s">"$BSE_WP_NAME"</span> && { echo <span class="s">"đã chạy"</span>; <span class="k">return</span> 0; }
+  bse-wp-genconf
+  <span class="k">local</span> pub; pub=$(_bse_wp_publish_args)
+  <span class="k">eval</span> <span class="s">"container run -d --name \"$BSE_WP_NAME\" $pub -v \"$BSE_WP_DATA:/data\" \"$BSE_WP_IMAGE\""</span>
+}</pre>
+
+<div class="fname">bse-aliases.sh  ·  bse-on uỷ quyền cho backend container</div>
+<pre><span class="c"># Nạp backend wireproxy (định nghĩa mọi bse-wp-*)</span>
+[ -f <span class="s">"$HOME/.proxy/container/bse-wireproxy.sh"</span> ] && source <span class="s">"$HOME/.proxy/container/bse-wireproxy.sh"</span>
+
+<span class="f">bse-on</span>() {
+  command -v bse-wp-on &gt;/dev/null 2&gt;&amp;1 || { echo <span class="s">"✗ thiếu backend"</span>; <span class="k">return</span> 1; }
+  bse-wp-genconf &gt;/dev/null 2&gt;&amp;1   <span class="c"># đồng bộ forwards</span>
+  bse-wp-rm      &gt;/dev/null 2&gt;&amp;1   <span class="c"># idempotent: bỏ container cũ</span>
+  bse-wp-on                       <span class="c"># start + PAC on + CLI on + status</span>
+}
+<span class="f">bse-off</span>() { bse-wp-off; }</pre>
+
+<!-- 07 -->
+<div class="sec-label" id="sec">07 — Bảo mật &amp; tài nguyên</div>
+<h2>Vì sao thiết kế này an toàn &amp; nhẹ</h2>
+<div class="grid2">
+  <div class="card">
+    <h3 style="margin-top:0">🔒 Chỉ loopback</h3>
+    <p class="sub">Mọi cổng publish bind <code>127.0.0.1</code>, không phải <code>0.0.0.0</code> → máy khác trong LAN <b>không</b> dùng được egress công ty hay tunnel nội bộ. PrivateKey chỉ nằm trong <code>teams.conf</code> (chmod 600), không bao giờ in ra / commit.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">⚡ Nhẹ máy</h3>
+    <p class="sub">Image <span class="num">9.4&nbsp;MB</span>, một binary Go tĩnh, RSS sống ~<span class="num">59&nbsp;MB</span>. Apple container = một micro-VM/ container, idle ~<span class="num">100&nbsp;MB</span> — nhẹ hơn nhiều so với chạy một Docker Desktop full.</p>
+  </div>
+</div>
+<div class="callout g"><span class="bang">KIỂM CHỨNG EGRESS</span><code>warp=on</code> chưa đủ. Bằng chứng thật là <b>chạm được resource bị allowlist</b>: RDP/SSH vào <code>10.0.0.0/16</code> hay AWS console mở được. <code>bse-wp-status</code> in egress IP để đối chiếu allowlist công ty.</div>
+<div class="callout"><span class="bang">DOCKER PORTABILITY</span>Vì wireproxy là userspace (không cap/device), image chạy nguyên trên Docker/OrbStack với <code>-v</code> + <code>-p 127.0.0.1:…</code>. Chỉ khác bước build: <code>docker build -f Containerfile</code> (Docker không thấy image của Apple container daemon).</div>
+
+<footer>
+  bse-on · container wireproxy · Apple container 1.0.0 · IP trong tài liệu này đã ẩn danh (placeholder).
+</footer>
+
+</div>
+</body>
+</html>
