@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WARP Container — Hệ thống &amp; Lựa chọn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b1521; --bg2:#0e1a28; --grid:rgba(120,160,200,.05);
+  --surface:#11202f; --surface2:#16293b; --recessed:#0c1825;
+  --border:rgba(150,185,215,.14); --border2:rgba(150,185,215,.26);
+  --text:#e7eef6; --dim:#92a6ba; --faint:#637689;
+  --accent:#5fb1d6; --accent-dim:rgba(95,177,214,.13);
+  --gold:#d8ad55; --gold-dim:rgba(216,173,85,.13);
+  --pass:#5cc290; --pass-dim:rgba(92,194,144,.14);
+  --fail:#e0727c; --fail-dim:rgba(224,114,124,.14);
+  --warn:#d99a4e; --warn-dim:rgba(217,154,78,.14);
+  --shadow:0 8px 30px rgba(0,0,0,.4);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#eef2f6; --bg2:#e6ecf2; --grid:rgba(40,70,100,.06);
+    --surface:#ffffff; --surface2:#f4f7fa; --recessed:#eaeff4;
+    --border:rgba(30,60,90,.14); --border2:rgba(30,60,90,.24);
+    --text:#13212f; --dim:#46586a; --faint:#76899b;
+    --accent:#1f7fa6; --accent-dim:rgba(31,127,166,.10);
+    --gold:#a9802a; --gold-dim:rgba(169,128,42,.12);
+    --pass:#2f9466; --pass-dim:rgba(47,148,102,.12);
+    --fail:#c0414c; --fail-dim:rgba(192,65,76,.10);
+    --warn:#b27a2c; --warn-dim:rgba(178,122,44,.12);
+    --shadow:0 8px 26px rgba(40,70,110,.12);
+  }
+}
+*{box-sizing:border-box;min-width:0}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;line-height:1.6;
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:34px 34px;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+code{font-family:"IBM Plex Mono",monospace;font-size:.86em;background:var(--accent-dim);
+  color:var(--accent);padding:.08em .38em;border-radius:4px;border:1px solid var(--border);white-space:nowrap}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+.wrap{max-width:1140px;margin:0 auto;padding:0 22px}
+header.hero{padding:64px 0 30px;border-bottom:1px solid var(--border)}
+.kicker{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:9px}
+.kicker::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 4px var(--accent-dim)}
+h1{font-size:clamp(28px,5vw,46px);line-height:1.08;margin:16px 0 10px;font-weight:700;letter-spacing:-.01em}
+.lead{font-size:clamp(16px,2.2vw,19px);color:var(--dim);max-width:74ch}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:12px;border:1px solid var(--border2);
+  background:var(--surface);padding:5px 11px;border-radius:20px;color:var(--dim)}
+.chip b{color:var(--text);font-weight:600}
+
+nav.toc{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 86%,transparent);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--border);margin-top:24px}
+nav.toc .wrap{display:flex;gap:4px;overflow-x:auto;padding-top:8px;padding-bottom:8px}
+nav.toc a{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--dim);
+  white-space:nowrap;padding:6px 12px;border-radius:7px;border:1px solid transparent}
+nav.toc a:hover{color:var(--text);text-decoration:none;border-color:var(--border);background:var(--surface)}
+
+section{padding:46px 0;border-bottom:1px solid var(--border)}
+.sec-label{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.sec-label::before{content:"";width:7px;height:7px;background:var(--gold);transform:rotate(45deg)}
+h2{font-size:clamp(22px,3.4vw,30px);margin:0 0 8px;font-weight:700;letter-spacing:-.01em}
+h3{font-size:17px;margin:26px 0 12px;font-weight:600}
+.sub{color:var(--dim);max-width:78ch;margin:0 0 8px}
+
+/* pipeline */
+.pipe{display:flex;flex-direction:column;gap:0;margin:26px 0 8px}
+.stage{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+.stage .st-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.st-tag{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);background:var(--accent-dim);padding:3px 8px;border-radius:5px;border:1px solid var(--border)}
+.stage h4{margin:0;font-size:16px;font-weight:600}
+.stage p{margin:8px 0 0;color:var(--dim);font-size:14.5px}
+.stage .ports{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.port{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--recessed);
+  border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text)}
+.arrow{align-self:center;color:var(--faint);font-family:"IBM Plex Mono",monospace;font-size:13px;
+  padding:7px 0;display:flex;flex-direction:column;align-items:center;line-height:1}
+.arrow span{font-size:10px;color:var(--faint);letter-spacing:.05em;margin-top:2px}
+.stage.warp{border-left-color:var(--gold)}
+.stage.warp .st-tag{color:var(--gold);background:var(--gold-dim)}
+.stage.dest{border-left-color:var(--pass)}
+.stage.dest .st-tag{color:var(--pass);background:var(--pass-dim)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:14px;margin-top:18px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+.card h4{margin:0 0 6px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.card h4::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.card p{margin:0;color:var(--dim);font-size:14px}
+.card.hero{background:linear-gradient(180deg,var(--accent-dim),transparent);border-color:var(--border2);box-shadow:var(--shadow)}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;margin:18px 0 6px;border:1px solid var(--border);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+thead th{position:sticky;top:0;background:var(--surface2);text-align:left;font-weight:600;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--dim);padding:11px 14px;border-bottom:1px solid var(--border2)}
+tbody td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:break-word}
+tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface) 55%,transparent)}
+tbody tr:hover{background:var(--accent-dim)}
+td.num{font-family:"IBM Plex Mono",monospace;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td b{font-weight:600}
+.win{color:var(--pass);font-weight:600}
+
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:"IBM Plex Mono",monospace;
+  font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid var(--border);white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%}
+.p-pass{background:var(--pass-dim);color:var(--pass)} .p-pass::before{background:var(--pass)}
+.p-fail{background:var(--fail-dim);color:var(--fail)} .p-fail::before{background:var(--fail)}
+.p-warn{background:var(--warn-dim);color:var(--warn)} .p-warn::before{background:var(--warn)}
+.p-info{background:var(--accent-dim);color:var(--accent)} .p-info::before{background:var(--accent)}
+
+.callout{display:grid;grid-template-columns:auto 1fr;gap:14px;background:var(--gold-dim);
+  border:1px solid var(--border2);border-left:3px solid var(--gold);border-radius:11px;padding:15px 18px;margin:18px 0}
+.callout .bang{font-family:"IBM Plex Mono",monospace;font-weight:700;color:var(--gold);font-size:13px;letter-spacing:.1em}
+.callout p{margin:0;font-size:14.5px}
+.callout.pass{background:var(--pass-dim);border-left-color:var(--pass)} .callout.pass .bang{color:var(--pass)}
+.callout.warn{background:var(--warn-dim);border-left-color:var(--warn)} .callout.warn .bang{color:var(--warn)}
+
+pre.code{background:var(--recessed);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;overflow-x:auto;margin:12px 0}
+pre.code code{white-space:pre-wrap;word-break:break-word;background:none;border:none;color:var(--text);
+  padding:0;font-size:13px;line-height:1.7;display:block}
+.cmt{color:var(--faint)} .kw{color:var(--gold)} .str{color:var(--pass)}
+
+.opt{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin:14px 0}
+.opt.rec{border-color:var(--pass);box-shadow:0 0 0 1px var(--pass-dim),var(--shadow);background:linear-gradient(180deg,var(--pass-dim),transparent)}
+.opt .opt-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.opt .opt-h h3{margin:0;font-size:16px}
+.opt ul{margin:8px 0 0;padding-left:18px;color:var(--dim);font-size:14px}
+.opt li{margin:3px 0}
+.opt li b{color:var(--text)}
+
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+ol.steps li{position:relative;padding:10px 0 10px 44px;border-bottom:1px solid var(--border);font-size:14.5px;color:var(--dim)}
+ol.steps li:last-child{border-bottom:none}
+ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:9px;
+  width:28px;height:28px;border-radius:8px;background:var(--accent-dim);border:1px solid var(--border2);
+  color:var(--accent);font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:13px;
+  display:flex;align-items:center;justify-content:center}
+ol.steps li b{color:var(--text)}
+
+.refs{columns:2;column-gap:26px}
+.refs .r{break-inside:avoid;margin:0 0 12px;font-size:13px;color:var(--dim)}
+.refs .r b{display:block;color:var(--text);font-weight:600;font-size:13.5px}
+@media(max-width:680px){.refs{columns:1}}
+
+footer{padding:30px 0 60px;color:var(--faint);font-size:13px;font-family:"IBM Plex Mono",monospace}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.reveal{animation:fadeUp .5s cubic-bezier(.2,.7,.3,1) both}
+@media (prefers-reduced-motion:reduce){.reveal{animation:none}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap reveal">
+    <div class="kicker">~/.proxy &nbsp;·&nbsp; WARP scoping qua container</div>
+    <h1>Thay Blackshark bằng container chạy WARP</h1>
+    <p class="lead">Máy Android “Blackshark” đang chạy Cloudflare WARP + SSH SOCKS để định tuyến chọn lọc lưu lượng AWS &amp; mạng nội bộ cho macOS. Trang này giải thích <b>hệ thống thay thế đang hoạt động thế nào</b> (Apple container + wireproxy) và <b>các lựa chọn kiến trúc</b> đã chốt — mỗi quyết định kèm bằng chứng, không đoán mò.</p>
+    <div class="meta-row">
+      <span class="chip">Runtime: <b>Apple container 1.0.0</b></span>
+      <span class="chip">Client: <b>wireproxy (userspace WG)</b></span>
+      <span class="chip">Host: <b>macOS 26.6</b></span>
+      <span class="chip">Egress: <b>Cloudflare WARP</b></span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#how">Cách hoạt động</a>
+    <a href="#runtime">Runtime</a>
+    <a href="#client">WARP client</a>
+    <a href="#auth">Auth / Enroll</a>
+    <a href="#cases">Forward &amp; cases</a>
+    <a href="#next">Cải tiến</a>
+    <a href="#open">Cần verify</a>
+    <a href="#refs">Nguồn</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<!-- ============ HOW IT WORKS ============ -->
+<section id="how">
+  <div class="sec-label">01 — Hệ thống hiện tại</div>
+  <h2>Lưu lượng đi như thế nào</h2>
+  <p class="sub">macOS không cài VPN. Một container nhẹ chạy <b>wireproxy</b> (WireGuard userspace, không cần TUN) mở SOCKS5 trên <code>127.0.0.1:1080</code> và các cổng tunnel riêng cho RDP/SSH/MySQL. App nào cần đi qua WARP thì trỏ vào các cổng đó; mọi thứ khác đi thẳng (host sạch).</p>
+
+  <div class="pipe">
+    <div class="stage reveal">
+      <div class="st-h"><span class="st-tag">macOS host</span><h4>Ứng dụng định tuyến chọn lọc</h4></div>
+      <p>Browser dùng file PAC tự động · CLI dùng biến môi trường <code>HTTPS_PROXY=socks5h://…</code> · client RDP/MySQL/SSH trỏ tới cổng tunnel cục bộ. Host vẫn <span class="pill p-pass">warp=off</span> — không VPN toàn cục.</p>
+      <div class="ports"><span class="port">PAC :8788</span><span class="port">HTTPS_PROXY</span><span class="port">RDP client</span></div>
+    </div>
+    <div class="arrow">↓<span>localhost</span></div>
+    <div class="stage reveal">
+      <div class="st-h"><span class="st-tag">cổng cục bộ</span><h4>SOCKS5 + TCP tunnels (publish từ container)</h4></div>
+      <p>Apple container map cổng ra host. SOCKS5 nhận cả lưu lượng web; mỗi đích nội bộ có một cổng tunnel TCP riêng do wireproxy <code>[TCPClientTunnel]</code> tạo.</p>
+      <div class="ports"><span class="port">SOCKS 127.0.0.1:1080</span><span class="port">rdp :13389</span><span class="port">ssh :10022</span><span class="port">mysql :13306</span><span class="port">ssh-cb :10023</span></div>
+    </div>
+    <div class="arrow">↓<span>vmnet -p</span></div>
+    <div class="stage reveal">
+      <div class="st-h"><span class="st-tag">Apple container · bse-wp</span><h4>wireproxy — WireGuard userspace</h4></div>
+      <p>Container là một <b>lightweight Linux VM riêng</b> (Virtualization.framework). wireproxy đọc <code>teams.conf</code> (config WireGuard của org) + <code>wireproxy.conf</code>, dựng tunnel hoàn toàn ở user-space — <b>không</b> <code>/dev/net/tun</code>, <b>không</b> NET_ADMIN.</p>
+      <div class="ports"><span class="port">~4 MB RAM (wireproxy)</span><span class="port">no TUN</span><span class="port">IP riêng 192.168.64.x</span></div>
+    </div>
+    <div class="arrow">↓<span>WireGuard / UDP 2408</span></div>
+    <div class="stage warp reveal">
+      <div class="st-h"><span class="st-tag">Cloudflare edge</span><h4>WARP-for-Teams (org egress)</h4></div>
+      <p>Tunnel tới biên Cloudflare. Thiết bị đã enroll vào org nên Cloudflare định tuyến mạng private của org + cấp egress công khai qua WARP.</p>
+      <div class="ports"><span class="port">egress 104.30.x.x</span><span class="port">warp=on</span></div>
+    </div>
+    <div class="arrow">↓<span>routing theo policy org</span></div>
+    <div class="stage dest reveal">
+      <div class="st-h"><span class="st-tag">đích đến</span><h4>AWS công khai &amp; mạng nội bộ org</h4></div>
+      <p><b>AWS</b>: chấp nhận vì đi qua egress Cloudflare WARP (gate theo “đi qua WARP”). <b>Nội bộ 10.0.x</b> (web nội bộ / Remote Desktop): tới được qua routing private network của org — đã xác nhận tunnel <code>:13389 → 10.0.137.7:3389</code> connect OK.</p>
+      <div class="ports"><span class="port">*.amazonaws.com</span><span class="port">10.0.0.0/16</span><span class="port">*.internal.example</span></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card reveal"><h4>Scoping bằng PAC</h4><p>File <code>aws-proxy.pac</code> sinh từ danh sách IP/domain: chỉ <code>*.amazonaws.com</code> + dải <code>10.0.x</code> đi qua SOCKS, còn lại DIRECT. Server PAC chạy local <code>:8788</code>.</p></div>
+    <div class="card reveal"><h4>Forward TCP qua WARP</h4><p>RDP/MySQL không nói được SOCKS → dùng <code>[TCPClientTunnel]</code> của wireproxy: mở cổng local, chuyển thẳng tới <code>10.0.137.7</code> <i>bên trong</i> tunnel WARP (khác <code>ssh -L</code> vốn thoát ra route thường).</p></div>
+    <div class="card reveal"><h4>Host luôn sạch</h4><p>Không utun/VPN toàn cục. Tắt container là Mac trở lại bình thường ngay; không đụng <code>/etc/resolv.conf</code> hay default route.</p></div>
+  </div>
+</section>
+
+<!-- ============ RUNTIME ============ -->
+<section id="runtime">
+  <div class="sec-label">02 — Quyết định: Runtime</div>
+  <h2>Apple container vs Docker vs OrbStack</h2>
+  <p class="sub">Ưu tiên #1 của bạn: <b>nhẹ máy + tốc độ</b>. Với <b>một</b> container proxy long-lived, Apple container (native) là tối ưu nhất vì không giữ VM nóng thường trực.</p>
+
+  <div class="tbl-wrap reveal">
+    <table>
+      <thead><tr><th>Tiêu chí</th><th>Apple container</th><th>Docker Desktop</th><th>OrbStack</th></tr></thead>
+      <tbody>
+        <tr><td>RAM lúc idle (chưa chạy gì)</td><td class="num win">~51 MB</td><td class="num">~1,124 MB</td><td class="num">~1,631 MB</td></tr>
+        <tr><td>Mô hình VM</td><td>1 micro-VM / container, tắt là trả RAM</td><td>1 Linux VM resident suốt phiên</td><td>1 Linux VM resident suốt phiên</td></tr>
+        <tr><td>Cold start container</td><td class="num">~0.8–0.9 s</td><td class="num win">~0.2 s (warm fork)</td><td class="num win">~0.23 s</td></tr>
+        <tr><td>Bind-mount I/O</td><td>chậm (~33 MB/s)</td><td class="num">~97 MB/s</td><td class="win">nhanh (~548 MB/s)</td></tr>
+        <tr><td>Mật độ cao (40 container)</td><td>nặng (40 VM)</td><td class="win">tốt (1 VM)</td><td class="win">tốt (1 VM)</td></tr>
+        <tr><td>Native macOS / phụ thuộc</td><td class="win">native, không daemon nền</td><td>cần Docker daemon</td><td>cần app nền</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout pass reveal">
+    <div class="bang">CHỐT</div>
+    <p><b>Apple container.</b> Mọi nhược điểm của nó (cold-start chậm, bind-mount I/O chậm, nặng khi mật độ cao) <b>không áp</b> vào ca dùng của bạn: 1 container chạy nền lâu dài, start một lần, chỉ mount thư mục config tí xíu. Cái duy nhất quan trọng — RAM idle — Apple container <b>nhẹ hơn 22–32×</b>. wireproxy userspace vẫn chạy y nguyên trên Docker/OrbStack nếu cần portability (chỉ <code>-p 1080:1080</code>).</p>
+  </div>
+</section>
+
+<!-- ============ CLIENT ============ -->
+<section id="client">
+  <div class="sec-label">03 — Quyết định: WARP client</div>
+  <h2>Vì sao wireproxy — chọn vì nhẹ, không phải vì warp-svc không chạy</h2>
+  <div class="callout warn reveal">
+    <div class="bang">ĐÍNH CHÍNH</div>
+    <p>Trước đó tôi tưởng Apple container thiếu <code>/dev/net/tun</code> nên warp-svc không chạy được. <b>Test thực nghiệm bác bỏ điều đó:</b> Apple container 1.0.0 <b>có</b> <code>/dev/net/tun</code> (<span class="mono">crw------- 10,200</span>) và <b>hỗ trợ</b> <code>--cap-add NET_ADMIN</code>; container <code>bse-warp</code> của session kia đã <b>handshake WireGuard thành công</b>. Vậy cả hai cách đều chạy được — quyết định dựa trên <b>resource/tốc độ</b>, không phải tính khả thi.</p>
+  </div>
+
+  <div class="tbl-wrap reveal">
+    <table>
+      <thead><tr><th>Phương án</th><th>Cần TUN?</th><th>Trên Apple container 1.0.0</th><th>Image</th><th>Đặc điểm</th></tr></thead>
+      <tbody>
+        <tr><td><b>wireproxy</b> (WireGuard userspace)</td><td><span class="pill p-pass">Không</span></td><td><span class="pill p-pass">Chạy (unprivileged)</span></td><td class="num win">9.4 MB</td><td>1 binary Go tĩnh; ~59 MB RSS sống</td></tr>
+        <tr><td>warp-svc full tunnel (official)</td><td>Có (đã có sẵn)</td><td><span class="pill p-pass">Chạy ✓ (verified)</span></td><td class="num">342.5 MB</td><td>Ubuntu + daemon; nặng ~36×</td></tr>
+        <tr><td>warp-svc proxy mode (MASQUE, SOCKS :40000)</td><td>Có (đã có sẵn)</td><td><span class="pill p-pass">Chạy</span></td><td class="num">342.5 MB</td><td>official, posture; nhưng nặng</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:14px">Cả wireproxy lẫn warp-svc đều là <b>WireGuard userspace</b> (wireproxy = wireguard-go, warp-svc = boringtun) → warp-svc <b>không</b> nhanh hơn về giao thức, lại còn thêm hop <code>ssh -D</code> cho SOCKS. Chọn wireproxy vì ưu tiên #1 (nhẹ + nhanh): image nhỏ ~36×, 1 binary, chạy unprivileged. warp-svc giữ làm <b>fallback</b> cho 2 việc wireproxy không làm được: device posture (nếu org gate theo posture) và MASQUE/443 khi mạng chặn WireGuard UDP 2408.</p>
+</section>
+
+<!-- ============ AUTH ============ -->
+<section id="auth">
+  <div class="sec-label">04 — Quyết định: Auth / Enrollment</div>
+  <h2>Dùng auth official như session kia</h2>
+  <p class="sub">Bạn đã test auth official ở <code>container/bse-container.sh</code> và <b>thành công</b>. Hướng mới: dùng đúng flow official đó, rồi <b>rút WireGuard config</b> ra cho wireproxy — bỏ tool reverse-engineer phía Mac.</p>
+
+  <h3>Sự thật về vòng đời (Cloudflare docs — không đoán)</h3>
+  <div class="grid2">
+    <div class="card hero reveal"><h4>Device registration = vĩnh viễn</h4><p>“A device registration is <b>persistent — it does not expire</b> and exists until you delete it.” → <code>teams.conf</code> tái dùng lâu dài, không phải enroll lại liên tục.</p></div>
+    <div class="card reveal"><h4>“Session” mới là cái hết hạn</h4><p>Client session = JWT giới hạn thời gian, ép re-auth với IdP. <b>Mặc định UNLIMITED</b> nếu org không đặt session duration trên policy.</p></div>
+    <div class="card reveal"><h4>Refresh không cần JWT mới</h4><p>Lưu <code>token,device_id,private_key</code> → <code>GET /reg/{device_id}</code> với Bearer token để làm mới config, không cần đăng nhập lại (rany2/warp.sh <code>-R</code>).</p></div>
+    <div class="card reveal"><h4>Token enroll sống rất ngắn</h4><p>Token từ trang đăng nhập chỉ sống ~30 s–2 phút → lấy xong dùng ngay (đây là lý do trước đó paste tay vào terminal bị cắt cụt).</p></div>
+  </div>
+
+  <h3>Ba lựa chọn auth</h3>
+
+  <div class="opt reveal">
+    <div class="opt-h"><span class="pill p-warn">A · hiện tại</span><h3>cf-warp-wireguard-gen (tool Rust phía Mac)</h3></div>
+    <ul>
+      <li>Reverse-engineer API, sinh <code>teams.conf</code> trực tiếp từ JWT.</li>
+      <li><b>Nhược:</b> phải cài tool Rust trên Mac, không official, JWT phải lấy thủ công qua console.</li>
+    </ul>
+  </div>
+
+  <div class="opt rec reveal">
+    <div class="opt-h"><span class="pill p-pass">B · khuyến nghị</span><h3>Hybrid: enroll official trong container → rút config → wireproxy</h3></div>
+    <ul>
+      <li>Nướng <code>warp-svc</code>/<code>warp-cli</code> vào image <b>chỉ để enroll</b> — đăng ký device <b>không cần TUN</b>.</li>
+      <li>Flow đúng như <code>bse-container.sh</code>: <code>warp-cli registration new &lt;team&gt;</code> → mở URL org trên browser → <code>warp-cli registration token "&lt;url&gt;"</code>.</li>
+      <li>Rút WireGuard config: <b>private key</b> ở <code>/var/lib/cloudflare-warp/reg.json</code>, <b>peer pubkey + endpoint + addresses</b> ở <code>conf.json</code> → ghi <code>teams.conf</code> (chèn <code>MTU=1280</code>) cho wireproxy.</li>
+      <li><b>Được cả ba:</b> auth official (đã test) · không tool Rust trên Mac · auto-gen (rút config tự động) · wireproxy vẫn nhẹ ~4 MB.</li>
+    </ul>
+  </div>
+
+  <div class="opt reveal">
+    <div class="opt-h"><span class="pill p-info">C · khả thi nhưng nặng</span><h3>warp-svc full/proxy mode (official toàn phần, bỏ wireproxy)</h3></div>
+    <ul>
+      <li>Dùng hẳn official client — đã verify <b>chạy được</b> trên Apple container (TUN có sẵn, bse-warp đã handshake). Proxy mode cho SOCKS5 <code>127.0.0.1:40000</code> (MASQUE).</li>
+      <li><b>Lợi:</b> auth + posture + revocation đều official, không rút key, lifecycle chuẩn.</li>
+      <li><b>Đánh đổi:</b> image 342.5 MB (~36× wireproxy), full daemon → <b>ngược ưu tiên #1 “nhẹ máy”</b>. Chỉ nên chọn nếu org bắt buộc device posture, hoặc mạng chặn WireGuard UDP 2408 (cần MASQUE/443).</li>
+    </ul>
+  </div>
+
+  <div class="callout reveal">
+    <div class="bang">FLOW B</div>
+    <p>Bạn chỉ thao tác <b>một lần</b>: đăng nhập org trên browser, dán token URL. Container tự đăng ký + rút config + sinh <code>wireproxy.conf</code>. Vì registration vĩnh viễn, các lần sau chỉ cần start — không enroll lại, trừ khi org ép re-auth bằng session timeout.</p>
+  </div>
+</section>
+
+<!-- ============ CASES ============ -->
+<section id="cases">
+  <div class="sec-label">05 — Forward &amp; trường hợp dùng</div>
+  <h2>Các cổng forward (sinh từ bse-forward.conf)</h2>
+  <p class="sub">Mỗi dòng trong <code>bse-forward.conf</code> thành một <code>[TCPClientTunnel]</code> của wireproxy. Mặc định cổng local = <code>10000 + cổng đích</code>; có thể override.</p>
+  <div class="tbl-wrap reveal">
+    <table>
+      <thead><tr><th>Tên</th><th>Cổng local</th><th>Đích (trong WARP)</th><th>Dùng cho</th><th>Đường đi</th></tr></thead>
+      <tbody>
+        <tr><td><b>rdp</b> / ess</td><td class="num">:13389</td><td class="mono">10.0.137.7:3389</td><td>Remote Desktop web nội bộ</td><td>tunnel → org private</td></tr>
+        <tr><td><b>ssh</b></td><td class="num">:10022</td><td class="mono">10.0.137.7:22</td><td>SSH nội bộ</td><td>tunnel → org private</td></tr>
+        <tr><td><b>mysql</b></td><td class="num">:13306</td><td class="mono">10.0.137.7:3306</td><td>MySQL nội bộ</td><td>tunnel → org private</td></tr>
+        <tr><td><b>ssh-cb</b></td><td class="num">:10023</td><td class="mono">203.0.113.20:22</td><td>SSH host công khai</td><td>tunnel → WARP egress</td></tr>
+        <tr><td><b>web/CLI AWS</b></td><td class="num">SOCKS :1080</td><td class="mono">*.amazonaws.com</td><td>Console + aws-cli</td><td>PAC / HTTPS_PROXY → WARP</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Kết quả self-test thực tế (đã chạy, không suy đoán)</h3>
+  <div class="tbl-wrap reveal">
+    <table>
+      <thead><tr><th>Trường hợp</th><th>Kết quả</th><th>Bằng chứng</th></tr></thead>
+      <tbody>
+        <tr><td>SOCKS egress + warp on</td><td><span class="pill p-pass">PASS</span></td><td><span class="mono">warp=on gateway=on ip=104.30.x.x</span> → đúng Gateway của org</td></tr>
+        <tr><td>Host sạch (không proxy)</td><td><span class="pill p-pass">PASS</span></td><td>warp=off, không rò proxy</td></tr>
+        <tr><td>DNS remote qua socks5h</td><td><span class="pill p-pass">PASS</span></td><td>AWS resolve phía proxy, không rò DNS</td></tr>
+        <tr><td>RDP 13389 → 10.0.137.7:3389</td><td><span class="pill p-pass">PASS</span></td><td>X.224 Connection Confirm thật (end-to-end)</td></tr>
+        <tr><td>SSH 10022 / ssh-cb 10023</td><td><span class="pill p-pass">PASS</span></td><td>đọc được banner OpenSSH end-to-end</td></tr>
+        <tr><td>web nội bộ web (10.0.137.7)</td><td><span class="pill p-pass">PASS</span></td><td>http 301 / https 200 — chứng minh routing private 10.0.x</td></tr>
+        <tr><td>PAC server + routing</td><td><span class="pill p-pass">PASS</span></td><td>serve đúng, chỉ AWS + 10.0.x đi SOCKS</td></tr>
+        <tr><td>Tốc độ SOCKS vs direct</td><td><span class="pill p-pass">PASS</span></td><td>chỉ +0.08–0.15s (1 hop WARP) — ổn cho tương tác</td></tr>
+        <tr><td>MySQL 13306 → 10.0.137.7:3306</td><td><span class="pill p-warn">PARTIAL</span></td><td>cổng 3306 phía đích bị firewall (“no route to host”) — <b>không phải lỗi proxy</b></td></tr>
+        <tr><td>Bind cổng publish</td><td><span class="pill p-fail">FAIL</span></td><td>5 cổng bind <code>0.0.0.0</code> → lộ ra LAN, cần fix</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:10px"><b>Tổng: 9 PASS · 1 PARTIAL</b> (backend MySQL down, độc lập với proxy) <b>· 1 SECURITY FAIL</b>.</p>
+
+  <div class="callout reveal">
+    <div class="bang">SECURITY FIX</div>
+    <p>Cả 5 cổng đang bind <code>0.0.0.0</code> → bất kỳ máy nào trong LAN cũng dùng được SOCKS (egress công ty) + tunnel nội bộ, không cần auth. Sửa: publish theo loopback <code>-p 127.0.0.1:&lt;port&gt;:&lt;port&gt;</code> (ở tầng <code>container run -p</code>, không đổi BindAddress trong container) rồi <code>bse-wp-restart</code>. Cần làm trước khi coi là “production”.</p>
+  </div>
+</section>
+
+<!-- ============ NEXT ============ -->
+<section id="next">
+  <div class="sec-label">06 — Cải tiến đang triển khai</div>
+  <h2>Đang gom “best of both”</h2>
+  <ol class="steps reveal">
+    <li><b>Auth official + auto-gen.</b> Nướng enroll official (Flow B) vào image; container tự rút config → Mac không cài tool, không gõ lệnh gen.</li>
+    <li><b>Bền vững &amp; refresh.</b> Lưu credentials → registration vĩnh viễn, làm mới config không cần JWT; chỉ enroll lại khi org bắt re-auth.</li>
+    <li><b>Resource.</b> Giữ Apple container (idle ~51 MB) + wireproxy (~4 MB); image alpine tối giản.</li>
+    <li><b>Portability.</b> Cùng image/config chạy được trên Docker/OrbStack với <code>-p 1080:1080</code> — mặc định vẫn Apple container.</li>
+    <li><b>Restructure (GATED).</b> Đưa wireproxy thành <code>bse-on</code> chính, đổi luồng Android thành <code>bse-server-on</code>, dời tài nguyên session kia sang folder ngang hàng — <b>chờ bạn xác nhận</b> vì session kia đang chạy.</li>
+  </ol>
+</section>
+
+<!-- ============ OPEN ============ -->
+<section id="open">
+  <div class="sec-label">07 — Cần verify (không đoán)</div>
+  <h2>Điểm còn mở</h2>
+  <div class="grid2">
+    <div class="card reveal"><h4>reg.json của TEAMS → wireproxy config</h4><p>Cách rút key đã verified cho WARP tiêu dùng; cần xác nhận bản TEAMS sinh ra <code>teams.conf</code> chạy được. <span class="pill p-warn">đang test</span></p></div>
+    <div class="card reveal"><h4>proxy mode không cần TUN?</h4><p>Option C chỉ khả thi nếu warp-svc proxy mode chạy không cần <code>/dev/net/tun</code> trên Apple container. <span class="pill p-warn">đang kiểm bse-warp</span></p></div>
+    <div class="card reveal"><h4>Session timeout của org</h4><p>Nếu org đặt client session duration → cần enroll lại định kỳ. Mặc định unlimited thì config chạy mãi. <span class="pill p-info">tùy policy org</span></p></div>
+    <div class="card reveal"><h4>Restructure đụng session kia</h4><p>Move file/đổi <code>bse-on</code> chỉ làm sau khi bạn xác nhận + nên dừng <code>bse-warp</code> trước. <span class="pill p-warn">gated</span></p></div>
+  </div>
+</section>
+
+<!-- ============ REFS ============ -->
+<section id="refs">
+  <div class="sec-label">08 — Nguồn (deep-research)</div>
+  <h2>Bằng chứng cho từng quyết định</h2>
+  <div class="refs reveal">
+    <p class="r"><b>Apple container vs Docker/OrbStack — RAM idle 51 vs 1,124 vs 1,631 MB</b>astgl.com, “Apple Container vs Docker on Apple Silicon”, 2026-06.</p>
+    <p class="r"><b>Mô hình 1 micro-VM/container, ballooning một phần</b>apple/container technical-overview; WWDC25 “Meet Containerization”.</p>
+    <p class="r"><b>Apple container thiếu TUN, không --cap-add</b>tailscale/tailscale#18474 (phải dùng userspace-networking).</p>
+    <p class="r"><b>wireproxy userspace ~4 MB, không cần TUN</b>iPythoning/SUIWARP; whyvl/windtf wireproxy.</p>
+    <p class="r"><b>Private key ở reg.json, peer/endpoint ở conf.json</b>Guy Rutenberg, “Creating a WireGuard profile for Cloudflare Warp”, 2023; shahradelahi/cloudflare-warp.</p>
+    <p class="r"><b>Flow enroll official: registration new + token</b>Cloudflare One — Manual deployment docs; container/bse-container.sh.</p>
+    <p class="r"><b>Registration vĩnh viễn; session = JWT, mặc định unlimited</b>Cloudflare One — Device registration &amp; Client sessions docs.</p>
+    <p class="r"><b>Local proxy mode: SOCKS :40000, yêu cầu MASQUE, WireGuard không hỗ trợ</b>Cloudflare One — Client modes docs; seiry/docker-warp-proxy.</p>
+    <p class="r"><b>Refresh config bằng token đã lưu (GET /reg/{id})</b>rany2/warp.sh; warp-wireguard-gen get_config.</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap">
+  Generated for ~/.proxy · Apple container + wireproxy · các quyết định có deep-research chống lưng.
+</footer>
+
+</body>
+</html>
