@@ -1418,11 +1418,12 @@ curl https://www.cloudflare.com/cdn-cgi/trace
   <div class="ve-card ve-card--recessed section" style="--i:39e">
     <div class="ve-card__label" style="color:var(--text-dim)">Cấu trúc files</div>
     <pre style="font-family:var(--font-mono);font-size:12px;line-height:1.7;color:var(--text-dim);padding:8px 0">~/.proxy/
-├── aws-proxy.pac        <span style="color:var(--accent)">PAC file (auto-generated, không edit)</span>
-├── bse-ip-list.conf     <span style="color:var(--green)">IP list cho PAC (edit this)</span>
-├── bse-forward.conf     <span style="color:var(--green)">Port forward config (edit this)</span>
-├── bse-aliases.sh       <span style="color:var(--accent)">Aliases (source in ~/.zshrc)</span>
-└── .pac-server.pid      <span style="color:var(--text-dim)">(auto)</span>
+├── aws-proxy.pac           <span style="color:var(--accent)">PAC file (auto-generated, không edit)</span>
+├── bse-ip-list.conf        <span style="color:var(--green)">IP list cho PAC (edit this)</span>
+├── bse-domain-list.conf    <span style="color:var(--green)">Domain list cho PAC (edit this)</span>
+├── bse-forward.conf        <span style="color:var(--green)">Port forward config (edit this)</span>
+├── bse-aliases.sh          <span style="color:var(--accent)">Aliases (source in ~/.zshrc)</span>
+└── .pac-server.pid         <span style="color:var(--text-dim)">(auto)</span>
 
 ~/.ssh/config → Host blackshark (DynamicForward 1080)
 ~/.zshrc → [ -f ~/.proxy/bse-aliases.sh ] && source ~/.proxy/bse-aliases.sh</pre>
@@ -1483,27 +1484,35 @@ bse-forward-killall              <span class="comment"># tắt tấtả</span></
     </div>
   </div>
 
-<div class="grid-2 section" style="--i:39h">
+<div class="grid-3 section" style="--i:39h">
     <div class="ve-card ve-card--accent-b">
       <div class="ve-card__label label-b">bse-ip-list.conf</div>
       <h3>IP list cho PAC</h3>
-      <p>Browser PAC routing. Thêm IP backseat.</p>
-      <div class="code-block" style="font-size:11px"><span class="comment"># ~/.proxy/bse-ip-list.conf</span>
-<span class="comment"># Format: IP hoặc CIDR per dòng</span>
+      <p>Browser PAC routing cho IP.</p>
+      <div class="code-block" style="font-size:10px"><span class="comment"># bse-ip-list.conf</span>
 172.25.137.7
 172.25.0.0/16</div>
-      <p style="margin-top:6px">Thêm: <code>bse-ip-add 10.0.1.5</code> → <code>bse-on</code></p>
+      <p style="margin-top:6px;font-size:12px"><code>bse-ip-add 10.0.1.5</code></p>
+    </div>
+    <div class="ve-card ve-card--accent-b">
+      <div class="ve-card__label label-b">bse-domain-list.conf</div>
+      <h3>Domain list cho PAC</h3>
+      <p>Browser PAC routing cho domain.</p>
+      <div class="code-block" style="font-size:10px"><span class="comment"># bse-domain-list.conf</span>
+<span class="comment"># Hỗ trợ wildcard</span>
+*.backseat-service.com
+admin.company.com</div>
+      <p style="margin-top:6px;font-size:12px"><code>bse-domain-add *.x.com</code></p>
     </div>
     <div class="ve-card ve-card--accent-b">
       <div class="ve-card__label label-b">bse-forward.conf</div>
       <h3>Port forward config</h3>
-      <p>TCP port forwards cho non-HTTP.</p>
-      <div class="code-block" style="font-size:11px"><span class="comment"># ~/.proxy/bse-forward.conf</span>
-<span class="comment"># name  ip            port  [local]</span>
-rdp    172.25.137.7  3389
-ssh    172.25.137.7  22
-mysql  172.25.137.7  3306</div>
-      <p style="margin-top:6px">Thêm service: edit file → <code>bse-on --forward-all</code></p>
+      <p>TCP forwards (RDP/SSH/MySQL).</p>
+      <div class="code-block" style="font-size:10px"><span class="comment"># bse-forward.conf</span>
+rdp    172.25.137.7   3389
+ssh    172.25.137.7   22
+ssh-cb 54.95.168.220  22  10023</div>
+      <p style="margin-top:6px;font-size:12px">Edit file &rarr; <code>bse-on</code></p>
     </div>
   </div>
 
@@ -1700,6 +1709,8 @@ bse-ip-add() { echo "$1" >> "$BSE_IP_LIST"; }</code></pre>
           <tr><td><code>bse-forward-kill &lt;port&gt;</code></td><td>Tắt 1 forward</td></tr>
           <tr><td><code>bse-forward-killall</code></td><td>Tắt tất cả forwards</td></tr>
           <tr><td><code>bse-ip-add &lt;ip&gt;</code></td><td>Thêm IP vào PAC list</td></tr>
+          <tr><td><code>bse-rdp</code></td><td>Forward RDP + tạo .rdp file + mở Windows App</td></tr>
+          <tr><td><code>bse-domain-add &lt;domain&gt;</code></td><td>Thêm domain vào PAC (vd: *.backseat.com)</td></tr>
           <tr><td><code>bse-gen-pac</code></td><td>Regenerate PAC từ config</td></tr>
         </tbody>
       </table>
