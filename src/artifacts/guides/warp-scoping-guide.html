@@ -1059,114 +1059,125 @@ Host blackshark-tailnet
     Nếu cần kết nối từ xa (khác mạng) &mdash; <strong>Cách B là lựa chọn duy nhất</strong>.
   </div>
 
-<!-- ============================================================== -->
+  <!-- ============================================================== -->
+  <!-- ====== CÁCH C: VM / DOCKER ISOLATION ====== -->
+  <!-- ============================================================== -->
   <div class="divider-section section" style="--i:22">
-    <span class="divider-section__title">Cách C &mdash; VM Isolation (UTM)</span>
+    <span class="divider-section__title">Cách C &mdash; VM / Docker Isolation</span>
     <div class="divider-section__line"></div>
   </div>
 
   <div class="description section" style="--i:23">
     <p>
-      WARP cài <strong>bên trong VM</strong> (UTM + Ubuntu ARM64). Host macOS <strong>không cài WARP</strong> &mdash;
-      routing table hoàn toàn sạch. AWS work diễn ra trong VM browser.
+      WARP cài <strong>bên trong VM hoặc Docker container</strong> trên Mac.
+      Host macOS <strong>không cài WARP</strong> &mdash; routing table hoàn toàn sạch.
+      Không cần Android. Mọi thứ chạy trên Mac.
     </p>
   </div>
 
-  <!-- Architecture Diagram C -->
-  <div class="arch-diagram section" style="--i:24">
-    <div class="arch-divider"><span>macOS Host (không có WARP)</span></div>
-    <div class="arch-row">
-      <div class="arch-node arch-node--teal">
-        <div class="arch-title">Browser / Slack / Zoom</div>
-        <div class="arch-desc">Direct internet</div>
-      </div>
-    </div>
-    <div class="arch-divider"><span>UTM VM (Ubuntu ARM64)</span></div>
-    <div class="arch-row">
-      <div class="arch-node arch-node--green">
-        <div class="arch-title">Browser trong VM</div>
-        <div class="arch-desc">Firefox/Chrome</div>
-      </div>
-      <div class="arch-flow">
-        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
-      </div>
-      <div class="arch-node arch-node--amber">
-        <div class="arch-title">WARP VPN</div>
-        <div class="arch-desc">Enrolled team công ty</div>
-      </div>
-    </div>
-    <div class="arch-flow">
-      <svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg>
-      <span class="arch-label">WARP tunnel (trong VM)</span>
-    </div>
-    <div class="arch-row">
-      <div class="arch-node arch-node--accent">
-        <div class="arch-title">Cloudflare Gateway</div>
-        <div class="arch-desc">Egress IP công ty</div>
-      </div>
-      <div class="arch-flow">
-        <svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg>
-      </div>
-      <div class="arch-node arch-node--rose">
-        <div class="arch-title">AWS</div>
-      </div>
+  <!-- Comparison: VM vs Docker -->
+  <div class="table-wrap section" style="--i:23a">
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr><th>Tiêu chí</th><th>Docker container</th><th>VM (UTM)</th><th>Android (Cách A/B)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Resource</strong></td><td>~200MB RAM (nhẹ nhất)</td><td>2-3GB RAM + 8GB disk</td><td>Zero (thiết bị riêng)</td></tr>
+          <tr><td><strong>Enrollment</strong></td><td>Workaround: token paste (1 lần)</td><td>Interactive (VM có GUI)</td><td>Trivial (app + login)</td></tr>
+          <tr><td><strong>Startup</strong></td><td>~5 giây</td><td>~30 giây boot</td><td>Đã chạy 24/7</td></tr>
+          <tr><td><strong>Phụ thuộc</strong></td><td>Không — chạy trên Mac</td><td>Không — chạy trên Mac</td><td>Cần Android online</td></tr>
+          <tr><td><strong>WARP mode</strong></td><td>Proxy mode (SOCKS5)</td><td>Tunnel (bình thường)</td><td>VpnService (tunnel)</td></tr>
+          <tr><td><strong>Stability</strong></td><td>&#11088;&#11088;&#11088;&#11088;</td><td>&#11088;&#11088;&#11088;&#11088;</td><td>&#11088;&#11088;&#11088;&#11088;&#11088;</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
-  <!-- Steps C -->
-  <div class="stack section" style="--i:25">
-    <div class="ve-card ve-card--accent-c">
-      <div class="ve-card__label label-c">Bước 1</div>
-      <h3>Cài UTM + tạo VM</h3>
-      <div class="code-block"><span class="cmd">brew install</span> <span class="flag">--cask</span> utm</div>
-      <p>Tải Ubuntu 24.04 Desktop ARM64 ISO. UTM &rarr; New VM &rarr; Virtualize (không Emulate) &rarr; ARM64.</p>
-      <p>RAM: <strong>4GB</strong>, CPU: <strong>2 cores</strong>, Disk: <strong>20GB</strong>.</p>
-    </div>
-    <div class="ve-card ve-card--accent-c">
-      <div class="ve-card__label label-c">Bước 2</div>
-      <h3>Trong VM &mdash; cài WARP</h3>
-      <div class="code-block"><span class="comment"># Thêm repo Cloudflare</span>
-<span class="cmd">curl</span> <span class="flag">-fsSL</span> https://pkg.cloudflareclient.com/pubkey.gpg \
-  | sudo gpg <span class="flag">--yes</span> <span class="flag">--dearmor</span> \
-  <span class="flag">-o</span> /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+  <!-- Docker subsection -->
+  <div class="ve-card ve-card--accent-c section" style="--i:24a">
+    <div class="ve-card__label label-c">Docker Container &mdash; nhẹ nhất</div>
+    <h3>Docker + WARP proxy mode</h3>
+    <p>Container chạy WARP + SOCKS5 proxy. Mac trỏ PAC/env vars đến container proxy thay vì SSH tunnel.</p>
+    <div class="code-block"><span class="comment"># Chạy container (seiry/docker-warp-proxy pattern)</span>
+docker run -d \
+  --name bse-warp \
+  --cap-add NET_ADMIN \
+  --device /dev/net/tun \
+  -p 40000:40000 \
+  ghcr.io/seiry/cloudflare-warp-proxy
 
-<span class="cmd">echo</span> <span class="str">"deb [arch=arm64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main"</span> \
-  | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-
-sudo apt update <span class="flag">&&</span> sudo apt install <span class="flag">-y</span> cloudflare-warp</div>
-    </div>
-    <div class="ve-card ve-card--accent-c">
-      <div class="ve-card__label label-c">Bước 3</div>
-      <h3>Enroll + làm việc trong VM</h3>
-      <div class="code-block"><span class="comment"># Enroll team công ty (mở browser trong VM)</span>
-warp-cli registration new &lt;team-cong-ty&gt;
-warp-cli connect
+<span class="comment"># Enrollment (1 lần) &mdash; interactive workaround</span>
+docker exec -it bse-warp warp-cli registration new &lt;team&gt;
+<span class="comment"># → output URL → mở trên Mac browser → authenticate</span>
+<span class="comment"># → paste token URL trở lại container</span>
+docker exec -it bse-warp warp-cli registration token "com.cloudflare.warp://..."
 
 <span class="comment"># Verify</span>
-curl https://www.cloudflare.com/cdn-cgi/trace
-<span class="comment"># warp=on</span></div>
-      <p>Mở browser trong VM &rarr; truy cập AWS. Host macOS hoàn toàn sạch.</p>
+curl --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace
+<span class="comment"># → warp=on</span></div>
+    <div class="callout callout--warn" style="margin:8px 0">
+      <strong>Enrollment challenge:</strong> Container headless không có browser cho OAuth.
+      Workaround: <code>warp-cli registration new</code> output URL → mở trên Mac → paste token.
+      Hoặc dùng service token (cần admin). One-time setup &mdash; sau đó auto-connect.
+    </div>
+    <p>Ưu điểm: nhẹ nhất (~200MB RAM), startup ~5s, không cần Android.</p>
+  </div>
+
+  <!-- VM subsection -->
+  <div class="ve-card ve-card--accent-c section" style="--i:24">
+    <div class="ve-card__label label-c">VM (UTM) &mdash; enrollment đơn giản</div>
+    <h3>UTM + Ubuntu ARM64 + WARP</h3>
+    <p>WARP cài trong VM. Enrollment interactive đơn giản vì VM có browser. Mac connect đến VM.</p>
+
+    <!-- Architecture Diagram C -->
+    <div class="arch-diagram" style="margin-top:12px">
+      <div class="arch-divider"><span>macOS Host (không có WARP)</span></div>
+      <div class="arch-row">
+        <div class="arch-node arch-node--teal">
+          <div class="arch-title">Browser / CLI</div>
+          <div class="arch-desc">PAC / env vars</div>
+        </div>
+      </div>
+      <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg><span class="arch-label">SOCKS5 / SSH tunnel</span></div>
+      <div class="arch-divider"><span>UTM VM hoặc Docker Container</span></div>
+      <div class="arch-row">
+        <div class="arch-node arch-node--amber">
+          <div class="arch-title">WARP VPN</div>
+          <div class="arch-desc">Enrolled team công ty</div>
+        </div>
+      </div>
+      <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M8 15 L12 19 L16 15"/></svg><span class="arch-label">WARP tunnel</span></div>
+      <div class="arch-row">
+        <div class="arch-node arch-node--accent"><div class="arch-title">Cloudflare Gateway</div><div class="arch-desc">Egress IP công ty</div></div>
+        <div class="arch-flow"><svg viewBox="0 0 24 24"><path d="M5 12 H19 M15 8 L19 12 L15 16"/></svg></div>
+        <div class="arch-node arch-node--rose"><div class="arch-title">AWS + ESS</div></div>
+      </div>
     </div>
   </div>
 
-  <div class="grid-3 section" style="--i:26">
-    <div class="ve-card ve-card--recessed">
-      <div class="ve-card__label" style="color:var(--text-dim)">Resource</div>
-      <p style="font-size:12px">RAM: ~2GB idle, ~3GB khi dùng browser.<br>CPU: ~0% idle (native virtualization).<br>Disk: ~8GB.</p>
-    </div>
-    <div class="ve-card ve-card--recessed">
-      <div class="ve-card__label" style="color:var(--text-dim)">Ưu điểm</div>
-      <p style="font-size:12px">Không cần Android. Enrollment interactive đơn giản. Posture check pass tự nhiên.</p>
-    </div>
-    <div class="ve-card ve-card--recessed">
-      <div class="ve-card__label" style="color:var(--text-dim)">Nhược điểm</div>
-      <p style="font-size:12px">AWS work trong VM browser (không phải host browser). Tốn RAM/disk.</p>
-    </div>
+  <!-- VM setup steps -->
+  <div class="ve-card ve-card--accent-c section" style="--i:25">
+    <div class="ve-card__label label-c">VM Setup</div>
+    <h3>Cài UTM + WARP trong VM</h3>
+    <div class="code-block"><span class="comment"># 1. Cài UTM</span>
+brew install --cask utm
+
+<span class="comment"># 2. Tạo VM Ubuntu 24.04 ARM64</span>
+<span class="comment"># RAM: 4GB, CPU: 2 cores, Disk: 20GB</span>
+
+<span class="comment"># 3. Trong VM &mdash; cài WARP</span>
+curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+echo "deb [arch=arm64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+sudo apt update && sudo apt install -y cloudflare-warp
+
+<span class="comment"># 4. Enroll + làm việc trong VM</span>
+warp-cli registration new &lt;team&gt;
+warp-cli connect</div>
+    <p style="margin-top:8px">AWS work diễn ra trong VM browser. Hoặc set WARP sang proxy mode trong VM và trỏ Mac browser vào VM SOCKS5 proxy.</p>
   </div>
 
-  <!-- ============================================================== -->
-  <!-- ====== CÁCH D: TOGGLE ON/OFF ====== -->
-  <!-- ============================================================== -->
+<!-- ============================================================== -->
   <div class="divider-section section" style="--i:27">
     <span class="divider-section__title">Cách D &mdash; Toggle On/Off (Fallback)</span>
     <div class="divider-section__line"></div>
