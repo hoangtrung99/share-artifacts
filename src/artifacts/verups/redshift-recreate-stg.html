@@ -200,6 +200,32 @@
   .callout ul { margin: 8px 0 0 18px; }
   .callout li { margin-bottom: 5px; }
 
+  /* ===== FULL RUNBOOK ===== */
+  .kv { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .kv td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .kv td:first-child { font-weight: 600; white-space: nowrap; width: 32%; color: var(--text); }
+  .kv td:last-child { color: var(--text-dim); }
+  .kv tr:last-child td { border-bottom: none; }
+  .kv .mono { color: var(--text); }
+
+  .rb-step { margin-top: 24px; }
+  .rb-step > h3 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 9px; margin-bottom: 6px; flex-wrap: wrap; }
+  .rb-num { font-family: var(--font-mono); font-size: 11px; color: #fff; background: var(--primary); border-radius: 5px; padding: 2px 8px; flex: none; }
+  .rb-num.destroy { background: var(--danger); }
+  .rb-num.gate { background: var(--warn); }
+  .rb-num.done { background: var(--ok); }
+  .rb-step > p { font-size: 13.5px; color: var(--text-dim); margin-bottom: 8px; }
+
+  .code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; overflow: hidden; }
+  .code__hdr { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); padding: 7px 12px; border-bottom: 1px solid var(--border); letter-spacing: 0.3px; background: rgba(0,0,0,0.02); }
+  @media (prefers-color-scheme: dark) { .code__hdr { background: rgba(255,255,255,0.03); } }
+  .code pre { margin: 0; padding: 12px 14px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+
+  .gate-box { background: var(--warn-dim); border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 0 10px 10px 0; padding: 14px 18px; margin: 12px 0; font-size: 13.5px; line-height: 1.6; color: var(--text-dim); }
+  .gate-box strong { color: var(--warn); }
+  .stop-tag { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: #fff; background: var(--danger); border-radius: 5px; padding: 2px 8px; display: inline-block; }
+  .rb-divider { border: none; border-top: 1px dashed var(--border); margin: 30px 0 0; }
+
   footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
 
   @media (max-width: 760px) {
@@ -422,6 +448,221 @@
       <code>point-prerecreate-*</code>). If a gate fails before completion, restore that snapshot back into a subnet group that
       still contains the public subnets (revert Phase 2 first if already applied). After Gate 3 passes, no rollback is needed —
       do not delete the snapshots until the recreated cluster is validated.
+    </div>
+  </section>
+
+  <!-- FULL RUNBOOK -->
+  <section class="animate" style="--i:9">
+    <div class="section-label">Full runbook</div>
+    <h2>Operator steps — exact commands, gates &amp; rollback</h2>
+
+    <h3 style="font-size:15px;font-weight:600;margin:14px 0 8px">Environment Info</h3>
+    <div class="table-wrap" style="border:none">
+      <table class="kv">
+        <tr><td>Environment</td><td>STG (point)</td></tr>
+        <tr><td>Account ID</td><td class="mono">471112755246</td></tr>
+        <tr><td>Region</td><td class="mono">ap-northeast-1</td></tr>
+        <tr><td>Execution host</td><td>Bastion <span class="mono">bs-point-stg</span> (SSM session, <span class="mono">ssm-user</span>)</td></tr>
+        <tr><td>Credentials</td><td>Instance IAM role via IMDS — <strong>do NOT set <span class="mono">AWS_PROFILE</span>, do NOT pass <span class="mono">--profile</span></strong></td></tr>
+        <tr><td>Component dir</td><td class="mono">terraform/components/redshift</td></tr>
+        <tr><td>TF wrapper</td><td class="mono">../../terraform.sh --env stg &lt;action&gt;</td></tr>
+        <tr><td>Cluster identifier</td><td class="mono">point</td></tr>
+        <tr><td>Database / master user</td><td class="mono">point / master</td></tr>
+        <tr><td>Node config</td><td class="mono">ra3.xlplus &times; 2</td></tr>
+        <tr><td>Subnet group name</td><td class="mono">point</td></tr>
+        <tr><td>Current endpoint</td><td class="mono">point.cwuaf6qqwtm0.ap-northeast-1.redshift.amazonaws.com:5439</td></tr>
+        <tr><td>KMS key (created)</td><td class="mono">key/32251378-4e27-4c47-8115-efa878b99151 (alias/point-redshift)</td></tr>
+        <tr><td>VPC / SG</td><td class="mono">vpc-08888557d0bd0cead / sg-0a5eacadc0bcd1bd0</td></tr>
+        <tr><td>Final snapshot id</td><td class="mono">point-final-snapshot</td> </tr>
+      </table>
+    </div>
+
+    <h3 style="font-size:15px;font-weight:600;margin:22px 0 8px">Scope &amp; Prerequisites</h3>
+    <div class="callout">
+      <ul>
+        <li><strong>In scope</strong>: destroy + recreate of cluster <code>point</code> and the public→private swap of subnet group <code>point</code>, STG only.</li>
+        <li><strong>Out of scope</strong>: KMS key/alias, parameter group (<code>require_ssl=true</code>), snapshot schedule — already applied; they are dependencies, not destroyed.</li>
+        <li><strong>Data</strong>: this is a fresh recreate (empty cluster). To preserve data, use the Optional restore step below.</li>
+        <li><strong>Downtime</strong>: cluster unavailable from start of Phase 1 until Gate 3 passes. STG downtime acceptable.</li>
+        <li><strong>Master password unchanged</strong> — <code>random_string.master_password</code> is a dependency, not destroyed.</li>
+        <li><strong>Blast radius</strong>: STG Redshift only.</li>
+      </ul>
+    </div>
+
+    <div class="rb-step">
+      <h3><span class="rb-num">0</span> Precheck</h3>
+      <div class="code">
+        <div class="code__hdr">bash · run from bs-point-infra repo root on the bastion</div>
+<pre>cd terraform/components/redshift
+
+# 1) Verify AWS identity — MUST match STG before any destructive step
+aws sts get-caller-identity
+# Expected: Account "471112755246"  — STOP if anything else.
+
+# 2) Capture current cluster state (rollback reference / endpoint comparison)
+aws redshift describe-clusters --region ap-northeast-1 --cluster-identifier point \
+  --query 'Clusters[0].{Status:ClusterStatus,Encrypted:Encrypted,Public:PubliclyAccessible,SubnetGroup:ClusterSubnetGroupName,Endpoint:Endpoint.Address,AZreloc:AvailabilityZoneRelocationStatus,Nodes:NumberOfNodes,VpcId:VpcId}' \
+  --output table
+# Expected (current/wrong): Encrypted=false, Public=false, SubnetGroup=point
+
+# 3) Confirm the auto final-snapshot id is NOT already taken (destroy fails if it exists)
+aws redshift describe-cluster-snapshots --region ap-northeast-1 \
+  --snapshot-identifier point-final-snapshot --query 'Snapshots[0].Status' --output text
+# Expected: error "SnapshotNotFound" (or empty).
+# If it already exists: STOP — delete only if stale, or change final_snapshot_identifier in tfvars.
+
+# 4) Confirm the 3 target private subnets resolve (3 subnets across 1a/1c/1d)
+aws ec2 describe-subnets --region ap-northeast-1 \
+  --filters Name=tag:vpc-key,Values=point-private \
+  --query 'Subnets[].{ID:SubnetId,AZ:AvailabilityZone,CIDR:CidrBlock}' --output table
+# STOP if fewer than 2 distinct AZs (AZ relocation needs multi-AZ subnet group).
+
+# 5) (Recommended) extra manual safety snapshot with a unique name
+aws redshift create-cluster-snapshot --region ap-northeast-1 \
+  --cluster-identifier point --snapshot-identifier point-prerecreate-20260630
+aws redshift describe-cluster-snapshots --region ap-northeast-1 \
+  --snapshot-identifier point-prerecreate-20260630 --query 'Snapshots[0].Status' --output text
+# Expected: available</pre>
+      </div>
+    </div>
+
+    <div class="rb-step">
+      <h3><span class="rb-num destroy">1</span> Destroy the cluster</h3>
+      <p>Keeps subnet group, KMS, parameter group, and <code>random_string.master_password</code> in state. With <code>skip_final_snapshot=false</code>, Terraform creates final snapshot <code>point-final-snapshot</code> on destroy.</p>
+      <div class="code">
+        <div class="code__hdr">bash · terraform/components/redshift</div>
+<pre># Review: should destroy ONLY the cluster (+ cluster-attached resources)
+../../terraform.sh --env stg plan -destroy -target='module.redshift[0].aws_redshift_cluster.this[0]'
+# STOP if subnet group, KMS key, parameter group, or random_string is listed for destruction.
+
+../../terraform.sh --env stg destroy -target='module.redshift[0].aws_redshift_cluster.this[0]'
+# Type 'yes' when prompted.</pre>
+      </div>
+      <div class="gate-box">
+        <strong>Verify Gate 1</strong> — <span class="stop-tag">STOP if not met</span>
+        <div class="code" style="margin-top:10px">
+          <div class="code__hdr">bash</div>
+<pre>aws redshift describe-clusters --region ap-northeast-1 --cluster-identifier point \
+  --query 'Clusters[0].ClusterStatus' --output text
+# Expected: error "ClusterNotFound"
+
+aws redshift describe-cluster-snapshots --region ap-northeast-1 \
+  --snapshot-identifier point-final-snapshot --query 'Snapshots[0].Status' --output text
+# Expected: available  (wait if "creating")</pre>
+        </div>
+        Do not proceed without a usable backup snapshot.
+      </div>
+    </div>
+
+    <div class="rb-step">
+      <h3><span class="rb-num">2</span> Swap subnet group to private</h3>
+      <p>With the cluster gone, no subnet in group <code>point</code> is in use, so public → private succeeds.</p>
+      <div class="code">
+        <div class="code__hdr">bash · terraform/components/redshift</div>
+<pre>../../terraform.sh --env stg plan -target='aws_redshift_subnet_group.point[0]'
+# Expected: "~ update in-place" removing 03aa/0973/0fa8, adding 005d/010d/0c15.
+
+../../terraform.sh --env stg apply -target='aws_redshift_subnet_group.point[0]'
+# Type 'yes' when prompted.</pre>
+      </div>
+      <div class="gate-box">
+        <strong>Verify Gate 2</strong>
+        <div class="code" style="margin-top:10px">
+          <div class="code__hdr">bash</div>
+<pre>aws redshift describe-cluster-subnet-groups --region ap-northeast-1 \
+  --cluster-subnet-group-name point \
+  --query 'ClusterSubnetGroups[0].Subnets[].{ID:SubnetIdentifier,AZ:SubnetAvailabilityZone.Name}' \
+  --output table
+# Expected: exactly the 3 private subnets (010d=1a, 005d=1c, 0c15=1d). No public subnet remains.</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="rb-step">
+      <h3><span class="rb-num">3</span> Recreate the cluster</h3>
+      <p>A full apply creates the cluster fresh inside the private subnet group. Because this is a CREATE (not <code>ModifyCluster</code>), encryption + KMS + AZ relocation + <code>require_ssl</code> are all set at birth — neither blocking error can occur.</p>
+      <div class="code">
+        <div class="code__hdr">bash · terraform/components/redshift</div>
+<pre>../../terraform.sh --env stg plan
+# Expected:
+#   module.redshift[0].aws_redshift_cluster.this[0]  => "+ create"
+#   aws_redshift_subnet_group.point[0]               => no changes (already private)
+#   KMS key/alias, parameter group, snapshot schedule => no changes
+# Create plan must show: encrypted = true, kms_key_id = <point-redshift key>,
+#   publicly_accessible = false, number_of_nodes = 2, node_type = ra3.xlplus.
+# STOP if the cluster is not "+ create", or encrypted != true.
+
+../../terraform.sh --env stg apply
+# Type 'yes' when prompted. Creation takes several minutes.</pre>
+      </div>
+      <div class="gate-box">
+        <strong>Verify Gate 3</strong> — <span class="stop-tag">STOP if any mismatch</span>
+        <div class="code" style="margin-top:10px">
+          <div class="code__hdr">bash</div>
+<pre>aws redshift describe-clusters --region ap-northeast-1 --cluster-identifier point \
+  --query 'Clusters[0].{Status:ClusterStatus,Encrypted:Encrypted,Public:PubliclyAccessible,SubnetGroup:ClusterSubnetGroupName,AZreloc:AvailabilityZoneRelocationStatus,Nodes:NumberOfNodes,KmsKeyId:KmsKeyId,Endpoint:Endpoint.Address}' \
+  --output table
+# Expected: Status=available, Encrypted=true, Public=false, SubnetGroup=point,
+#           AZreloc=enabled, Nodes=2, KmsKeyId=...key/32251378...
+
+# Confirm node(s) landed in a PRIVATE subnet (cross-check IP vs private CIDRs)
+aws redshift describe-clusters --region ap-northeast-1 --cluster-identifier point \
+  --query 'Clusters[0].ClusterNodes[].PrivateIPAddress' --output text</pre>
+        </div>
+        Investigate if Encrypted != true, Public != false, AZreloc != enabled, or node sits in a public subnet.
+      </div>
+    </div>
+
+    <div class="rb-step">
+      <h3><span class="rb-num done">4</span> Final Verify</h3>
+      <div class="code">
+        <div class="code__hdr">bash</div>
+<pre># 1) Plan must be clean (no drift) after recreate
+../../terraform.sh --env stg plan
+# Expected: "No changes. Your infrastructure matches the configuration."
+
+# 2) Endpoint — reusing identifier "point" in the same account/region normally keeps the same host
+aws redshift describe-clusters --region ap-northeast-1 --cluster-identifier point \
+  --query 'Clusters[0].Endpoint.Address' --output text
+# Unchanged => no secret update. Changed => update Secrets Manager host (see Post-Deploy).</pre>
+      </div>
+    </div>
+
+    <h3 style="font-size:15px;font-weight:600;margin:24px 0 8px">Post-Deploy Ops</h3>
+    <div class="callout warn">
+      <ul>
+        <li><strong>Reload data</strong> — recreated cluster is empty; reload via migration/ETL, or use the Optional restore below.</li>
+        <li><strong>Secrets host</strong> — verify endpoint; update host in <code>point/redshift/{viewer_user,editor_user,master_user}</code> only if it changed. Password unchanged.</li>
+        <li><strong>require_ssl=true active from creation</strong> — every client must use SSL/TLS. <code>psql</code> (sslmode=prefer) negotiates automatically; confirm the point app JDBC URL enables SSL before pointing traffic back.</li>
+        <li><strong>Monitor ~30 min</strong> — cluster available, app connectivity, query success, CloudWatch health. Confirm snapshot schedule <code>point-redshift-snapshot-schedule</code> is ACTIVE.</li>
+        <li><strong>Append the live apply transcript</strong> to <code>redshift-apply-log-stg.txt</code> for the migration record.</li>
+      </ul>
+    </div>
+
+    <h3 style="font-size:15px;font-weight:600;margin:24px 0 8px">Optional — Restore data from final snapshot</h3>
+    <div class="callout">
+      To keep current data instead of a fresh cluster, restore during Phase 3 (encrypts during restore, lands in private subnet group in one operation). Before Phase 3, set in <code>tfvars/stg.tfvars</code>:
+      <div class="code" style="margin-top:10px">
+        <div class="code__hdr">hcl · tfvars/stg.tfvars</div>
+<pre>snapshot_identifier = "point-final-snapshot"</pre>
+      </div>
+      Then run Phase 3 as written. <strong>Leave this value as-is after a successful restore</strong> (<code>snapshot_identifier</code> is a create-time attribute; reverting to <code>null</code> may request a replacement, unless the module pins <code>ignore_changes</code>).
+    </div>
+
+    <h3 style="font-size:15px;font-weight:600;margin:24px 0 8px">Rollback (by phase)</h3>
+    <div class="callout danger">
+      <strong>During/after Phase 1, before Phase 3 completes</strong> — the cluster no longer exists; restore the final snapshot back into a subnet group that still contains the public subnets (revert Phase 2 first if already applied):
+      <div class="code" style="margin-top:10px">
+        <div class="code__hdr">bash · console or CLI restore</div>
+<pre>aws redshift restore-from-cluster-snapshot --region ap-northeast-1 \
+  --cluster-identifier point \
+  --snapshot-identifier point-final-snapshot \
+  --cluster-subnet-group-name point \
+  --publicly-accessible \
+  --no-encrypted
+# Returns the cluster to its pre-runbook state (unencrypted, public subnets).</pre>
+      </div>
+      <strong>After Gate 3 passes</strong> — no rollback needed. The <code>point-final-snapshot</code> and <code>point-prerecreate-*</code> snapshots are the recovery sources; do not delete them until the recreated cluster is validated in STG.
     </div>
   </section>
 
