@@ -228,9 +228,12 @@ non-admin paths: sc-status=200  (custom-error→index.html or RefreshHit)  <span
   <h3 style="color:var(--good);margin-top:0">Solution 1 — rename the host to a single label: <code>bo-dev.backseat-service.com</code></h3>
   <p>Change the domain so it becomes a <b>single label</b> under <code>backseat-service.com</code> (hyphen instead of dot). The existing wildcard <code>*.backseat-service.com</code> then covers it on <b>both</b> the viewer and origin legs — <b>no new certificate needed</b>.</p>
   <p style="margin:6px 0"><span class="tag t-ok">why it works</span> <code>bo-dev</code> is one DNS label (hyphens live inside a label). RFC 6125 / ACM: <code>*.backseat-service.com</code> matches any single left label → it matches <code>bo-dev.backseat-service.com</code> (just as it already matches the sibling <code>dev.backseat-service.com</code> and the verup source's <code>bo-dev-ex.backseat-service.com</code>).</p>
-  <p style="margin:6px 0"><b>Change:</b> in <code>frontend-admin/tfvars/dev.tfvars</code> set <code>route53_record = "bo-dev.backseat-service.com"</code> and <code>route53_domain = "backseat-service.com"</code> (the apex zone that hosts single-label records). The CloudFront alias follows <code>route53_record</code> automatically; the ALB Ingress needs no change (<code>tls.hosts: *.backseat-service.com</code> already covers it).</p>
-  <p style="margin:6px 0"><b>Impact:</b> the BO URL changes to <code>https://bo-dev.backseat-service.com/</code>. In-repo this host is referenced in exactly <b>one</b> place (the tfvars line above) — the app calls its API with relative paths (<code>/admin/v1/*</code>), so no server/frontend code change. Update any <b>out-of-repo</b> references (bookmarks, OAuth redirect URIs, CORS allow-lists, email links) to the new host.</p>
-  <p style="margin:6px 0 0"><span class="tag t-ok">pros</span> cheapest — no cert, no DNS validation, one tfvars change. &nbsp; <span class="tag t-no">cons</span> the URL changes.</p>
+  <p style="margin:6px 0"><b>Change:</b> in <code>frontend-admin/tfvars/dev.tfvars</code> set <code>route53_record = "bo-dev.backseat-service.com"</code> and <code>route53_domain = "backseat-service.com"</code>. The CloudFront alias follows <code>route53_record</code> automatically; the ALB Ingress needs no change (<code>tls.hosts: *.backseat-service.com</code> already covers it); the OAC name is unchanged (<code>replace(".","-")</code> yields the same string). The WAF matches on the <code>/admin/</code> path + a custom header, not the host, so it is unaffected.</p>
+  <div class="card note" style="margin:8px 0">
+    <b style="color:var(--warn)">DNS blocker — this is not a one-line change.</b> <code>bo-dev.backseat-service.com</code> is a direct child of the <b>apex zone <code>backseat-service.com</code></b>, which does <b>not</b> exist in the Point DEV account (905418018638) — only <code>dev.backseat-service.com</code> is here (a separate, delegated zone in another account). So <code>data.aws_route53_zone { name = "backseat-service.com" }</code> would fail. You must either set <code>create_route53_record = false</code> and create the <code>bo-dev.backseat-service.com</code> ALIAS→CloudFront record in the <b>account that owns the apex zone</b>, or obtain cross-account access to it. Also remove the old <code>bo.dev.backseat-service.com</code> record from the <code>dev.backseat-service.com</code> zone.
+  </div>
+  <p style="margin:6px 0"><b>Impact:</b> the BO URL changes to <code>https://bo-dev.backseat-service.com/</code>. In-repo the host is referenced in exactly <b>one</b> place (the tfvars line) — the app uses relative <code>/admin/v1/*</code> paths, so no server/frontend code change. Verify the app's <code>domain:</code> config (<code>point-admin/application-dev.yaml</code>) and update out-of-repo references (bookmarks, OAuth redirects, CORS).</p>
+  <p style="margin:6px 0 0"><span class="tag t-ok">pros</span> no new certificate. &nbsp; <span class="tag t-no">cons</span> URL changes <b>and</b> the DNS record must be created cross-account in the apex zone.</p>
 </div>
 
 <div class="card fix">
@@ -244,13 +247,15 @@ non-admin paths: sc-status=200  (custom-error→index.html or RefreshHit)  <span
 </div>
 
 <table>
-  <tr><th>&nbsp;</th><th>Solution 1 — rename to <code>bo-dev.…</code></th><th>Solution 2 — add <code>*.dev.…</code> cert</th></tr>
-  <tr><td>New certificate</td><td class="ok">None (reuse wildcard)</td><td>Required (2 regions)</td></tr>
+  <tr><th>&nbsp;</th><th>Solution 1 — rename to <code>bo-dev.…</code></th><th>Solution 2 — add <code>*.dev.…</code> cert <span class="tag t-ok">recommended here</span></th></tr>
+  <tr><td>New certificate</td><td class="ok">None (reuse wildcard)</td><td>One <code>*.dev.…</code> cert (ACM, DNS-validatable in-account)</td></tr>
+  <tr><td>DNS record</td><td class="no">Must move to the apex <code>backseat-service.com</code> zone — <b>a different account</b> (cross-account / manual)</td><td class="ok">Stays in the in-account <code>dev.backseat-service.com</code> zone (Terraform-managed)</td></tr>
   <tr><td>BO URL</td><td class="no">Changes → <code>bo-dev.…</code></td><td class="ok">Unchanged</td></tr>
-  <tr><td>In-repo code changes</td><td>1 tfvars line</td><td>Ingress + CloudFront cert refs</td></tr>
-  <tr><td>Effort / risk</td><td class="ok">Lowest</td><td>Moderate</td></tr>
+  <tr><td>In-repo code changes</td><td>tfvars + likely <code>create_route53_record=false</code></td><td>Cert data-source + Ingress/CloudFront cert refs</td></tr>
+  <tr><td>Effort / risk (this env)</td><td class="no">Higher — needs apex-zone access</td><td class="ok">Lower — all in-account</td></tr>
   <tr><td>Keeps HTTPS origin</td><td class="ok">Yes</td><td class="ok">Yes</td></tr>
 </table>
+<p style="font-size:13px;color:var(--mut)"><b>Recommendation for this environment:</b> Solution 2. The single-label host in Solution 1 must live in the apex <code>backseat-service.com</code> zone, which is not in the Point DEV account — so despite reusing the wildcard cert it needs cross-account DNS coordination. Solution 2 keeps DNS in the existing in-account <code>dev.backseat-service.com</code> zone and only adds a certificate that can be DNS-validated there.</p>
 
 <div class="card note">
   <h3 style="color:var(--warn);margin-top:0">Not recommended — revert origin to HTTP</h3>
