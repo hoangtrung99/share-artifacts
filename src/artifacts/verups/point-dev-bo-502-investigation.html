@@ -222,20 +222,43 @@ non-admin paths: sc-status=200  (custom-error→index.html or RefreshHit)  <span
 <p>Our case: Origin Domain = <code>point-alb-…elb.amazonaws.com</code> (no match); forwarded Host = <code>bo.dev.backseat-service.com</code> (no match) → 502 + <code>X-Cache: Error from cloudfront</code>. Both observed.</p>
 
 <h2>10. Fix</h2>
+<p>Two equivalent ways to make the certificate cover the BO host. Both keep the HTTPS origin. Pick one.</p>
+
 <div class="card fix">
-  <h3 style="color:var(--good);margin-top:0">Option A — provide the correct certificate (recommended; keeps HTTPS origin)</h3>
-  <ol>
-    <li>Issue/import an ACM certificate covering <code>bo.dev.backseat-service.com</code> — recommended <code>*.dev.backseat-service.com</code> (also matches the sibling <code>dev.backseat-service.com</code> and any future 2-label host under <code>dev</code>).</li>
-    <li><b>ap-northeast-1</b> → attach to the <code>point-alb</code> HTTPS:443 listener via the <code>point-ingress</code> Ingress (annotation <code>alb.ingress.kubernetes.io/certificate-arn</code>, or add the host to <code>tls.hosts</code> for auto-discovery). <b>This stops the 502.</b></li>
-    <li><b>us-east-1</b> → set as the CloudFront viewer certificate for <code>E3ETPFX8HYQZPU</code> so any client not behind Cloudflare Gateway also avoids a browser cert warning.</li>
+  <h3 style="color:var(--good);margin-top:0">Solution 1 — rename the host to a single label: <code>bo-dev.backseat-service.com</code></h3>
+  <p>Change the domain so it becomes a <b>single label</b> under <code>backseat-service.com</code> (hyphen instead of dot). The existing wildcard <code>*.backseat-service.com</code> then covers it on <b>both</b> the viewer and origin legs — <b>no new certificate needed</b>.</p>
+  <p style="margin:6px 0"><span class="tag t-ok">why it works</span> <code>bo-dev</code> is one DNS label (hyphens live inside a label). RFC 6125 / ACM: <code>*.backseat-service.com</code> matches any single left label → it matches <code>bo-dev.backseat-service.com</code> (just as it already matches the sibling <code>dev.backseat-service.com</code> and the verup source's <code>bo-dev-ex.backseat-service.com</code>).</p>
+  <p style="margin:6px 0"><b>Change:</b> in <code>frontend-admin/tfvars/dev.tfvars</code> set <code>route53_record = "bo-dev.backseat-service.com"</code> and <code>route53_domain = "backseat-service.com"</code> (the apex zone that hosts single-label records). The CloudFront alias follows <code>route53_record</code> automatically; the ALB Ingress needs no change (<code>tls.hosts: *.backseat-service.com</code> already covers it).</p>
+  <p style="margin:6px 0"><b>Impact:</b> the BO URL changes to <code>https://bo-dev.backseat-service.com/</code>. In-repo this host is referenced in exactly <b>one</b> place (the tfvars line above) — the app calls its API with relative paths (<code>/admin/v1/*</code>), so no server/frontend code change. Update any <b>out-of-repo</b> references (bookmarks, OAuth redirect URIs, CORS allow-lists, email links) to the new host.</p>
+  <p style="margin:6px 0 0"><span class="tag t-ok">pros</span> cheapest — no cert, no DNS validation, one tfvars change. &nbsp; <span class="tag t-no">cons</span> the URL changes.</p>
+</div>
+
+<div class="card fix">
+  <h3 style="color:var(--good);margin-top:0">Solution 2 — keep <code>bo.dev.backseat-service.com</code>, add a matching certificate</h3>
+  <p>Keep the two-label host and issue/import an ACM certificate that covers it — recommended <code>*.dev.backseat-service.com</code> (also covers the sibling <code>dev.backseat-service.com</code> and any future host under <code>dev</code>). This is exactly the certificate the disabled <code>init/acm</code> component was designed to create.</p>
+  <ol style="margin:6px 0">
+    <li><b>ap-northeast-1</b> → add the cert to the <code>point-alb</code> HTTPS:443 listener SNI list via the <code>point-ingress</code> Ingress (annotation <code>alb.ingress.kubernetes.io/certificate-arn</code>, or add the host to <code>tls.hosts</code>). <b>This stops the 502.</b></li>
+    <li><b>us-east-1</b> → set it as the CloudFront viewer certificate for <code>E3ETPFX8HYQZPU</code> (removes the browser cert warning for clients not behind Cloudflare Gateway).</li>
   </ol>
+  <p style="margin:6px 0 0"><span class="tag t-ok">pros</span> URL unchanged; matches the intended <code>bo.dev.*</code> / <code>init/acm</code> design. &nbsp; <span class="tag t-no">cons</span> requires a new cert (DNS-validated) in two regions.</p>
 </div>
+
+<table>
+  <tr><th>&nbsp;</th><th>Solution 1 — rename to <code>bo-dev.…</code></th><th>Solution 2 — add <code>*.dev.…</code> cert</th></tr>
+  <tr><td>New certificate</td><td class="ok">None (reuse wildcard)</td><td>Required (2 regions)</td></tr>
+  <tr><td>BO URL</td><td class="no">Changes → <code>bo-dev.…</code></td><td class="ok">Unchanged</td></tr>
+  <tr><td>In-repo code changes</td><td>1 tfvars line</td><td>Ingress + CloudFront cert refs</td></tr>
+  <tr><td>Effort / risk</td><td class="ok">Lowest</td><td>Moderate</td></tr>
+  <tr><td>Keeps HTTPS origin</td><td class="ok">Yes</td><td class="ok">Yes</td></tr>
+</table>
+
 <div class="card note">
-  <h3 style="color:var(--warn);margin-top:0">Option B — restore the legacy behaviour (revert origin to HTTP)</h3>
-  <p>Set the CloudFront→ALB origin back to <code>http-only</code> (as coinbook) and add an HTTP:80 listener to the ALB Ingress. This matches "it worked before on port 80" but <b>drops CloudFront↔ALB encryption</b> — contrary to commit <code>18e2f4e5</code>'s intent. Not recommended for a lasting fix.</p>
+  <h3 style="color:var(--warn);margin-top:0">Not recommended — revert origin to HTTP</h3>
+  <p>Setting the CloudFront→ALB origin back to <code>http-only</code> (plus an ALB HTTP:80 listener) also removes the 502 by disabling origin certificate validation, but it <b>drops CloudFront↔ALB encryption</b> — contrary to commit <code>18e2f4e5</code>. Avoid for a lasting fix.</p>
 </div>
+
 <div class="card fix">
-  <h3 style="color:var(--good);margin-top:0">Also — reliability</h3>
+  <h3 style="color:var(--good);margin-top:0">Also — reliability (independent of the cert fix)</h3>
   <p>Set <code>point-admin</code> to <code>replicas ≥ 2</code> and add a PodDisruptionBudget so a single pod loss no longer takes the whole BO API offline. Investigate the suspected OOM (memory request = limit = 2Gi).</p>
 </div>
 
