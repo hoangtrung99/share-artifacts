@@ -290,14 +290,14 @@
     <p class="sub">Both keep the HTTPS origin. The difference is: change the host, or add a certificate.</p>
     <div class="grid g2" style="align-items:start">
       <div class="sol s1">
-        <span class="lab ok">Solution 1 · cheapest</span>
+        <span class="lab wn">Solution 1 · reuses the cert, but needs cross-account DNS</span>
         <h3>Rename to a single label: <code>bo-dev.backseat-service.com</code></h3>
-        <p>Hyphen instead of dot makes it <b>one label</b>, so the existing <code>*.backseat-service.com</code> covers it — <b>no new certificate</b>, on both viewer and origin legs.</p>
-        <p><b>Change:</b> <code>frontend-admin/tfvars/dev.tfvars</code> → <code>route53_record = "bo-dev.backseat-service.com"</code> + <code>route53_domain = "backseat-service.com"</code>. CloudFront alias follows automatically; ALB Ingress unchanged.</p>
-        <p><span class="tag ok">pro</span> only <b>1</b> in-repo reference; app uses relative <code>/admin/v1/*</code> paths. &nbsp;<span class="tag no">con</span> the URL changes — update bookmarks / OAuth redirects / CORS.</p>
+        <p>Hyphen instead of dot makes it <b>one label</b>, so the existing <code>*.backseat-service.com</code> covers it — <b>no new certificate</b>. ALB Ingress, OAC name, and WAF all unchanged.</p>
+        <p style="background:var(--breakbg);border:1px solid var(--break);border-radius:3px;padding:8px 10px"><b class="brk">DNS blocker:</b> <code>bo-dev.backseat-service.com</code> lives in the <b>apex <code>backseat-service.com</code> zone</b>, which is <b>not in the Point DEV account</b> (only <code>dev.backseat-service.com</code> is). <code>data.aws_route53_zone</code> would fail → set <code>create_route53_record=false</code> and create the record cross-account in the apex zone.</p>
+        <p><span class="tag ok">pro</span> no new cert. &nbsp;<span class="tag no">con</span> URL changes + cross-account DNS coordination.</p>
       </div>
       <div class="sol s2">
-        <span class="lab">Solution 2 · keep the URL</span>
+        <span class="lab ok">Solution 2 · recommended here · keep the URL</span>
         <h3>Add a cert covering <code>bo.dev.backseat-service.com</code></h3>
         <p>Issue/import <code>*.dev.backseat-service.com</code> (also covers the sibling &amp; future hosts) — the cert the disabled <code>init/acm</code> was designed to create.</p>
         <p><b>Attach it to:</b> the <code>point-alb</code> HTTPS:443 listener SNI list via <code>point-ingress</code> <b>(stops the 502)</b>, and the CloudFront viewer cert in us-east-1 <b>(removes the browser cert warning)</b>.</p>
@@ -305,11 +305,11 @@
       </div>
     </div>
     <table>
-      <tr><th>&nbsp;</th><th>Solution 1 — rename</th><th>Solution 2 — add cert</th></tr>
-      <tr><td>New certificate</td><td><span class="y">None (reuse wildcard)</span></td><td>Required · 2 regions</td></tr>
+      <tr><th>&nbsp;</th><th>Solution 1 — rename</th><th>Solution 2 — add cert · recommended</th></tr>
+      <tr><td>New certificate</td><td><span class="y">None (reuse wildcard)</span></td><td>One <code>*.dev.…</code> cert (DNS-validatable in-account)</td></tr>
+      <tr><td>DNS record</td><td><span class="n">Moves to apex zone — different account</span></td><td><span class="y">Stays in in-account dev zone (Terraform)</span></td></tr>
       <tr><td>BO URL</td><td><span class="n">Changes → bo-dev.…</span></td><td><span class="y">Unchanged</span></td></tr>
-      <tr><td>In-repo code changes</td><td>1 tfvars line</td><td>Ingress + CloudFront cert refs</td></tr>
-      <tr><td>Effort / risk</td><td><span class="y">Lowest</span></td><td>Moderate</td></tr>
+      <tr><td>Effort / risk (this env)</td><td><span class="n">Higher — cross-account DNS</span></td><td><span class="y">Lower — all in-account</span></td></tr>
       <tr><td>Keeps HTTPS origin</td><td><span class="y">Yes</span></td><td><span class="y">Yes</span></td></tr>
     </table>
     <div class="note" style="margin-top:14px">
