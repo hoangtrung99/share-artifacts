@@ -239,8 +239,69 @@ non-admin paths: sc-status=200  (custom-error→index.html or RefreshHit)  <span
   <p>Set <code>point-admin</code> to <code>replicas ≥ 2</code> and add a PodDisruptionBudget so a single pod loss no longer takes the whole BO API offline. Investigate the suspected OOM (memory request = limit = 2Gi).</p>
 </div>
 
+<h2>11. Authoritative documentation (verbatim citations)</h2>
+<p>Each pillar of the diagnosis is backed by an official source.</p>
+
+<h3>11.1 Wildcard certificate scope — <code>*.backseat-service.com</code> does not cover <code>bo.dev.…</code></h3>
+<pre><span class="c">RFC 6125 §6.4.3 (Checking of Wildcard Certificates)</span>
+"If the wildcard character is the only character of the left-most label in the presented
+ identifier, the client SHOULD NOT compare against anything but the left-most label of the
+ reference identifier (e.g., <span class="y">*.example.com would match foo.example.com but not
+ bar.foo.example.com or example.com</span>)."
+
+<span class="c">AWS Certificate Manager — public certificate characteristics</span>
+"In a wildcard certificate, the asterisk (*) must be leftmost in the domain name and
+ <span class="y">protects only one subdomain level</span>. For instance, *.example.com protects login.example.com
+ and test.example.com, <span class="y">but not test.login.example.com</span>."</pre>
+<p><b>Applied:</b> <code>*.backseat-service.com</code> protects <code>dev.backseat-service.com</code> (1 label) but <b>not</b> <code>bo.dev.backseat-service.com</code> (2 labels).
+Sources: <span class="mono">datatracker.ietf.org/doc/html/rfc6125</span> · <span class="mono">docs.aws.amazon.com/acm/latest/userguide/acm-certificate-characteristics.html</span></p>
+
+<h3>11.2 CloudFront validates the origin certificate against the forwarded Host → 502</h3>
+<pre><span class="c">AWS · "HTTP 502 status code (Bad Gateway)" · SSL/TLS negotiation failure</span>
+"The SSL/TLS certificate on your origin must include a domain name that matches either the
+ Origin Domain that you specified for the CloudFront distribution or <span class="y">the Host header of the
+ origin request</span>. If the domain names don't match, the SSL/TLS handshake fails, and CloudFront
+ returns an HTTP status code 502 (Bad Gateway) and sets the <span class="y">X-Cache header to Error from cloudfront</span>."
+
+<span class="c">AWS · Request and response behavior for custom origins · Protocols</span>
+"If CloudFront forwards a request to the origin using the HTTPS protocol, and if the origin
+ server returns <span class="y">an invalid certificate</span> or a self-signed certificate, <span class="y">CloudFront drops the TCP connection</span>."</pre>
+<p>Observed: <code>x-host-header = bo.dev.backseat-service.com</code>, <code>X-Cache: Error from cloudfront</code> — both exactly as documented.
+Source: <span class="mono">docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/http-502-bad-gateway.html</span></p>
+
+<h3>11.3 Origin protocol policy — why HTTP&nbsp;→&nbsp;HTTPS is what activated the bug</h3>
+<pre><span class="c">AWS · Request and response behavior for custom origins · Protocols</span>
+"the options are HTTP Only, HTTPS Only, and Match Viewer. If you specify HTTP Only or HTTPS Only,
+ CloudFront forwards requests to the origin server using the specified protocol, regardless of the
+ protocol in the viewer request."</pre>
+<p>Under <b>HTTP Only</b> (legacy coinbook) there is no origin TLS, so the origin certificate is never validated — the cert mismatch was dormant. Commit <code>18e2f4e5</code> switched the origin to <b>HTTPS Only</b>, which turns on origin certificate validation and exposes the mismatch.</p>
+
+<h3>11.4 The log value <code>OriginCommError</code> — what AWS says it means</h3>
+<pre><span class="c">AWS · Standard logging reference · x-edge-detailed-result-type</span>
+"<span class="y">OriginCommError</span> – The request timed out while connecting to the origin, or reading data from the origin."
+"OriginConnectError – The server couldn't connect to the origin."
+"x-edge-result-type … Error – … a server error (the value of the sc-status field is in the 5xx range)."</pre>
+<p class="note card"><b>Honest reading:</b> AWS defines <code>OriginCommError</code> as an origin <i>communication</i> failure (connect/read). It localizes the fault to the <b>CloudFront→origin leg</b> — not the viewer, WAF, or app. It is <b>not</b> AWS's label for "certificate error" specifically. The specific mechanism here is the origin TLS handshake being dropped on the mismatched certificate, established by §11.1–11.2, the working single-label sibling (§4), the independent <code>curl</code> hostname rejection (§3.3), and the sub-second <code>time-taken</code> (≈0.6&nbsp;s) that rules out a slow read/connect timeout. Source: <span class="mono">docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/standard-logs-reference.html</span></p>
+
+<h3>11.5 The fix mechanism — add an SNI certificate to the ALB listener</h3>
+<pre><span class="c">AWS · Create an HTTPS listener for your Application Load Balancer</span>
+"For Default SSL/TLS certificate, choose the default certificate. <span class="y">We also add the default
+ certificate to the SNI list.</span>"
+"To add certificates to the certificate list, see Add certificates to the certificate list."</pre>
+<p>An ALB HTTPS listener serves the certificate whose domain matches the client's SNI (falling back to the default). Adding a certificate that covers <code>bo.dev.backseat-service.com</code> (e.g. <code>*.dev.backseat-service.com</code>) to the listener's certificate list makes the origin present a matching certificate when CloudFront connects with SNI <code>bo.dev.backseat-service.com</code>.
+Source: <span class="mono">docs.aws.amazon.com/elasticloadbalancing/latest/application/create-https-listener.html</span></p>
+
 <div class="foot">
-  <p><b>Method:</b> read-only investigation on Point DEV (account 905418018638, ap-northeast-1). Evidence from CloudFront/ELB/ACM/EC2 describe calls, CloudWatch metrics, VPC Flow Logs (<code>/aws/vpc-flow-log/point</code>), Container Insights application logs, live reproduction via curl, and Terraform/Kubernetes source comparison across coinbook / bs-exchange-infra / bs-point-infra (release/verup).</p>
+  <p><b>Method:</b> read-only investigation on Point DEV (account 905418018638, ap-northeast-1). Evidence from CloudFront/ELB/ACM/EC2 describe calls, CloudWatch metrics, VPC Flow Logs (<code>/aws/vpc-flow-log/point</code>), CloudFront + ALB access logs (S3), Container Insights application logs, live reproduction via curl, and Terraform/Kubernetes source comparison across coinbook / bs-exchange-infra / bs-point-infra (release/verup).</p>
+  <p style="margin-top:14px"><b>Authoritative sources</b></p>
+  <ol style="color:var(--mut);font-size:12px;line-height:1.7">
+    <li>RFC 6125 §6.4.3 — Checking of Wildcard Certificates — <span class="mono">datatracker.ietf.org/doc/html/rfc6125</span></li>
+    <li>AWS ACM — Public certificate characteristics (wildcard scope) — <span class="mono">docs.aws.amazon.com/acm/latest/userguide/acm-certificate-characteristics.html</span></li>
+    <li>AWS CloudFront — HTTP 502 (Bad Gateway): SSL/TLS negotiation failure — <span class="mono">docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/http-502-bad-gateway.html</span></li>
+    <li>AWS CloudFront — Request and response behavior for custom origins (Protocols / Host header) — <span class="mono">docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RequestAndResponseBehaviorCustomOrigin.html</span></li>
+    <li>AWS CloudFront — Standard logging reference (<code>x-edge-detailed-result-type</code>) — <span class="mono">docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/standard-logs-reference.html</span></li>
+    <li>AWS ELB — Create an HTTPS listener (default cert + SNI list) — <span class="mono">docs.aws.amazon.com/elasticloadbalancing/latest/application/create-https-listener.html</span></li>
+  </ol>
 </div>
 
 </div>
