@@ -438,7 +438,8 @@
       <ul>
         <li><strong>Reload data</strong> — fresh cluster is empty; reload via migration/ETL, or set <code>snapshot_identifier = "point-final-snapshot"</code> before Phase 3 to restore (encrypts during restore).</li>
         <li><strong>require_ssl is active</strong> — every client must use SSL/TLS. Confirm the point app JDBC URL enables SSL; <code>psql</code> negotiates automatically.</li>
-        <li><strong>Secrets host</strong> — verify endpoint; update host in <code>point/redshift/{viewer_user,editor_user,master_user}</code> only if it changed. Password is unchanged.</li>
+        <li><strong>Secrets / users</strong> — re-create app users + refresh secrets via <code>db-user-manager/redshift-create-users.sh</code>; <code>master_user</code> host is auto-updated by Terraform (endpoint expected unchanged). Master password unchanged.</li>
+        <li><strong>Data check before &amp; after</strong> — baseline <code>svv_table_info</code> + users before Phase 1, re-run after Gate 3 and <code>diff</code>. Fresh = empty (expected loss); restored = must match baseline.</li>
         <li><strong>Monitor ~30 min</strong> — cluster available, app connectivity, query success, snapshot schedule ACTIVE.</li>
       </ul>
     </div>
@@ -524,6 +525,38 @@ aws redshift describe-cluster-snapshots --region ap-northeast-1 \
   --snapshot-identifier point-prerecreate-20260630 --query 'Snapshots[0].Status' --output text
 # Expected: available</pre>
       </div>
+    </div>
+
+    <div class="rb-step">
+      <h3><span class="rb-num">0B</span> Data baseline (before recreate)</h3>
+      <p>Capture data + user + endpoint inventory BEFORE Phase 1 so the post-recreate state can be compared (fresh = empty, restored = must match).</p>
+      <div class="code">
+        <div class="code__hdr">bash · connect via Terraform-managed master_user secret</div>
+<pre>SECRET=$(aws secretsmanager get-secret-value --region ap-northeast-1 \
+  --secret-id point/redshift/master_user --query SecretString --output text)
+export PGPASSWORD="$(echo "$SECRET" | jq -r .password)"
+RS_HOST="$(echo "$SECRET" | jq -r .host)"
+RS_DB="$(echo "$SECRET" | jq -r '.dbname // "point"')"
+RS_USER="$(echo "$SECRET" | jq -r .username)"
+
+# Endpoint host baseline (to detect any change after recreate)
+echo "$RS_HOST" > redshift-endpoint-before.txt
+
+# Table inventory + row counts + size
+psql -h "$RS_HOST" -p 5439 -U "$RS_USER" -d "$RS_DB" -At -F'|' \
+  -c 'SELECT "schema","table",tbl_rows,size FROM svv_table_info ORDER BY "schema","table";' \
+  > redshift-data-before.txt
+
+# Summary: table count + total rows
+psql -h "$RS_HOST" -p 5439 -U "$RS_USER" -d "$RS_DB" -At \
+  -c 'SELECT count(*) AS tables, coalesce(sum(tbl_rows),0) AS total_rows FROM svv_table_info;' \
+  | tee -a redshift-data-before.txt
+
+# User inventory (app users are lost on a fresh recreate)
+psql -h "$RS_HOST" -p 5439 -U "$RS_USER" -d "$RS_DB" -At \
+  -c 'SELECT usename FROM pg_user ORDER BY 1;' > redshift-users-before.txt</pre>
+      </div>
+      <p style="font-size:12.5px">Keep the three <span class="mono">*-before.txt</span> files for the after-comparison. <code>svv_table_info</code> row counts are estimates — add <code>SELECT count(*) FROM &lt;table&gt;;</code> for tables you must verify exactly.</p>
     </div>
 
     <div class="rb-step">
@@ -628,11 +661,49 @@ aws redshift describe-clusters --region ap-northeast-1 --cluster-identifier poin
       </div>
     </div>
 
+    <div class="rb-step">
+      <h3><span class="rb-num done">4B</span> Data verification (after recreate)</h3>
+      <p>Run after Gate 3. The <code>master_user</code> secret host was auto-updated by the Phase 3 apply, so this reconnects to the correct host automatically.</p>
+      <div class="code">
+        <div class="code__hdr">bash · compare against the baseline</div>
+<pre>SECRET=$(aws secretsmanager get-secret-value --region ap-northeast-1 \
+  --secret-id point/redshift/master_user --query SecretString --output text)
+export PGPASSWORD="$(echo "$SECRET" | jq -r .password)"
+RS_HOST="$(echo "$SECRET" | jq -r .host)"
+RS_DB="$(echo "$SECRET" | jq -r '.dbname // "point"')"
+RS_USER="$(echo "$SECRET" | jq -r .username)"
+
+# Endpoint diff — did the host change?
+echo "$RS_HOST" > redshift-endpoint-after.txt
+diff redshift-endpoint-before.txt redshift-endpoint-after.txt \
+  &amp;&amp; echo "ENDPOINT UNCHANGED" || echo "ENDPOINT CHANGED — non-master secrets refreshed in step 1"
+
+# Same inventory query as the baseline
+psql -h "$RS_HOST" -p 5439 -U "$RS_USER" -d "$RS_DB" -At -F'|' \
+  -c 'SELECT "schema","table",tbl_rows,size FROM svv_table_info ORDER BY "schema","table";' \
+  > redshift-data-after.txt
+psql -h "$RS_HOST" -p 5439 -U "$RS_USER" -d "$RS_DB" -At \
+  -c 'SELECT count(*) AS tables, coalesce(sum(tbl_rows),0) AS total_rows FROM svv_table_info;'
+
+# Compare against baseline
+diff redshift-data-before.txt redshift-data-after.txt \
+  &amp;&amp; echo "DATA IDENTICAL" || echo "DATA DIFFERENT (see diff above)"</pre>
+      </div>
+      <div class="gate-box">
+        <strong>Interpretation</strong>
+        <ul style="margin:8px 0 0 18px">
+          <li><strong>Fresh recreate</strong> (default) — after is empty (no user tables) and app users are gone. Expected data loss → re-create users + reload in Post-Deploy.</li>
+          <li><strong>Restored</strong> (<code>snapshot_identifier</code> set) — after MUST match baseline (<span class="mono">DATA IDENTICAL</span>). <span class="stop-tag">STOP</span> if different, before switching traffic.</li>
+        </ul>
+      </div>
+    </div>
+
     <h3 style="font-size:15px;font-weight:600;margin:24px 0 8px">Post-Deploy Ops</h3>
     <div class="callout warn">
       <ul>
-        <li><strong>Reload data</strong> — recreated cluster is empty; reload via migration/ETL, or use the Optional restore below.</li>
-        <li><strong>Secrets host</strong> — verify endpoint; update host in <code>point/redshift/{viewer_user,editor_user,master_user}</code> only if it changed. Password unchanged.</li>
+        <li><strong>Re-create DB users + refresh app secrets</strong> — fresh cluster has only <code>master</code>; app users (<code>editor</code>, <code>viewer</code>, <code>editor_service</code>, <code>viewer_service</code>) are gone. From <code>terraform/components/redshift</code> run <code>cd ../../tool/db-user-manager &amp;&amp; ./redshift-create-users.sh</code>. It reads host from the Terraform-managed <code>master_user</code> secret and writes host + new passwords into <code>point/redshift/{editor_service,viewer_service,editor_user,viewer_user}</code> and the Spring Boot secret <code>point/SPRING_DATASOURCE_HISTORICAL</code>. Restored cluster → use <code>redshift-update-passwords.sh</code> or <code>redshift-refresh-spring-boot-secret.sh</code> instead.</li>
+        <li><strong>master_user secret host is Terraform-managed</strong> — Phase 3 apply rewrites <code>point/redshift/master_user</code> host from the live endpoint, so it is always correct even if the endpoint changed. Only the non-master secrets (bullet above) need the tool.</li>
+        <li><strong>Reload data (fresh only)</strong> — reload schema + data via migration/ETL. Skip if restored via <code>snapshot_identifier</code> (data + users already present).</li>
         <li><strong>require_ssl=true active from creation</strong> — every client must use SSL/TLS. <code>psql</code> (sslmode=prefer) negotiates automatically; confirm the point app JDBC URL enables SSL before pointing traffic back.</li>
         <li><strong>Monitor ~30 min</strong> — cluster available, app connectivity, query success, CloudWatch health. Confirm snapshot schedule <code>point-redshift-snapshot-schedule</code> is ACTIVE.</li>
         <li><strong>Append the live apply transcript</strong> to <code>redshift-apply-log-stg.txt</code> for the migration record.</li>
