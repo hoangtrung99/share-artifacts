@@ -127,14 +127,20 @@
       <span class="chip">account <b>471112755246</b></span>
       <span class="chip">cluster <b>point</b> · v1.33 ACTIVE</span>
       <span class="chip">phase <b>EKS ladder 1.32 → 1.33 → 1.34</b></span>
+      <span class="chip">apply <b>interrupted (Ctrl+C) — 1.32 groups still live</b></span>
       <span class="chip">date <b>2026-07-01</b></span>
     </div>
   </header>
 
+  <div class="callout stop" style="margin-bottom:22px">
+    <span class="ci">Current state after Ctrl+C (verified live 2026-07-01)</span>
+    The <code>terraform apply</code> of the 1.32→1.33 hop was interrupted <strong>mid-way</strong>. It had already (a) upgraded the control plane to <strong>1.33 ACTIVE</strong>, (b) created the five <code>…-1-33-…</code> node groups, and (c) updated the kube-proxy/vpc-cni add-ons — but it had <strong>not yet destroyed the five <code>…-1-32-…</code> node groups</strong> (create-before-destroy destroys last). So <strong>all 20 nodes are still running</strong> (10× 1.32 + 10× 1.33) and the AZ-1 <code>/26</code> is <strong>still 0 free</strong> — the IPs were never released. The coredns add-on remains stuck in <code>UPDATING</code>; three pods (coredns + two secrets-store-csi) are still <code>ContainerCreating</code> on AZ-1 nodes. <strong>Recovery = finish the interrupted apply</strong> (destroy the deposed 1.32 groups) — see <a href="#unblock">§05</a>.
+  </div>
+
   <div class="tldr">
     <div class="t">In one paragraph</div>
     <p>The STG VPC primary range is a single <strong>/24</strong> (<code>10.51.187.0/24</code>) carved into three <strong>/26</strong> private subnets (~59 usable IPs each). Those /26s are shared three ways — EKS <strong>nodes</strong>, EKS <strong>pods</strong>, and ~30 IPs of <strong>VPC infrastructure</strong> (interface endpoints, RDS/Redshift/ElastiCache/Lambda ENIs). The ladder upgrade runs old (1.32) and new (1.33) node groups <strong>simultaneously</strong> (create‑before‑destroy), doubling the node footprint. The AZ‑1 subnet hit <strong>59/59 = 0 free</strong>, so the CNI cannot hand the new CoreDNS pod an address.</p>
-    <p style="margin-bottom:0"><strong>Fix, two tiers:</strong> <span style="color:var(--grn)">(1) Unblock now</span> — complete the ladder cutover by deleting the old 1.32 node groups (frees ~21 AZ‑1 IPs; the stuck pods sit on 1.33 nodes and recover instantly). <span style="color:var(--blue)">(2) Structural</span> — enable <strong>VPC CNI custom networking</strong> onto the already‑provisioned <code>100.65.0.0/16</code> secondary subnets so pod IPs leave the /26 entirely. Do it during the 1.33→1.34 node roll, which recycles every node anyway.</p>
+    <p style="margin-bottom:0"><strong>Fix, two tiers:</strong> <span style="color:var(--grn)">(1) Unblock now</span> — the apply was Ctrl+C'd before it destroyed the 1.32 node groups, so <strong>finish the interrupted apply</strong> (re-run it, or delete the deposed 1.32 groups) to free ~21 AZ‑1 IPs; the stuck pods sit on 1.33 nodes and recover the moment AZ‑1 frees. <span style="color:var(--blue)">(2) Structural</span> — enable <strong>VPC CNI custom networking</strong> onto the already‑provisioned <code>100.65.0.0/16</code> secondary subnets so pod IPs leave the /26 entirely (shipped as <strong>PR&nbsp;#121</strong>). Apply it during the 1.33→1.34 node roll, which recycles every node anyway.</p>
   </div>
 
   <nav class="toc">
@@ -261,36 +267,42 @@ Warning  FailedCreatePodSandBox  (x62 over 14m)  kubelet
   <p class="cap">The stuck CoreDNS and secrets‑CSI pods sit on 1.33 nodes, so freeing AZ‑1 lets them get an address immediately. But note the ceiling: even fully cut over, EKS shares the /26 with ~28 IPs of fixed infra — which is why the structural fix is still required for scale and for PRD.</p>
 
   <!-- 05 -->
-  <h2 id="unblock"><span class="n">05</span>Immediate unblock (safe, and it is the ladder's own next step)</h2>
-  <p class="lead">Complete the 1.32 → 1.33 cutover. Deleting the retired node groups frees AZ‑1 and heals CoreDNS — no special surgery, just finishing the hop.</p>
+  <h2 id="unblock"><span class="n">05</span>Immediate unblock — finish the interrupted apply</h2>
+  <p class="lead">The apply was Ctrl+C'd before it destroyed the 1.32 node groups, so nothing freed. Completing that destroy returns ~21 AZ‑1 IPs and heals everything — no special surgery, just finishing the hop.</p>
+
+  <div class="callout warn">
+    <span class="ci">Why the IPs never came back</span>
+    Terraform's create-before-destroy creates the new <code>…-1-33-…</code> groups first and destroys the old <code>…-1-32-…</code> groups <em>last</em>. Ctrl+C stopped it after the create but before the destroy, so the 1.32 groups survive as <strong>deposed</strong> objects in state and their nodes still hold AZ‑1 IPs. The next apply will destroy exactly those.
+  </div>
 
   <ol class="steps">
-    <li><span class="st">Confirm account + the healthy CoreDNS replica.</span> The surviving replica is on an AZ‑2 node, so DNS is still serving; only the second replica is wedged.
-<pre><span class="c"># expect 471112755246</span>
+    <li><span class="st">Unblock the stuck coredns add-on first (fast, non-destructive).</span> The pending coredns pod is bound to an AZ‑1 node (0 free) and won't move on its own. Delete it so the scheduler retries — with a healthy replica already on AZ‑2, the topology spread (<code>ScheduleAnyway</code>, soft) can place the retry on AZ‑4 (1 free) or AZ‑2 (5 free) → it gets an IP → coredns 2/2 → the add-on reconciles out of <code>UPDATING</code>. This clears the add-on so the re-apply below won't hang waiting on it.
+<pre><span class="c"># expect 471112755246 first</span>
 aws sts get-caller-identity
-kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide</pre></li>
-    <li><span class="st">Verify the stuck pods are on 1.33 nodes (they are), so retiring 1.32 won't drain them.</span> Both new CoreDNS pods run on <code>*-1-33</code> nodes; deleting the 1.32 groups only removes old nodes and returns their IPs.</li>
-    <li><span class="st">Cordon + drain + delete the four AZ‑1 1.32 node groups</span> (and the rest of the 1.32 generation across AZs) — the intended cutover after the 1.33 fleet is healthy. Managed‑node‑group deletion drains gracefully.
-<pre><span class="c"># via terraform: the 1.33 branch no longer declares the 1.32-named groups,</span>
-<span class="c"># so a normal apply removes them (create-before-destroy already brought 1.33 up)</span>
-cd terraform/components/eks
-../../terraform.sh --env stg plan   <span class="c"># expect: destroy of the *-1-32-* node groups only</span>
-../../terraform.sh --env stg apply</pre></li>
-    <li><span class="st">Watch AZ‑1 free up and CoreDNS reach 2/2.</span>
+kubectl delete pod -n kube-system -l k8s-app=kube-dns --field-selector status.phase!=Running
+kubectl get deploy coredns -n kube-system   <span class="c"># wait for READY 2/2</span></pre>
+    <span class="sub">(The two <code>secrets-store-csi</code> pods are a DaemonSet — one per node — so they can only recover once AZ‑1 has free IPs, i.e. after step 2. Deleting them won't help; they reschedule to the same node.)</span></li>
+    <li><span class="st">Re-run the interrupted apply to destroy the deposed 1.32 node groups.</span> The 1.33 config no longer declares the 1.32-named groups, so terraform removes them (their nodes drain gracefully) → ~21 AZ‑1 IPs return.
+<pre>cd terraform/components/eks
+git checkout eks/1.33            <span class="c"># the branch that was being applied</span>
+../../terraform.sh --env stg plan   <span class="c"># expect: destroy of the 5 *-1-32-* node groups (no creates)</span>
+../../terraform.sh --env stg apply</pre>
+    <span class="sub">If the plan shows anything <em>other</em> than the 1.32 destroys (e.g. a coredns add-on re-update), pause and confirm — the add-on should already be ACTIVE after step 1.</span></li>
+    <li><span class="st">Watch AZ‑1 free up and the last stuck pods recover.</span>
 <pre>aws ec2 describe-subnets --subnet-ids subnet-005d982175e7f1416 \
   --query 'Subnets[0].AvailableIpAddressCount'      <span class="c"># climbs from 0 toward ~21</span>
-kubectl get deploy coredns -n kube-system            <span class="c"># READY 2/2</span>
+kubectl get pods -A -o wide | grep -E 'Pending|ContainerCreating'  <span class="c"># drains to empty</span>
 aws eks describe-addon --cluster-name point --addon-name coredns \
-  --query 'addon.status'                             <span class="c"># ACTIVE (leaves UPDATING)</span></pre></li>
+  --query 'addon.status'                             <span class="c"># ACTIVE</span></pre></li>
   </ol>
 
-  <div class="callout ok">
-    <span class="ci">Why this respects the CoreDNS PDB</span>
-    CoreDNS has <code>maxUnavailable: 1</code>, and with only 1/2 ready its allowed disruptions are currently 0. That does <em>not</em> block this action: both CoreDNS pods live on 1.33 nodes, which are not being drained. Freeing AZ‑1 lets the pending replica schedule → 2/2 → the PDB heals on its own.
+  <div class="callout stop">
+    <span class="ci">Two gotchas from the Ctrl+C</span>
+    <b>State lock:</b> if terraform was hard-killed it may have left the S3/DynamoDB state lock held — a re-apply then fails with <code>Error acquiring the state lock</code>. Confirm no other apply is running, then <code>terraform force-unlock &lt;LOCK_ID&gt;</code>. <b>Stuck add-on:</b> do step 1 before step 2 so the re-apply doesn't block waiting for the coredns add-on to become ACTIVE.
   </div>
   <div class="callout warn">
-    <span class="ci">If you cannot delete 1.32 yet</span>
-    Fallback that buys time without progressing the ladder: temporarily lower the 1.32 node groups' desired size, or delete the wedged pod so the scheduler retries onto AZ‑2 (5 free) — the CoreDNS topology spread is <code>ScheduleAnyway</code> (soft), so a retry can land in a different AZ. These are band‑aids; the real headroom comes from retiring 1.32.
+    <span class="ci">Do not proceed to the 1.34 hop until AZ‑1 has headroom</span>
+    The 1.33 → 1.34 hop replaces all five node groups (create-before-destroy) and doubles the 1.33 footprint again. Land the structural fix (§06, PR&nbsp;#121) or at minimum confirm ~21 free AZ‑1 IPs before starting it, or it hits the same wall harder.
   </div>
 
   <!-- 06 -->
@@ -317,32 +329,36 @@ aws eks describe-addon --cluster-name point --addon-name coredns \
     The secondary subnet route tables are byte‑for‑byte identical to the primary private route tables: default route via NAT (internet egress), <code>172.19.0.0/16 → pcx</code> (verup‑STG peering), <code>10.50.0.121/32 → VGW</code> (Ponta), and the VPCE prefix‑list route. Pods moved to <code>100.65.x</code> keep exactly the same egress, peering, Ponta reachability, and endpoint access they have today.
   </div>
 
-  <h3>How to enable it (applies to new nodes only — do it during the 1.34 roll)</h3>
-  <ol class="steps">
-    <li><span class="st">Turn on custom networking in the VPC CNI.</span>
-<pre>kubectl set env daemonset aws-node -n kube-system \
-  AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=true
-<span class="c"># auto-associate the right ENIConfig per node by AZ label:</span>
-kubectl set env daemonset aws-node -n kube-system \
-  ENI_CONFIG_LABEL_DEF=topology.kubernetes.io/zone</pre></li>
-    <li><span class="st">Create one <code>ENIConfig</code> per AZ,</span> named exactly after the AZ (so the label match is automatic), pointing at the secondary subnet + the cluster/worker security group.
-<pre><span class="v">apiVersion:</span> crd.k8s.amazonaws.com/v1alpha1
-<span class="v">kind:</span> ENIConfig
-<span class="v">metadata:</span> {<span class="v">name:</span> ap-northeast-1c}      <span class="c"># == AZ name</span>
-<span class="v">spec:</span>
-  <span class="v">subnet:</span> subnet-0ae7456ebaf6a73ba   <span class="c"># 100.65.21.0/24 (az1/c)</span>
-  <span class="v">securityGroups:</span> [ &lt;eks worker SG id&gt; ]
-<span class="c"># repeat for ap-northeast-1d -> 100.65.22.0/24, ap-northeast-1a -> 100.65.24.0/24</span></pre></li>
-    <li><span class="st">Recycle nodes.</span> Custom networking only takes effect on <em>newly launched</em> nodes; existing nodes and pods are unaffected. <strong>The 1.33 → 1.34 hop already replaces every node</strong> — enable steps 1–2 first, then let the hop roll the fleet. New 1.34 nodes come up with pods on <code>100.65.x</code>; drain the old ones last.</li>
-    <li><span class="st">Verify pods now carry secondary‑CIDR IPs.</span>
-<pre>kubectl get pods -A -o wide | grep -E '100\.65\.'   <span class="c"># pod IPs now in secondary space</span>
-kubectl get eniconfigs                              <span class="c"># 3 configs, one per AZ</span></pre></li>
-  </ol>
+  <h3>Shipped as code — PR&nbsp;#121 (base <code>release/verup</code>)</h3>
+  <p>Rather than a manual <code>kubectl set env</code> (which the add-on's <code>OVERWRITE</code> reconcile would silently revert on the next <code>terraform apply</code>), the enablement lives in the add-on <code>configuration_values</code> and a committed manifest. Exact changes:</p>
+  <table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">terraform/components/eks/variables.tf</td><td>New gate <code>enable_custom_networking = optional(bool, false)</code> on the <code>eks</code> object.</td></tr>
+      <tr><td class="mono">terraform/components/eks/main.tf</td><td>When the gate is on, inject <code>env = { AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG = "true", ENI_CONFIG_LABEL_DEF = "topology.kubernetes.io/zone" }</code> into the <code>vpc-cni</code> add-on <code>configuration_values</code> (merged with the existing <code>enableNetworkPolicy</code>). In the add-on config → survives <code>OVERWRITE</code>.</td></tr>
+      <tr><td class="mono">terraform/components/eks/tfvars/stg.tfvars</td><td><code>enable_custom_networking = true</code> — STG only.</td></tr>
+      <tr><td class="mono">k8s-manifests/point/stg/eniconfig.yaml</td><td>New. Three <code>ENIConfig</code> CRs named after each AZ, pointing at the secondary subnet + <code>eks-worker-sg</code> (<code>sg-0d572c2fc2376c93f</code> — matches the node primary-ENI SG, so pods keep identical connectivity).</td></tr>
+      <tr><td class="mono">k8s-manifests/bin/k8s_apply.sh</td><td>Apply the ENIConfigs on STG (idempotent).</td></tr>
+    </tbody>
+  </table>
+  <p class="cap">Validated: <code>terraform validate</code> = Success · <code>terraform fmt -check -recursive</code> clean · <code>bash -n</code> + YAML lint pass. DEV is a /16 with no secondary subnets, so the gate keeps it off — enabling it there would leave pods with no ENIConfig for their AZ and no IP.</p>
 
-  <div class="callout">
-    <span class="ci">Codify it, don't leave it as a manual kubectl change</span>
-    Fold the enablement into the eks Terraform component so it is durable and PRD inherits it: add the two env keys to the <code>vpc-cni</code> add‑on <code>configuration_values</code> (which already carries <code>enableNetworkPolicy</code>), and ship the three <code>ENIConfig</code> manifests alongside the other STG cluster manifests. Enabling by hand for the 1.34 window is fine as long as it is back‑filled into code before PRD.
-  </div>
+  <h3>Apply order (custom networking affects new nodes only — sequence it into the 1.34 roll)</h3>
+  <ol class="steps">
+    <li><span class="st">Carry PR&nbsp;#121 onto the branch used for the 1.34 hop.</span> <code>main.tf</code>/<code>variables.tf</code>/<code>eniconfig.yaml</code>/<code>k8s_apply.sh</code> are identical across the ladder branches; only <code>stg.tfvars</code> differs, so a cherry-pick of the one commit is clean (or rebase <code>eks/1.34</code> onto merged <code>release/verup</code>).</li>
+    <li><span class="st">Apply the eks component</span> so the add-on env lands on <code>aws-node</code> (hostNetwork; needs no new IP). <code>enable_custom_networking = true</code> is now in <code>stg.tfvars</code>.
+<pre>cd terraform/components/eks
+../../terraform.sh --env stg plan    <span class="c"># vpc-cni add-on configuration_values change only</span>
+../../terraform.sh --env stg apply</pre></li>
+    <li><span class="st">Apply the ENIConfigs — before the node roll.</span>
+<pre>kubectl apply -f k8s-manifests/point/stg/eniconfig.yaml
+kubectl get eniconfigs               <span class="c"># ap-northeast-1a / -1c / -1d</span></pre></li>
+    <li><span class="st">Run the 1.34 node roll.</span> The <code>…-1-34-…</code> rename replaces every node (create-before-destroy); new nodes come up with pods on <code>100.65.x</code>. Drain the old ones last.
+<pre>git checkout eks/1.34
+../../terraform.sh --env stg plan
+../../terraform.sh --env stg apply
+kubectl get pods -A -o wide | grep -E '100\.65\.'   <span class="c"># pods now on the secondary CIDR</span></pre></li>
+  </ol>
   <div class="callout warn">
     <span class="ci">Known trade‑offs (accept, don't be surprised)</span>
     <b>Max‑pods drops slightly:</b> with custom networking the primary ENI no longer serves pod IPs, so per‑node capacity loses the primary‑ENI slots — a non‑issue here given instance size vs. pod density. <b>Do not downgrade VPC CNI below v1.9.0</b> after ENIConfigs are in use without recreating nodes. <b>Pods land only on new nodes</b> — the migration is inherently a node‑recycle, which is why piggy‑backing on the 1.34 roll is the clean window.
@@ -405,12 +421,12 @@ kubectl get eniconfigs                              <span class="c"># 3 configs,
     <tbody>
       <tr>
         <td><b style="color:var(--grn)">Preferred</b></td>
-        <td>1) delete 1.32 groups (free ~21) · 2) enable custom networking + ENIConfigs · 3) run 1.34 roll → new nodes place pods on secondary CIDR</td>
+        <td>1) finish the interrupted apply — destroy the 1.32 groups (free ~21) · 2) merge PR&nbsp;#121 + apply eks add-on env + ENIConfigs · 3) run 1.34 roll → new nodes place pods on secondary CIDR</td>
         <td>One extra change in the window, but the 1.34 roll then has effectively unlimited pod IPs — safest for scale and identical for PRD.</td>
       </tr>
       <tr>
         <td><b style="color:var(--amber)">Minimal</b></td>
-        <td>1) delete 1.32 groups (free ~21) · 2) run 1.34 roll on the primary /26 · 3) enable custom networking afterward</td>
+        <td>1) finish the interrupted apply — destroy the 1.32 groups (free ~21) · 2) run 1.34 roll on the primary /26 · 3) apply PR&nbsp;#121 afterward</td>
         <td>Fewer changes mid‑window, but the 1.34 create‑before‑destroy roll transiently doubles the 1.33 footprint (+~10–14 in AZ‑1) against only ~21 free — <b>tight, and fragile if autoscaling kicks in</b>. Only if you must minimise change during the hop.</td>
       </tr>
     </tbody>
@@ -429,11 +445,12 @@ kubectl get eniconfigs                              <span class="c"># 3 configs,
     <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/cni-custom-network-tutorial.html">EKS User Guide — Custom networking tutorial</a> (<code>AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG</code>, <code>ENIConfig</code>, <code>ENI_CONFIG_LABEL_DEF</code> steps)</li>
     <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/cni-increase-ip-addresses.html">EKS User Guide — Assign more IPs with prefixes / WARM targets</a> (why prefix delegation still draws from the primary subnet)</li>
     <li><a href="https://aws.amazon.com/blogs/containers/automating-custom-networking-to-solve-ipv4-exhaustion-in-amazon-eks/">AWS Containers Blog — Automating custom networking to solve IPv4 exhaustion in Amazon EKS</a></li>
+    <li><strong>PR&nbsp;#121</strong> (bs-point-infra, base <code>release/verup</code>) — the structural fix: enable VPC CNI custom networking on STG.</li>
   </ul>
 
   <hr class="div">
   <footer>
-    point‑STG (471112755246) · cluster <code>point</code> · investigation dated 2026‑07‑01. All findings from live read‑only inspection (AWS <code>describe/get/list</code> + <code>kubectl get/describe</code> via SSM on the point bastion). No changes were applied. Commands above are for the operator to run in a maintenance window with account‑guard (<code>aws sts get-caller-identity</code> → 471112755246) first.
+    point‑STG (471112755246) · cluster <code>point</code> · investigation dated 2026‑07‑01. Findings from live read‑only inspection (AWS <code>describe/get/list</code> + <code>kubectl get/describe</code> via SSM on the point bastion); no changes were applied to the cluster. The structural fix is shipped for review as <strong>PR&nbsp;#121</strong> (not yet applied). The recovery + apply commands here are for the operator to run in a maintenance window with account‑guard (<code>aws sts get-caller-identity</code> → 471112755246) first.
   </footer>
 
 </div>
