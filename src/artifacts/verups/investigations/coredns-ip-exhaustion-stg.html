@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>point-STG · CoreDNS update stuck — private subnet IPv4 exhaustion</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3340;
+    --ink:#e6edf3; --mut:#9aa7b4; --dim:#6b7684;
+    --red:#ff6b6b; --redbg:#2a1416; --amber:#ffb454; --amberbg:#2a2110;
+    --grn:#3fb950; --grnbg:#0f2417; --blue:#58a6ff; --bluebg:#0f2033;
+    --cyan:#56d4dd; --violet:#bc8cff; --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 22px 80px}
+  header.hero{border:1px solid var(--line);border-radius:16px;padding:28px 30px;
+    background:linear-gradient(160deg,#12233b 0%,#161b22 55%);margin-bottom:26px}
+  .kick{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin:0 0 10px}
+  h1{margin:0 0 12px;font-size:27px;line-height:1.25;letter-spacing:-.01em}
+  h1 .accent{color:var(--red)}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .chip{font-family:var(--mono);font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);
+    background:#0e1420;color:var(--mut)}
+  .chip b{color:var(--ink);font-weight:600}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;
+    padding:4px 11px;border-radius:999px;font-weight:600}
+  .badge.blocked{background:var(--redbg);color:var(--red);border:1px solid #5a2327}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+
+  h2{font-size:19px;margin:38px 0 4px;letter-spacing:-.01em;scroll-margin-top:20px}
+  h2 .n{font-family:var(--mono);color:var(--dim);font-size:15px;margin-right:10px}
+  .lead{color:var(--mut);margin:2px 0 18px}
+  h3{font-size:15.5px;margin:24px 0 8px;color:var(--ink)}
+  p{margin:11px 0}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:12.5px;background:#0e1420;border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;color:var(--cyan)}
+  strong{color:#fff}
+
+  .tldr{border:1px solid #3a2a12;background:linear-gradient(160deg,#241a0c,#161b22 70%);
+    border-radius:14px;padding:20px 24px;margin:8px 0 8px}
+  .tldr .t{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
+  .tldr p{margin:8px 0}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel)}
+  .card .h{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  .card.red{border-color:#4a2226;background:linear-gradient(160deg,#1f1214,var(--panel) 80%)}
+  .card.grn{border-color:#1f4429;background:linear-gradient(160deg,#0f1f14,var(--panel) 80%)}
+  .card.blue{border-color:#1d3a5f;background:linear-gradient(160deg,#0f1c2e,var(--panel) 80%)}
+  .big{font-size:30px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em}
+  .big.red{color:var(--red)} .big.grn{color:var(--grn)} .big.amber{color:var(--amber)} .big.blue{color:var(--blue)}
+  .sub{color:var(--mut);font-size:13px}
+
+  pre{background:#0a0e15;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;
+    font-family:var(--mono);font-size:12.5px;line-height:1.55;margin:14px 0;color:#c9d4e0}
+  pre .c{color:var(--dim)} pre .g{color:var(--grn)} pre .r{color:var(--red)} pre .a{color:var(--amber)}
+  pre .b{color:var(--blue)} pre .v{color:var(--violet)} pre .cy{color:var(--cyan)}
+  .cap{font-size:12px;color:var(--dim);margin:-6px 0 18px;font-style:italic}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  td.mono,th.mono{font-family:var(--mono);font-size:12px}
+  tr:hover td{background:#121821}
+  .tag{font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:5px;font-weight:600;white-space:nowrap}
+  .tag.old{background:#2a2110;color:var(--amber)} .tag.new{background:var(--grnbg);color:var(--grn)}
+  .tag.infra{background:var(--bluebg);color:var(--blue)}
+
+  /* IP consumption bar */
+  .bar{display:flex;height:34px;border-radius:8px;overflow:hidden;border:1px solid var(--line);margin:14px 0 6px;font-family:var(--mono);font-size:10.5px}
+  .seg{display:flex;align-items:center;justify-content:center;color:#0d1117;font-weight:700;overflow:hidden;white-space:nowrap}
+  .s-old{background:var(--amber)} .s-new{background:var(--grn)} .s-infra{background:var(--blue)} .s-free{background:#30363d;color:var(--mut)}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--mut);margin:6px 0 4px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  .steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+  .steps>li{counter-increment:s;position:relative;padding:2px 0 16px 42px;border-left:2px solid var(--line);margin-left:14px}
+  .steps>li:last-child{border-left-color:transparent}
+  .steps>li::before{content:counter(s);position:absolute;left:-15px;top:0;width:28px;height:28px;border-radius:50%;
+    background:var(--panel2);border:1px solid var(--line);color:var(--cyan);font-family:var(--mono);font-size:12px;
+    display:flex;align-items:center;justify-content:center;font-weight:700}
+  .steps>li .st{font-weight:600;color:#fff}
+
+  .callout{border-left:3px solid var(--blue);background:var(--bluebg);border-radius:0 10px 10px 0;padding:12px 16px;margin:16px 0}
+  .callout.warn{border-left-color:var(--amber);background:var(--amberbg)}
+  .callout.stop{border-left-color:var(--red);background:var(--redbg)}
+  .callout.ok{border-left-color:var(--grn);background:var(--grnbg)}
+  .callout .ci{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;display:block;margin-bottom:5px}
+  .callout.warn .ci{color:var(--amber)} .callout.stop .ci{color:var(--red)} .callout.ok .ci{color:var(--grn)} .callout .ci{color:var(--blue)}
+
+  .verdict{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;border:1px solid var(--line);
+    border-radius:12px;padding:16px 18px;margin:12px 0;background:var(--panel)}
+  .verdict .mark{font-size:22px;line-height:1}
+  .verdict.no{border-color:#4a2226}.verdict.yes{border-color:#1f4429}
+  .vt{font-weight:700;color:#fff;margin-bottom:2px}
+
+  .toc{border:1px solid var(--line);border-radius:12px;padding:14px 20px;background:var(--panel);margin:22px 0 8px;
+    columns:2;column-gap:30px;font-size:13.5px}
+  @media(max-width:620px){.toc{columns:1}}
+  .toc a{display:block;padding:3px 0;color:var(--mut)} .toc a:hover{color:var(--blue)}
+  .toc a b{color:var(--dim);font-family:var(--mono);margin-right:8px}
+
+  hr.div{border:none;border-top:1px solid var(--line);margin:34px 0}
+  footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px}
+  .refs li{margin:4px 0;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="kick">Migration incident analysis · point-STG EKS</p>
+    <h1>CoreDNS add-on update is <span class="accent">wedged</span> — the private /26 subnet ran out of IPv4 addresses</h1>
+    <p class="lead" style="margin-bottom:0">The upgrade isn't slow — it is <b>blocked</b>. The new CoreDNS pod cannot be assigned an IP because the AZ‑1 private subnet is 100% full, so the Deployment never reaches 2/2 and the managed add‑on stays in <code>UPDATING</code> indefinitely.</p>
+    <div class="meta">
+      <span class="badge blocked"><span class="dot"></span>ROOT CAUSE CONFIRMED</span>
+      <span class="chip">env <b>point-STG</b></span>
+      <span class="chip">account <b>471112755246</b></span>
+      <span class="chip">cluster <b>point</b> · v1.33 ACTIVE</span>
+      <span class="chip">phase <b>EKS ladder 1.32 → 1.33 → 1.34</b></span>
+      <span class="chip">date <b>2026-07-01</b></span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <div class="t">In one paragraph</div>
+    <p>The STG VPC primary range is a single <strong>/24</strong> (<code>10.51.187.0/24</code>) carved into three <strong>/26</strong> private subnets (~59 usable IPs each). Those /26s are shared three ways — EKS <strong>nodes</strong>, EKS <strong>pods</strong>, and ~30 IPs of <strong>VPC infrastructure</strong> (interface endpoints, RDS/Redshift/ElastiCache/Lambda ENIs). The ladder upgrade runs old (1.32) and new (1.33) node groups <strong>simultaneously</strong> (create‑before‑destroy), doubling the node footprint. The AZ‑1 subnet hit <strong>59/59 = 0 free</strong>, so the CNI cannot hand the new CoreDNS pod an address.</p>
+    <p style="margin-bottom:0"><strong>Fix, two tiers:</strong> <span style="color:var(--grn)">(1) Unblock now</span> — complete the ladder cutover by deleting the old 1.32 node groups (frees ~21 AZ‑1 IPs; the stuck pods sit on 1.33 nodes and recover instantly). <span style="color:var(--blue)">(2) Structural</span> — enable <strong>VPC CNI custom networking</strong> onto the already‑provisioned <code>100.65.0.0/16</code> secondary subnets so pod IPs leave the /26 entirely. Do it during the 1.33→1.34 node roll, which recycles every node anyway.</p>
+  </div>
+
+  <nav class="toc">
+    <a href="#symptom"><b>01</b>The symptom</a>
+    <a href="#evidence"><b>02</b>Evidence — subnet at 59/59</a>
+    <a href="#why"><b>03</b>Why it happened now</a>
+    <a href="#math"><b>04</b>The IP math</a>
+    <a href="#unblock"><b>05</b>Immediate unblock</a>
+    <a href="#structural"><b>06</b>Structural fix: custom networking</a>
+    <a href="#rejected"><b>07</b>Options considered &amp; rejected</a>
+    <a href="#plan"><b>08</b>Recommendation &amp; sequencing</a>
+    <a href="#refs"><b>09</b>References</a>
+  </nav>
+
+  <!-- 01 -->
+  <h2 id="symptom"><span class="n">01</span>The symptom: "CoreDNS is updating very slowly"</h2>
+  <p class="lead">What looks like a slow rollout is a hard stop. The add‑on update rolled a new CoreDNS ReplicaSet; one replica came up, the second is stuck.</p>
+
+  <p>The CoreDNS managed add‑on update (part of the 1.33 hop) created a new ReplicaSet whose pods run image <code>coredns:v1.13.2-eksbuild.4</code>. Kubernetes brought up one of the two replicas; the second has been <code>ContainerCreating</code> for 16+ minutes. Because a Deployment update only "completes" when it reaches full availability, the add‑on can never leave <code>UPDATING</code>.</p>
+
+<pre><span class="c"># kubectl get deployment coredns -n kube-system</span>
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+coredns   <span class="r">1/2</span>     2            1           512d
+
+<span class="c"># deployment conditions</span>
+Available   = True    MinimumReplicasAvailable
+Progressing = <span class="r">False</span>   <span class="r">ProgressDeadlineExceeded</span>  ReplicaSet "coredns-5cf46df4c5" has timed out progressing
+
+<span class="c"># the two pods of the new ReplicaSet</span>
+NAME                       READY   STATUS              AGE   NODE (AZ)
+coredns-5cf46df4c5-mnclh   <span class="g">1/1</span>     Running             16m   ip-10-51-187-186  <span class="c">(az2, has IP)</span>
+coredns-5cf46df4c5-pmdrn   <span class="r">0/1</span>     <span class="r">ContainerCreating</span>   16m   ip-10-51-187-105  <span class="c">(az1, NO IP)</span>
+
+<span class="c"># describe of the stuck pod — the real error</span>
+Warning  FailedCreatePodSandBox  (x62 over 14m)  kubelet
+  failed to setup network for sandbox ...
+  plugin type="aws-cni" ... <span class="r">failed to assign an IP address to container</span></pre>
+  <p class="cap">The add‑on's own status mirrors this: <code>aws eks describe-addon --addon-name coredns</code> → <code>status: UPDATING</code>, stuck since the update began.</p>
+
+  <div class="callout warn">
+    <span class="ci">Not CoreDNS‑specific</span>
+    On that same AZ‑1 node, the <code>secrets-store-csi-driver</code> pod is <em>also</em> stuck in <code>ContainerCreating</code> with the identical CNI error. This is not a CoreDNS bug — <strong>any</strong> new pod scheduled onto an AZ‑1 node right now fails to get an IP.
+  </div>
+
+  <!-- 02 -->
+  <h2 id="evidence"><span class="n">02</span>Evidence — the AZ‑1 private subnet is at 59/59</h2>
+  <p class="lead">Live read from account 471112755246. The subnet the failing node draws pod IPs from has zero addresses left.</p>
+
+  <div class="grid2">
+    <div class="card red"><div class="h">AZ‑1 private subnet · 10.51.187.64/26</div><div class="big red">0</div><div class="sub">free IPv4 — of 59 usable (35 ENIs, 59 IPs assigned)</div></div>
+    <div class="card blue"><div class="h">Secondary subnet · 100.65.21.0/24 (same AZ)</div><div class="big blue">251</div><div class="sub">free IPv4 — provisioned, associated, <b>unused by EKS</b></div></div>
+  </div>
+
+  <p>Per‑subnet free‑IP count across all private ranges — the /26 primaries are exhausted or nearly so, while the /24 secondaries sit almost empty:</p>
+  <table>
+    <thead><tr><th>Subnet name</th><th class="mono">CIDR</th><th>AZ</th><th class="mono">Free IPs</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>point-private-subnet-apne1-az1</td><td class="mono">10.51.187.64/26</td><td>apne1‑c</td><td class="mono" style="color:var(--red)">0</td><td>EKS nodes + pods + infra</td></tr>
+      <tr><td>point-private-subnet-apne1-az4</td><td class="mono">10.51.187.192/26</td><td>apne1‑a</td><td class="mono" style="color:var(--red)">1</td><td>EKS nodes + pods + infra</td></tr>
+      <tr><td>point-private-subnet-apne1-az2</td><td class="mono">10.51.187.128/26</td><td>apne1‑d</td><td class="mono" style="color:var(--amber)">5</td><td>EKS nodes + pods + infra</td></tr>
+      <tr><td>point-secondary-cidr-private-apne1-az1</td><td class="mono">100.65.21.0/24</td><td>apne1‑c</td><td class="mono" style="color:var(--grn)">251</td><td class="mono">— unused —</td></tr>
+      <tr><td>point-secondary-cidr-private-apne1-az2</td><td class="mono">100.65.22.0/24</td><td>apne1‑d</td><td class="mono" style="color:var(--grn)">251</td><td class="mono">— unused —</td></tr>
+      <tr><td>point-secondary-cidr-private-apne1-az4</td><td class="mono">100.65.24.0/24</td><td>apne1‑a</td><td class="mono" style="color:var(--grn)">251</td><td class="mono">— unused —</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Who is actually holding the 59 AZ‑1 addresses</h3>
+  <p>Breaking the exhausted /26 down by consumer reveals the deeper problem: EKS is only <em>part</em> of the tenancy. Roughly half the subnet is permanent VPC infrastructure that can never move.</p>
+  <table>
+    <thead><tr><th>Consumer group</th><th class="mono">IPs</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag old">old · 1.32 nodes</span></td><td class="mono">21</td><td>worker(6) + app(5) + api(5) + admin(5) — being retired by the ladder</td></tr>
+      <tr><td><span class="tag new">new · 1.33 nodes</span></td><td class="mono">10</td><td>app(4) + mmh(3) + api(3) — the current generation</td></tr>
+      <tr><td><span class="tag infra">VPC infra (fixed)</span></td><td class="mono">~28</td><td>~19 interface VPC endpoints, Redshift(3) + RDS(1) + ElastiCache(1) ENIs, 3 Lambda ENIs, EICE, bastion, ponta/cd‑runner proxies</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout stop">
+    <span class="ci">The structural truth</span>
+    ~28 of 59 AZ‑1 addresses are consumed by non‑EKS VPC infrastructure that is <strong>permanent and immovable</strong>. EKS nodes + pods can therefore never have more than ~half the /26. On a subnet this small, that ceiling is reached the moment the ladder transiently doubles the node count.
+  </div>
+
+  <!-- 03 -->
+  <h2 id="why"><span class="n">03</span>Why it happened <em>now</em> — the ladder doubles the fleet</h2>
+  <p class="lead">EKS managed node groups are versioned by name (<code>…-1-32-…</code> → <code>…-1-33-…</code>). Renaming forces create‑before‑destroy: both generations run at once.</p>
+
+  <p>During each ladder hop, Terraform creates the new‑named node groups <strong>before</strong> destroying the old ones. For a window, AZ‑1 hosts both the 1.32 <em>and</em> the 1.33 fleet — seven nodes packed into a /26 that already gives half its space to VPC infrastructure. That transient doubling is exactly what tipped AZ‑1 from "tight" to "0 free". The current node distribution in AZ‑1:</p>
+
+<pre><span class="c"># nodes whose primary ENI lives in 10.51.187.64/26 (az1)</span>
+10.51.187.78   <span class="g">1.33</span>  node-group-point-api-1-33     10.51.187.84   <span class="a">1.32</span>  node-group-point-app-1-32
+10.51.187.105  <span class="g">1.33</span>  node-group-point-mmh-1-33  <span class="r">&lt;- stuck coredns pod here</span>
+10.51.187.89   <span class="a">1.32</span>  node-group-point-worker-1-32  10.51.187.93   <span class="a">1.32</span>  node-group-point-api-1-32
+10.51.187.112  <span class="a">1.32</span>  node-group-point-admin-1-32   10.51.187.113  <span class="g">1.33</span>  node-group-point-app-1-33
+              <span class="c">4 old (1.32) + 3 new (1.33) = 7 nodes in one /26</span></pre>
+
+  <div class="callout warn">
+    <span class="ci">The next hop is the real danger</span>
+    The 1.33 → 1.34 hop is documented to <strong>replace all five node groups</strong> via a <code>…-1-34-…</code> rename (create‑before‑destroy fleet roll). That doubles the 1.33 footprint again. If AZ‑1 is not given headroom first, the 1.34 roll will fail with <code>NodeCreationFailure</code> / unschedulable pods — the same IP wall, hit harder.
+  </div>
+
+  <!-- 04 -->
+  <h2 id="math"><span class="n">04</span>The IP math, visualized</h2>
+  <p class="lead">AZ‑1 /26 today (59 usable). Delete the retiring 1.32 nodes and ~21 IPs come back — enough to unblock now and to survive the 1.34 roll.</p>
+
+  <h3>Now — 59/59 consumed, 0 free</h3>
+  <div class="bar">
+    <div class="seg s-infra" style="flex:28">infra ~28</div>
+    <div class="seg s-old" style="flex:21">old 1.32 · 21</div>
+    <div class="seg s-new" style="flex:10">new 1.33 · 10</div>
+  </div>
+  <div class="legend">
+    <span><i class="sw s-infra"></i>VPC infrastructure (fixed)</span>
+    <span><i class="sw s-old"></i>Retiring 1.32 nodes</span>
+    <span><i class="sw s-new"></i>Current 1.33 nodes</span>
+    <span><i class="sw s-free"></i>Free</span>
+  </div>
+
+  <h3 style="margin-top:22px">After deleting the 1.32 node groups — ~21 free</h3>
+  <div class="bar">
+    <div class="seg s-infra" style="flex:28">infra ~28</div>
+    <div class="seg s-new" style="flex:10">new 1.33 · 10</div>
+    <div class="seg s-free" style="flex:21">~21 free</div>
+  </div>
+  <p class="cap">The stuck CoreDNS and secrets‑CSI pods sit on 1.33 nodes, so freeing AZ‑1 lets them get an address immediately. But note the ceiling: even fully cut over, EKS shares the /26 with ~28 IPs of fixed infra — which is why the structural fix is still required for scale and for PRD.</p>
+
+  <!-- 05 -->
+  <h2 id="unblock"><span class="n">05</span>Immediate unblock (safe, and it is the ladder's own next step)</h2>
+  <p class="lead">Complete the 1.32 → 1.33 cutover. Deleting the retired node groups frees AZ‑1 and heals CoreDNS — no special surgery, just finishing the hop.</p>
+
+  <ol class="steps">
+    <li><span class="st">Confirm account + the healthy CoreDNS replica.</span> The surviving replica is on an AZ‑2 node, so DNS is still serving; only the second replica is wedged.
+<pre><span class="c"># expect 471112755246</span>
+aws sts get-caller-identity
+kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide</pre></li>
+    <li><span class="st">Verify the stuck pods are on 1.33 nodes (they are), so retiring 1.32 won't drain them.</span> Both new CoreDNS pods run on <code>*-1-33</code> nodes; deleting the 1.32 groups only removes old nodes and returns their IPs.</li>
+    <li><span class="st">Cordon + drain + delete the four AZ‑1 1.32 node groups</span> (and the rest of the 1.32 generation across AZs) — the intended cutover after the 1.33 fleet is healthy. Managed‑node‑group deletion drains gracefully.
+<pre><span class="c"># via terraform: the 1.33 branch no longer declares the 1.32-named groups,</span>
+<span class="c"># so a normal apply removes them (create-before-destroy already brought 1.33 up)</span>
+cd terraform/components/eks
+../../terraform.sh --env stg plan   <span class="c"># expect: destroy of the *-1-32-* node groups only</span>
+../../terraform.sh --env stg apply</pre></li>
+    <li><span class="st">Watch AZ‑1 free up and CoreDNS reach 2/2.</span>
+<pre>aws ec2 describe-subnets --subnet-ids subnet-005d982175e7f1416 \
+  --query 'Subnets[0].AvailableIpAddressCount'      <span class="c"># climbs from 0 toward ~21</span>
+kubectl get deploy coredns -n kube-system            <span class="c"># READY 2/2</span>
+aws eks describe-addon --cluster-name point --addon-name coredns \
+  --query 'addon.status'                             <span class="c"># ACTIVE (leaves UPDATING)</span></pre></li>
+  </ol>
+
+  <div class="callout ok">
+    <span class="ci">Why this respects the CoreDNS PDB</span>
+    CoreDNS has <code>maxUnavailable: 1</code>, and with only 1/2 ready its allowed disruptions are currently 0. That does <em>not</em> block this action: both CoreDNS pods live on 1.33 nodes, which are not being drained. Freeing AZ‑1 lets the pending replica schedule → 2/2 → the PDB heals on its own.
+  </div>
+  <div class="callout warn">
+    <span class="ci">If you cannot delete 1.32 yet</span>
+    Fallback that buys time without progressing the ladder: temporarily lower the 1.32 node groups' desired size, or delete the wedged pod so the scheduler retries onto AZ‑2 (5 free) — the CoreDNS topology spread is <code>ScheduleAnyway</code> (soft), so a retry can land in a different AZ. These are band‑aids; the real headroom comes from retiring 1.32.
+  </div>
+
+  <!-- 06 -->
+  <h2 id="structural"><span class="n">06</span>Structural fix — VPC CNI custom networking onto the secondary CIDR</h2>
+  <p class="lead">This is the AWS‑canonical answer to primary‑subnet IPv4 exhaustion, and the infrastructure for it is <strong>already provisioned</strong> in STG. Only the enablement is missing.</p>
+
+  <p>With custom networking, pod IPs come from a <em>secondary</em> VPC CIDR instead of the node's primary /26. The node's primary ENI keeps a routable /26 address; every pod draws from the roomy <code>100.65.0.0/16</code> space. Per the AWS VPC‑CNI best‑practices guide: <em>"Custom networking addresses the IP exhaustion issue by assigning the Pod IPs from secondary VPC address spaces."</em></p>
+
+  <h3>What already exists in STG (verified live)</h3>
+  <table>
+    <thead><tr><th>Prerequisite</th><th>State in 471112755246</th></tr></thead>
+    <tbody>
+      <tr><td>Secondary CIDR attached to VPC</td><td class="mono" style="color:var(--grn)">100.65.0.0/16 — associated ✓</td></tr>
+      <tr><td>Per‑AZ secondary subnets (AZ‑aligned)</td><td class="mono" style="color:var(--grn)">100.65.21/22/24.0/24 in c/d/a — 251 free each ✓</td></tr>
+      <tr><td><code>ENIConfig</code> CRD installed</td><td class="mono" style="color:var(--grn)">crd.k8s.amazonaws.com present ✓</td></tr>
+      <tr><td>Secondary subnet routing</td><td class="mono" style="color:var(--grn)">identical to primary: NAT + pcx + VGW + VPCE ✓</td></tr>
+      <tr><td>CNI custom‑networking flag</td><td class="mono" style="color:var(--red)">AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=false ✗</td></tr>
+      <tr><td><code>ENIConfig</code> objects</td><td class="mono" style="color:var(--red)">none created ✗</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout ok">
+    <span class="ci">Routing already matches — the biggest risk is pre‑cleared</span>
+    The secondary subnet route tables are byte‑for‑byte identical to the primary private route tables: default route via NAT (internet egress), <code>172.19.0.0/16 → pcx</code> (verup‑STG peering), <code>10.50.0.121/32 → VGW</code> (Ponta), and the VPCE prefix‑list route. Pods moved to <code>100.65.x</code> keep exactly the same egress, peering, Ponta reachability, and endpoint access they have today.
+  </div>
+
+  <h3>How to enable it (applies to new nodes only — do it during the 1.34 roll)</h3>
+  <ol class="steps">
+    <li><span class="st">Turn on custom networking in the VPC CNI.</span>
+<pre>kubectl set env daemonset aws-node -n kube-system \
+  AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=true
+<span class="c"># auto-associate the right ENIConfig per node by AZ label:</span>
+kubectl set env daemonset aws-node -n kube-system \
+  ENI_CONFIG_LABEL_DEF=topology.kubernetes.io/zone</pre></li>
+    <li><span class="st">Create one <code>ENIConfig</code> per AZ,</span> named exactly after the AZ (so the label match is automatic), pointing at the secondary subnet + the cluster/worker security group.
+<pre><span class="v">apiVersion:</span> crd.k8s.amazonaws.com/v1alpha1
+<span class="v">kind:</span> ENIConfig
+<span class="v">metadata:</span> {<span class="v">name:</span> ap-northeast-1c}      <span class="c"># == AZ name</span>
+<span class="v">spec:</span>
+  <span class="v">subnet:</span> subnet-0ae7456ebaf6a73ba   <span class="c"># 100.65.21.0/24 (az1/c)</span>
+  <span class="v">securityGroups:</span> [ &lt;eks worker SG id&gt; ]
+<span class="c"># repeat for ap-northeast-1d -> 100.65.22.0/24, ap-northeast-1a -> 100.65.24.0/24</span></pre></li>
+    <li><span class="st">Recycle nodes.</span> Custom networking only takes effect on <em>newly launched</em> nodes; existing nodes and pods are unaffected. <strong>The 1.33 → 1.34 hop already replaces every node</strong> — enable steps 1–2 first, then let the hop roll the fleet. New 1.34 nodes come up with pods on <code>100.65.x</code>; drain the old ones last.</li>
+    <li><span class="st">Verify pods now carry secondary‑CIDR IPs.</span>
+<pre>kubectl get pods -A -o wide | grep -E '100\.65\.'   <span class="c"># pod IPs now in secondary space</span>
+kubectl get eniconfigs                              <span class="c"># 3 configs, one per AZ</span></pre></li>
+  </ol>
+
+  <div class="callout">
+    <span class="ci">Codify it, don't leave it as a manual kubectl change</span>
+    Fold the enablement into the eks Terraform component so it is durable and PRD inherits it: add the two env keys to the <code>vpc-cni</code> add‑on <code>configuration_values</code> (which already carries <code>enableNetworkPolicy</code>), and ship the three <code>ENIConfig</code> manifests alongside the other STG cluster manifests. Enabling by hand for the 1.34 window is fine as long as it is back‑filled into code before PRD.
+  </div>
+  <div class="callout warn">
+    <span class="ci">Known trade‑offs (accept, don't be surprised)</span>
+    <b>Max‑pods drops slightly:</b> with custom networking the primary ENI no longer serves pod IPs, so per‑node capacity loses the primary‑ENI slots — a non‑issue here given instance size vs. pod density. <b>Do not downgrade VPC CNI below v1.9.0</b> after ENIConfigs are in use without recreating nodes. <b>Pods land only on new nodes</b> — the migration is inherently a node‑recycle, which is why piggy‑backing on the 1.34 roll is the clean window.
+  </div>
+
+  <!-- 07 -->
+  <h2 id="rejected"><span class="n">07</span>Options considered &amp; rejected</h2>
+  <p class="lead">Two tempting alternatives are worse than they look. Documenting why, so they aren't re‑litigated under pressure.</p>
+
+  <div class="verdict no">
+    <div class="mark">✗</div>
+    <div>
+      <div class="vt">Prefix delegation (<code>ENABLE_PREFIX_DELEGATION=true</code>) — makes it worse</div>
+      <p style="margin:6px 0 0">Prefix delegation raises pods‑per‑node density but <strong>still draws from the primary /26</strong>, and it allocates in <strong>/28 (16‑IP) blocks</strong>. On a subnet with ~21 free IPs that grabs whole /28s at a time and exhausts it faster. AWS best‑practices are explicit: <em>"Prefix delegation increases density per node but still draws from the primary subnet. If the primary subnet's CIDR is simply too small… you need Pods to get addresses from a different range entirely. That is custom networking."</em> Right tool for max‑pods limits; wrong tool for subnet scarcity.</p>
+    </div>
+  </div>
+
+  <div class="verdict no">
+    <div class="mark">✗</div>
+    <div>
+      <div class="vt">Tune <code>WARM_IP_TARGET</code> / <code>MINIMUM_IP_TARGET</code> down — nothing left to reclaim</div>
+      <p style="margin:6px 0 0">A common first guess is that the CNI is hoarding warm IPs. The evidence says otherwise: each AZ‑1 node holds only <strong>3–6 IPs</strong> (1 node IP + 2–5 live pod IPs) on a single ENI — the WARM targets are already conservative (effectively 1). The addresses are genuinely <em>in use</em>, not reserved. There is no free lunch from WARM tuning here; the only lever is moving pod IPs off the /26.</p>
+    </div>
+  </div>
+
+  <div class="verdict no">
+    <div class="mark">✗</div>
+    <div>
+      <div class="vt">Enlarge the /26 in place — not possible</div>
+      <p style="margin:6px 0 0">Subnet CIDRs are immutable; a /26 cannot grow. Re‑carving the /24 would mean destroying and recreating subnets that RDS, Redshift, ElastiCache, VPC endpoints and the nodes all sit in — far more destructive than adding a secondary CIDR, which is the additive, non‑disruptive path (and is already done).</p>
+    </div>
+  </div>
+
+  <div class="verdict yes">
+    <div class="mark" style="color:var(--grn)">✓</div>
+    <div>
+      <div class="vt">Custom networking onto <code>100.65.0.0/16</code> — the fit</div>
+      <p style="margin:6px 0 0">Canonical AWS fix for primary‑subnet exhaustion; infrastructure already provisioned and AZ‑aligned; routing already identical (egress/peering/Ponta preserved); node‑recycle window comes free with the 1.34 hop. Gives pods ~753 addresses across three /24s versus the ~28 squeezable from the /26s today.</p>
+    </div>
+  </div>
+
+  <!-- 08 -->
+  <h2 id="plan"><span class="n">08</span>Recommendation &amp; sequencing</h2>
+  <p class="lead">Unblock first, then make the next hop safe. Two possible orders for the 1.34 window — pick by appetite for change during the maintenance window.</p>
+
+  <div class="grid2">
+    <div class="card grn">
+      <div class="h">Do immediately</div>
+      <p style="margin:4px 0 0"><strong>Finish the 1.32 → 1.33 cutover.</strong> Delete the retired 1.32 node groups → ~21 AZ‑1 IPs return → the wedged CoreDNS + secrets‑CSI pods schedule → the add‑on leaves <code>UPDATING</code>. Zero new risk; it's the hop's own next step.</p>
+    </div>
+    <div class="card blue">
+      <div class="h">Before / during the 1.34 hop</div>
+      <p style="margin:4px 0 0"><strong>Enable custom networking</strong> (CNI flag + 3 ENIConfigs), then run the 1.34 node roll so new nodes place pods on <code>100.65.x</code>. Codify into the eks component before PRD. Removes the IP ceiling permanently.</p>
+    </div>
+  </div>
+
+  <h3>Sequencing the 1.34 window — two orders</h3>
+  <table>
+    <thead><tr><th>Order</th><th>Steps</th><th>Trade‑off</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b style="color:var(--grn)">Preferred</b></td>
+        <td>1) delete 1.32 groups (free ~21) · 2) enable custom networking + ENIConfigs · 3) run 1.34 roll → new nodes place pods on secondary CIDR</td>
+        <td>One extra change in the window, but the 1.34 roll then has effectively unlimited pod IPs — safest for scale and identical for PRD.</td>
+      </tr>
+      <tr>
+        <td><b style="color:var(--amber)">Minimal</b></td>
+        <td>1) delete 1.32 groups (free ~21) · 2) run 1.34 roll on the primary /26 · 3) enable custom networking afterward</td>
+        <td>Fewer changes mid‑window, but the 1.34 create‑before‑destroy roll transiently doubles the 1.33 footprint (+~10–14 in AZ‑1) against only ~21 free — <b>tight, and fragile if autoscaling kicks in</b>. Only if you must minimise change during the hop.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout stop">
+    <span class="ci">Carry this to PRD</span>
+    If PRD is also a /24, it will hit the same wall on its first ladder run. Landing custom networking in the eks component now means PRD inherits the fix instead of rediscovering the incident. This is a migration‑wide correction, not an STG one‑off.
+  </div>
+
+  <!-- 09 -->
+  <h2 id="refs"><span class="n">09</span>References</h2>
+  <ul class="refs">
+    <li><a href="https://docs.aws.amazon.com/eks/latest/best-practices/custom-networking.html">Amazon EKS Best Practices — Custom Networking</a> (secondary‑CIDR pod IPs; rollout requires new nodes + drain)</li>
+    <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/cni-custom-network.html">EKS User Guide — Deploy Pods in alternate subnets with custom networking</a> (primary‑ENI IPs no longer used for pods; same‑VPC constraint)</li>
+    <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/cni-custom-network-tutorial.html">EKS User Guide — Custom networking tutorial</a> (<code>AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG</code>, <code>ENIConfig</code>, <code>ENI_CONFIG_LABEL_DEF</code> steps)</li>
+    <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/cni-increase-ip-addresses.html">EKS User Guide — Assign more IPs with prefixes / WARM targets</a> (why prefix delegation still draws from the primary subnet)</li>
+    <li><a href="https://aws.amazon.com/blogs/containers/automating-custom-networking-to-solve-ipv4-exhaustion-in-amazon-eks/">AWS Containers Blog — Automating custom networking to solve IPv4 exhaustion in Amazon EKS</a></li>
+  </ul>
+
+  <hr class="div">
+  <footer>
+    point‑STG (471112755246) · cluster <code>point</code> · investigation dated 2026‑07‑01. All findings from live read‑only inspection (AWS <code>describe/get/list</code> + <code>kubectl get/describe</code> via SSM on the point bastion). No changes were applied. Commands above are for the operator to run in a maintenance window with account‑guard (<code>aws sts get-caller-identity</code> → 471112755246) first.
+  </footer>
+
+</div>
+</body>
+</html>
