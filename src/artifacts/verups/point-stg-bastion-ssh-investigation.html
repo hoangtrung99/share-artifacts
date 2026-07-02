@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>point-stg bastion — SSH "dead again" analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0c1425; --surface:#111c33; --surface-2:#16223c; --recessed:#0e1830;
+  --border:rgba(255,255,255,.09); --border-strong:rgba(255,255,255,.16);
+  --text:#e9eef7; --text-dim:#9db0cc; --text-faint:#67789a;
+  --provision:#7b8aa3; --user:#3b82f6; --api:#e0870b; --fail:#f43f5e; --ok:#10b981;
+  --provision-bg:rgba(123,138,163,.14); --user-bg:rgba(59,130,246,.15);
+  --api-bg:rgba(224,135,11,.15); --fail-bg:rgba(244,63,94,.14); --ok-bg:rgba(16,185,129,.15);
+  --font-body:'DM Sans',system-ui,sans-serif; --font-mono:'Fira Code',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#eef2f8; --surface:#ffffff; --surface-2:#f6f8fc; --recessed:#eaeff7;
+    --border:rgba(15,30,60,.12); --border-strong:rgba(15,30,60,.2);
+    --text:#132038; --text-dim:#48597a; --text-faint:#7386a5;
+    --provision:#5a6b86; --user:#1d4ed8; --api:#b8690a; --fail:#be123c; --ok:#047857;
+    --provision-bg:rgba(90,107,134,.12); --user-bg:rgba(29,78,216,.1);
+    --api-bg:rgba(184,105,10,.12); --fail-bg:rgba(190,18,60,.1); --ok-bg:rgba(4,120,87,.12);
+  }
+}
+*{box-sizing:border-box;min-width:0}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--text); font-family:var(--font-body);
+  line-height:1.55; -webkit-font-smoothing:antialiased;
+  background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:44px 44px; background-position:center top;
+}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse 80% 50% at 50% -5%,rgba(59,130,246,.13),transparent 70%);z-index:0}
+.wrap{max-width:1080px;margin:0 auto;padding:0 22px;position:relative;z-index:1}
+
+.topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid var(--border)}
+.topbar .wrap{display:flex;align-items:center;gap:16px;height:52px;flex-wrap:wrap}
+.brand{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-dim);white-space:nowrap}
+.brand b{color:var(--text)}
+.nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}
+.nav a{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:none;padding:5px 9px;border-radius:6px;transition:.15s}
+.nav a:hover{color:var(--text);background:var(--surface-2)}
+
+.hero{padding:50px 0 20px}
+.eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--user);margin-bottom:14px;display:flex;align-items:center;gap:9px}
+.eyebrow::before{content:"";width:26px;height:1px;background:var(--user)}
+h1{font-size:clamp(30px,5.2vw,50px);line-height:1.05;margin:0 0 18px;letter-spacing:-.025em;font-weight:700}
+h1 .accent{color:var(--user)}
+.chips{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.chip{font-family:var(--font-mono);font-size:11.5px;padding:5px 11px;border:1px solid var(--border-strong);border-radius:999px;color:var(--text-dim);background:var(--surface)}
+.chip b{color:var(--text)}
+.badge-ok{font-family:var(--font-mono);font-size:12px;font-weight:600;padding:6px 13px;border-radius:999px;color:var(--ok);background:var(--ok-bg);border:1px solid color-mix(in srgb,var(--ok) 40%,transparent);display:inline-flex;align-items:center;gap:7px}
+.badge-ok::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+
+/* verdict strip */
+.verdict-strip{display:flex;gap:14px;flex-wrap:wrap;margin:26px 0 6px}
+.vpill{flex:1 1 200px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--c);border-radius:10px;padding:13px 15px}
+.vpill .vk{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--c);font-weight:600}
+.vpill .vv{font-size:14px;font-weight:600;margin-top:3px}
+.vpill.a{--c:var(--api)} .vpill.b{--c:var(--fail)} .vpill.c{--c:var(--ok)}
+
+.slabel{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:10px;margin:0 0 22px}
+.slabel .dot{width:9px;height:9px;border-radius:50%;background:var(--user);flex:none}
+.slabel .num{color:var(--text-faint);font-weight:500}
+section{padding:34px 0;border-top:1px solid var(--border)}
+
+/* lifecycle ribbon */
+.ribbon{display:flex;gap:4px;flex-wrap:wrap}
+.seg{flex:1 1 0;min-width:96px;border-radius:9px;padding:12px 11px;background:var(--sbg);border:1px solid color-mix(in srgb,var(--s) 40%,transparent);position:relative}
+.seg .st{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);letter-spacing:.02em}
+.seg .sn{font-size:13px;font-weight:600;color:var(--s);margin-top:3px;line-height:1.25}
+.seg .sd{font-size:11px;color:var(--text-dim);margin-top:3px}
+.seg.prov{--s:var(--provision);--sbg:var(--provision-bg)}
+.seg.user{--s:var(--user);--sbg:var(--user-bg)}
+.seg.api{--s:var(--api);--sbg:var(--api-bg)}
+.seg.fail{--s:var(--fail);--sbg:var(--fail-bg)}
+.seg.ok{--s:var(--ok);--sbg:var(--ok-bg)}
+
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:22px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 16px;position:relative;overflow:hidden}
+.kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--k,var(--user))}
+.kpi .v{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1;font-family:var(--font-mono)}
+.kpi .l{font-size:12px;color:var(--text-dim);margin-top:8px}
+.kpi.k-warn{--k:var(--api)} .kpi.k-fail{--k:var(--fail)} .kpi.k-ok{--k:var(--ok)}
+
+/* timeline */
+.tl{position:relative;padding-left:8px}
+.tl::before{content:"";position:absolute;left:15px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--provision),var(--user),var(--api),var(--fail),var(--ok))}
+.ev{position:relative;padding:0 0 18px 46px;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.ev::before{content:"";position:absolute;left:8px;top:4px;width:16px;height:16px;border-radius:50%;background:var(--bg);border:3px solid var(--c,var(--user));z-index:2}
+.ev.big::before{width:20px;height:20px;left:6px;box-shadow:0 0 0 5px var(--cbg,var(--user-bg))}
+.ev .time{font-family:var(--font-mono);font-size:12px;color:var(--text-faint);flex:0 0 auto;width:118px}
+.ev .body{flex:1 1 260px}
+.ev .h{font-size:14.5px;font-weight:600}
+.ev .h code,.ev .body code{font-family:var(--font-mono);font-size:12px;background:var(--recessed);padding:1px 6px;border-radius:5px;color:var(--text);border:1px solid var(--border)}
+.ev .tag{display:inline-block;font-family:var(--font-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:5px;margin-right:8px;color:var(--c);background:var(--cbg);border:1px solid color-mix(in srgb,var(--c) 35%,transparent)}
+.ev.c-prov{--c:var(--provision);--cbg:var(--provision-bg)}
+.ev.c-user{--c:var(--user);--cbg:var(--user-bg)}
+.ev.c-api{--c:var(--api);--cbg:var(--api-bg)}
+.ev.c-fail{--c:var(--fail);--cbg:var(--fail-bg)}
+.ev.c-ok{--c:var(--ok);--cbg:var(--ok-bg)}
+.gap-note{position:relative;padding:0 0 16px 46px;font-family:var(--font-mono);font-size:11.5px;color:var(--text-faint);font-style:italic}
+.gap-note::before{content:"⋮";position:absolute;left:11px;top:-5px;font-size:17px}
+
+/* root causes */
+.rc{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.rccard{background:linear-gradient(160deg,var(--surface-2),var(--surface));border:1px solid var(--border-strong);border-radius:14px;padding:20px}
+.rccard .rnum{font-family:var(--font-mono);font-size:11.5px;font-weight:600;color:var(--c);background:var(--cbg);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);padding:3px 9px;border-radius:6px;display:inline-block;margin-bottom:11px}
+.rccard.t1{--c:var(--api);--cbg:var(--api-bg)}
+.rccard.t2{--c:var(--fail);--cbg:var(--fail-bg)}
+.rccard h3{font-size:16px;margin:0 0 8px}
+.rccard p{font-size:13.5px;color:var(--text-dim);margin:0}
+.rccard p strong{color:var(--text);font-weight:600}
+.rccard code{font-family:var(--font-mono);font-size:12px;background:var(--recessed);padding:1px 6px;border-radius:5px;border:1px solid var(--border);color:var(--text)}
+
+/* mechanics */
+.concept{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.cbox{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;border-top:3px solid var(--c)}
+.cbox.b-run{--c:var(--user)} .cbox.b-en{--c:var(--ok)} .cbox.b-boot{--c:var(--api)}
+.cbox .ct{font-family:var(--font-mono);font-size:12.5px;font-weight:600;margin-bottom:7px;color:var(--c)}
+.cbox p{font-size:12.5px;color:var(--text-dim);margin:0}
+.cbox code{font-family:var(--font-mono);font-size:11.5px;background:var(--recessed);padding:1px 5px;border-radius:4px;border:1px solid var(--border);color:var(--text)}
+
+.collision{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-top:16px}
+.cl-title{font-family:var(--font-mono);font-size:12.5px;color:var(--fail);font-weight:600;margin-bottom:15px}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+.fnode{flex:1 1 150px;background:var(--recessed);border:1px solid var(--border);border-radius:10px;padding:12px 13px;min-width:140px}
+.fnode .fh{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:4px}
+.fnode .fb{font-size:12.5px;font-weight:600}
+.fnode.ok{border-color:color-mix(in srgb,var(--ok) 40%,transparent)} .fnode.ok .fb{color:var(--ok)}
+.fnode.bad{border-color:color-mix(in srgb,var(--fail) 45%,transparent);background:var(--fail-bg)} .fnode.bad .fb{color:var(--fail)}
+.farrow{flex:0 0 30px;display:flex;align-items:center;justify-content:center;color:var(--text-faint);font-size:17px}
+.cl-exp{font-size:13px;color:var(--text-dim);margin-top:14px;padding-top:13px;border-top:1px solid var(--border)}
+.cl-exp code{font-family:var(--font-mono);font-size:12px;background:var(--recessed);padding:1px 6px;border-radius:5px;border:1px solid var(--border);color:var(--text)}
+.cl-exp b{color:var(--ok)}
+
+/* table */
+.tblwrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}
+thead th{position:sticky;top:52px;background:var(--surface-2);text-align:left;font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-dim);padding:11px 14px;border-bottom:1px solid var(--border-strong);font-weight:600}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface-2) 55%,transparent)}
+tbody tr:hover{background:var(--surface-2)}
+td code{font-family:var(--font-mono);font-size:11.5px;background:var(--recessed);padding:1px 6px;border-radius:5px;border:1px solid var(--border);color:var(--text);word-break:break-word}
+.src{font-family:var(--font-mono);font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:5px;white-space:nowrap}
+.src.ct{color:var(--api);background:var(--api-bg)} .src.jr{color:var(--user);background:var(--user-bg)} .src.ci{color:var(--provision);background:var(--provision-bg)} .src.iac{color:var(--ok);background:var(--ok-bg)}
+
+/* recommendations */
+.recs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.rec{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;border-top:3px solid var(--c,var(--user))}
+.rec.now{--c:var(--ok)} .rec.drift{--c:var(--api)} .rec.method{--c:var(--user)} .rec.posture{--c:var(--provision)}
+.rec h4{margin:0 0 6px;font-size:14px;display:flex;align-items:center;gap:9px}
+.rec h4 .k{font-family:var(--font-mono);font-size:10px;font-weight:600;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);padding:2px 7px;border-radius:5px}
+.rec p{font-size:13px;color:var(--text-dim);margin:0}
+.rec code{font-family:var(--font-mono);font-size:11.5px;background:var(--recessed);padding:1px 6px;border-radius:5px;border:1px solid var(--border);color:var(--text)}
+
+.callout{background:var(--api-bg);border:1px solid color-mix(in srgb,var(--api) 35%,transparent);border-left:3px solid var(--api);border-radius:10px;padding:14px 16px;margin-top:16px;font-size:13px;color:var(--text)}
+.callout b{color:var(--api)}
+.callout code{font-family:var(--font-mono);font-size:11.5px;background:var(--recessed);padding:1px 6px;border-radius:5px;border:1px solid var(--border)}
+
+footer{padding:28px 0 56px;border-top:1px solid var(--border);color:var(--text-faint);font-family:var(--font-mono);font-size:11px}
+footer .sc{color:var(--text-dim)}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.hero,.seg,.kpi,.ev,.rccard,.cbox,.collision,.tblwrap,.rec,.callout,.vpill{animation:fadeUp .45s cubic-bezier(.2,.7,.3,1) both}
+.seg:nth-child(2){animation-delay:.04s}.seg:nth-child(3){animation-delay:.08s}.seg:nth-child(4){animation-delay:.12s}.seg:nth-child(5){animation-delay:.16s}.seg:nth-child(6){animation-delay:.2s}.seg:nth-child(7){animation-delay:.24s}.seg:nth-child(8){animation-delay:.28s}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+@media (max-width:820px){
+  .kpis{grid-template-columns:repeat(2,1fr)} .rc{grid-template-columns:1fr}
+  .concept{grid-template-columns:1fr} .recs{grid-template-columns:1fr} .nav{display:none}
+  thead th{top:0} .ev .time{width:100%}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar"><div class="wrap">
+  <span class="brand"><b>point-stg</b> · bastion ssh analysis</span>
+  <nav class="nav">
+    <a href="#lifecycle">Lifecycle</a>
+    <a href="#timeline">Timeline</a>
+    <a href="#causes">Causes</a>
+    <a href="#mechanics">Mechanics</a>
+    <a href="#evidence">Evidence</a>
+    <a href="#next">Next</a>
+  </nav>
+</div></div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Incident analysis · point-stg bastion</div>
+    <h1>SSH server <span class="accent">"dead again"</span><br>— posture, not a crash.</h1>
+    <div class="chips">
+      <span class="badge-ok">Now: active + enabled</span>
+      <span class="chip">acct <b>471112755246</b></span>
+      <span class="chip"><b>i-08a90d370372fc6bc</b> · Ubuntu 20.04</span>
+      <span class="chip"><b>read-only</b> investigation</span>
+    </div>
+
+    <div class="verdict-strip">
+      <div class="vpill a"><div class="vk">Cause 1</div><div class="vv">SSM-only posture + <code>start</code> without <code>enable</code></div></div>
+      <div class="vpill b"><div class="vk">Cause 2</div><div class="vv">Duplicate <code>start</code> → bind collision → unit failed</div></div>
+      <div class="vpill c"><div class="vk">Status</div><div class="vv">Self-recovered 07:01 · active + enabled</div></div>
+    </div>
+  </header>
+
+  <section id="lifecycle">
+    <div class="slabel"><span class="dot"></span><span class="num">01 /</span> Instance lifecycle at a glance</div>
+    <div class="ribbon">
+      <div class="seg prov"><div class="st">2025-02</div><div class="sn">Provisioned</div><div class="sd">sshd up</div></div>
+      <div class="seg prov"><div class="st">+70s</div><div class="sn">SSH disabled</div><div class="sd">user-data</div></div>
+      <div class="seg prov"><div class="st">~16 mo</div><div class="sn">Off (SSM-only)</div><div class="sd">by design</div></div>
+      <div class="seg user"><div class="st">06-29 03:21</div><div class="sn">start (runtime)</div><div class="sd">no enable</div></div>
+      <div class="seg api"><div class="st">06-29 06:33→37</div><div class="sn">Stop→Start</div><div class="sd">wipes session</div></div>
+      <div class="seg prov"><div class="st">3 days</div><div class="sn">Off again</div><div class="sd">disabled</div></div>
+      <div class="seg fail"><div class="st">07-02 06:52</div><div class="sn">start #2 → FAILED</div><div class="sd">bind clash</div></div>
+      <div class="seg ok"><div class="st">07-02 07:01</div><div class="sn">Recovered</div><div class="sd">active+enabled</div></div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="v">2</div><div class="l">independent root causes</div></div>
+      <div class="kpi k-warn"><div class="v">~3d</div><div class="l">SSH inactive — by design</div></div>
+      <div class="kpi k-fail"><div class="v">1</div><div class="l">stop/start wiped 06-29 session</div></div>
+      <div class="kpi k-ok"><div class="v">0</div><div class="l">crashes / config errors</div></div>
+    </div>
+  </section>
+
+  <section id="timeline">
+    <div class="slabel"><span class="dot"></span><span class="num">02 /</span> Timeline (UTC)</div>
+    <div class="tl">
+      <div class="ev big c-prov"><span class="time">2025-02-03 13:14</span><div class="body"><span class="tag">Provision</span><span class="h">Boot → cloud-init runs <code>disable ssh</code>; sshd stopped after ~70s → SSM-only</span></div></div>
+      <div class="gap-note">~16 months — SSH stays off (disabled). SSM Session Manager only.</div>
+      <div class="ev c-user"><span class="time">06-29 03:21</span><div class="body"><span class="tag">ssm-user</span><span class="h"><code>systemctl start ssh</code> — runtime only, <b>no <code>enable</code></b> (sudo log = start + status)</span></div></div>
+      <div class="ev big c-api"><span class="time">06-29 06:33→37</span><div class="body"><span class="tag">EC2 API · back.reishi.shuku</span><span class="h"><code>StopInstances</code> → <code>StartInstances</code>. New boot, ssh disabled → not started. 06-29 session gone.</span></div></div>
+      <div class="gap-note">06-29 → 07-02 — inactive 3 days, nobody re-starts it.</div>
+      <div class="ev c-user"><span class="time">07-02 06:44</span><div class="body"><span class="tag">ssm-user</span><span class="h"><code>start ssh</code> → sshd 34496 listening; EIC logins OK</span></div></div>
+      <div class="ev c-user"><span class="time">07-02 06:49</span><div class="body"><span class="tag">ssm-user</span><span class="h"><code>enable ssh</code> → first-ever enable (symlink stamped Jul-2 06:49)</span></div></div>
+      <div class="ev big c-fail"><span class="time">07-02 06:52</span><div class="body"><span class="tag">Failure</span><span class="h"><code>start ssh</code> #2 → "left-over 34496" + <code>Address already in use</code> → <code>ssh.service failed</code></span></div></div>
+      <div class="ev c-ok"><span class="time">07-02 07:00→01</span><div class="body"><span class="tag">Recovery</span><span class="h"><code>pkill sshd</code> → <code>reset-failed</code> → <code>start</code> → sshd 36452 clean</span></div></div>
+      <div class="ev big c-ok"><span class="time">07-02 07:07</span><div class="body"><span class="tag">Now</span><span class="h"><code>active</code> + <code>enabled</code> + listening :22 · resolved</span></div></div>
+    </div>
+  </section>
+
+  <section id="causes">
+    <div class="slabel"><span class="dot"></span><span class="num">03 /</span> Two root causes</div>
+    <div class="rc">
+      <div class="rccard t1">
+        <span class="rnum">CAUSE 1 — why 06-29 start didn't survive</span>
+        <h3>SSM-only posture + <code>start</code> ≠ <code>enable</code></h3>
+        <p>Bastion ships with <strong><code>ssh disabled</code></strong> (cloud-init). Your 06-29 <code>start</code> was <strong>runtime-only</strong> — then <strong>back.reishi.shuku stop→started</strong> the instance 4 min later. New boot didn't auto-start ssh → session wiped. <code>start</code> never survives a stop/start; only <code>enable</code> does.</p>
+      </div>
+      <div class="rccard t2">
+        <span class="rnum">CAUSE 2 — why it shows "failed" today</span>
+        <h3>Duplicate <code>start</code> → port-bind collision</h3>
+        <p>A 2nd <code>start</code> (06:52) hit the still-running sshd 34496 holding :22 → <code>Address already in use</code> → unit marked <strong>failed</strong>. A systemd↔sshd desync, <strong>not a dead daemon</strong> (34496 kept serving). <code>sshd -t</code> passed = config valid. Fixed 07:01.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="mechanics">
+    <div class="slabel"><span class="dot"></span><span class="num">04 /</span> The two misconceptions behind it</div>
+    <div class="concept">
+      <div class="cbox b-run"><div class="ct">start</div><p>Turns on <b style="color:var(--text)">now</b> only. Writes nothing to boot config. Lost on every reboot/stop-start. → 06-29.</p></div>
+      <div class="cbox b-en"><div class="ct">enable</div><p>Creates <code>*.wants</code> symlink → auto-starts <b style="color:var(--text)">at boot</b>. The only thing that survives stop/start. Present only since 07-02 06:49.</p></div>
+      <div class="cbox b-boot"><div class="ct">Stop/Start EC2</div><p>Fresh boot, <b style="color:var(--text)">wipes runtime state</b>. If service is <code>disabled</code>, it won't come back.</p></div>
+    </div>
+
+    <div class="collision">
+      <div class="cl-title">// why "start #2" broke the unit (06:52:40)</div>
+      <div class="flow">
+        <div class="fnode ok"><div class="fh">start #1 · 06:44</div><div class="fb">sshd 34496 on :22</div></div>
+        <div class="farrow">→</div>
+        <div class="fnode"><div class="fh">desync</div><div class="fb">34496 = "left-over" in cgroup</div></div>
+        <div class="farrow">→</div>
+        <div class="fnode"><div class="fh">start #2 · 06:52</div><div class="fb">systemd spawns 36322</div></div>
+        <div class="farrow">→</div>
+        <div class="fnode bad"><div class="fh">bind :22</div><div class="fb">in use → FAILED</div></div>
+      </div>
+      <div class="cl-exp">systemd thought the unit was down, ran a fresh <code>ExecStart</code>; 34496 still owned :22 → the new process couldn't bind → unit <code>failed</code> while 34496 kept serving. Correct move: <code>systemctl restart ssh</code>, or <code>reset-failed</code> + kill orphan first — <b>exactly the 07:01 fix</b>.</div>
+    </div>
+  </section>
+
+  <section id="evidence">
+    <div class="slabel"><span class="dot"></span><span class="num">05 /</span> Evidence</div>
+    <div class="tblwrap">
+      <table>
+        <colgroup><col style="width:42%"><col style="width:14%"><col style="width:44%"></colgroup>
+        <thead><tr><th>Claim</th><th>Source</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Provisioned SSM-only; ssh disabled at boot</td><td><span class="src ci">cloud-init</span></td><td><code>stop ssh</code>/<code>disable ssh</code> in user-data; stopped 2025-02-03 13:15:52</td></tr>
+          <tr><td>06-29 was <code>start</code> only, no <code>enable</code></td><td><span class="src jr">journal</span></td><td>sudo log 06-29 = <code>start ssh</code> + <code>status ssh</code> only</td></tr>
+          <tr><td>First <code>enable</code> was 07-02, not 06-29</td><td><span class="src jr">journal</span></td><td>symlink <code>multi-user.target.wants/ssh.service</code> stamped Jul 2 06:49</td></tr>
+          <tr><td>Instance Stop→Start on 06-29</td><td><span class="src ct">CloudTrail</span></td><td><code>StopInstances</code> 06:33:44 + <code>StartInstances</code> 06:37:04 · back.reishi.shuku</td></tr>
+          <tr><td>Boot sessions match</td><td><span class="src jr">journal</span></td><td><code>--list-boots</code>: prev ends 06:33:52, current starts 06:37:24</td></tr>
+          <tr><td>Inactive 3 days (06-29→07-02)</td><td><span class="src jr">journal</span></td><td>no ssh event in current boot until 07-02 06:44:04</td></tr>
+          <tr><td>"failed" = duplicate-start collision, not dead sshd</td><td><span class="src jr">journal</span></td><td>06:52:40 "left-over 34496" + <code>Address already in use</code> + failed; CGroup still lists 34496 listening</td></tr>
+          <tr><td>sshd config valid</td><td><span class="src jr">journal</span></td><td><code>ExecStartPre=/usr/sbin/sshd -t</code> = SUCCESS</td></tr>
+          <tr><td>Self-recovered 07:01</td><td><span class="src jr">journal</span></td><td><code>pkill</code> 07:00:12 → <code>reset-failed</code>+<code>start</code> 07:01:04 → pid 36452 active</td></tr>
+          <tr><td>Drift: migrated IaC <i>enables</i> ssh (opposite of live)</td><td><span class="src iac">IaC</span></td><td><code>ec2-bastion/user_data.sh</code> (release/verup) has <code>enable ssh</code>; live box is legacy, not from this IaC</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="next">
+    <div class="slabel"><span class="dot"></span><span class="num">06 /</span> What to do</div>
+    <div class="recs">
+      <div class="rec now"><h4><span class="k">OK</span>Nothing needed now</h4><p>ssh is <code>active</code> + <code>enabled</code> → survives the next reboot/stop-start. No action required.</p></div>
+      <div class="rec drift"><h4><span class="k">Drift</span>Rebuild risk</h4><p>Live bastion is <b>legacy</b> (≥2025-03); its user-data <code>disable ssh</code>. A rebuild re-disables it. STG migration applying <code>ec2-bastion</code> (release/verup, enables ssh) replaces it cleanly.</p></div>
+      <div class="rec method"><h4><span class="k">Method</span>Avoid the start-twice bug</h4><p>If ssh already runs, use <code>systemctl restart ssh</code>, not a 2nd <code>start</code>. If failed but process alive: <code>reset-failed</code> + kill orphan, then <code>start</code>.</p></div>
+      <div class="rec posture"><h4><span class="k">Decide</span>Pick a posture</h4><p><b>SSM-only</b>: don't enable ssh; use SSM/EIC. <b>Persistent SSH</b>: keep <code>enable</code> + ensure IaC bastion enables ssh. Avoid the half-state (hand-enabled on a legacy box).</p></div>
+    </div>
+
+    <div class="callout"><b>Scope:</b> investigation used <b>read-only</b> commands over SSM (<code>systemctl status</code>, <code>ss</code>, <code>ps</code>, <code>journalctl</code>, user-data), CloudTrail lookup, and <code>git grep</code> only. No write/remediation was run — restart / posture / IaC changes are operator actions.</div>
+  </section>
+
+  <footer>
+    <div class="sc">point-stg bastion i-08a90d370372fc6bc · account 471112755246 · analysis 2026-07-02</div>
+    <div>Sources: CloudTrail lookup-events · systemd journal (persistent) · cloud-init user-data · bs-point-infra release/verup</div>
+  </footer>
+
+</div>
+</body>
+</html>
