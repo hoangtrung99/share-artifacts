@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PR #121 — VPC CNI custom networking on point-STG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #eef2f9;
+    --grid: rgba(30,58,95,0.055);
+    --surface: #ffffff;
+    --surface-2: #f4f7fc;
+    --border: rgba(22,35,58,0.14);
+    --border-strong: rgba(22,35,58,0.30);
+    --text: #16233a;
+    --text-dim: #59698a;
+
+    --primary: #2159c9;      --primary-dim: rgba(33,89,201,0.09);
+    --danger: #c0392b;       --danger-dim: rgba(192,57,43,0.10);
+    --ok: #3f7d3a;           --ok-dim: rgba(63,125,58,0.10);
+    --gold: #9c6410;         --gold-dim: rgba(156,100,16,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a1120;
+      --grid: rgba(120,160,220,0.05);
+      --surface: #111c31;
+      --surface-2: #0e192c;
+      --border: rgba(140,170,220,0.14);
+      --border-strong: rgba(140,170,220,0.30);
+      --text: #dbe5f5;
+      --text-dim: #8ca1c2;
+
+      --primary: #5b93f0;    --primary-dim: rgba(91,147,240,0.14);
+      --danger: #f0776a;     --danger-dim: rgba(240,119,106,0.13);
+      --ok: #7cc072;         --ok-dim: rgba(124,192,114,0.13);
+      --gold: #d9a441;       --gold-dim: rgba(217,164,65,0.15);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; min-width: 0; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 26px 26px;
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    padding: 44px 28px 110px;
+  }
+  .container { max-width: 1000px; margin: 0 auto; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .animate { animation: fadeUp .42s ease-out both; animation-delay: calc(var(--i,0) * .05s); }
+  @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-delay:0ms !important; transition-duration:.01ms !important; } }
+
+  /* header */
+  .eyebrow { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--primary); display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .eyebrow::before { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 2px; box-shadow: 0 0 0 3px var(--primary-dim); }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin-bottom: 8px; text-wrap: balance; }
+  h1 .hl { color: var(--primary); }
+  .subtitle { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-dim); margin-bottom: 26px; }
+  .subtitle b { color: var(--text); }
+
+  /* hero stat strip */
+  .stats { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 14px; margin-bottom: 12px; }
+  @media (max-width: 720px) { .stats { grid-template-columns: 1fr; } }
+  .stat { border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; background: var(--surface); }
+  .stat.hero { border-color: var(--danger); background: linear-gradient(180deg, var(--danger-dim), var(--surface) 60%); box-shadow: 0 6px 22px rgba(22,35,58,.06); }
+  .stat .num { font-family: var(--font-mono); font-size: 30px; font-weight: 600; line-height: 1; letter-spacing: -.02em; }
+  .stat.hero .num { color: var(--danger); font-size: 40px; }
+  .stat .lbl { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin-top: 10px; }
+  .stat .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; }
+  .stat.ok .num { color: var(--ok); }
+
+  /* sections */
+  section { margin-top: 46px; scroll-margin-top: 20px; }
+  .sec-label { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sec-label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+  h2 { font-size: 23px; font-weight: 600; letter-spacing: -.01em; margin-bottom: 12px; }
+  p.lede { font-size: 15px; color: var(--text); max-width: 720px; margin-bottom: 8px; }
+  p.lede.dim { color: var(--text-dim); }
+  code { font-family: var(--font-mono); font-size: 12px; background: var(--primary-dim); color: var(--primary); padding: 1px 5px; border-radius: 4px; }
+
+  /* /26 bar */
+  .bar { display: flex; height: 40px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-strong); margin: 18px 0 8px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+  .bar .seg { display: flex; align-items: center; justify-content: center; color: #fff; white-space: nowrap; overflow: hidden; }
+  .seg.infra { background: #5a6b85; } .seg.old { background: var(--gold); } .seg.new { background: var(--ok); } .seg.free { background: transparent; color: var(--text-dim); border-left: 1px dashed var(--border-strong); }
+  .legend-row { display: flex; flex-wrap: wrap; gap: 16px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); }
+  .legend-row span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+  /* before/after */
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+  @media (max-width: 700px) { .ba { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; background: var(--surface); }
+  .panel.after { border-color: var(--ok); }
+  .panel .k { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--danger); margin-bottom: 12px; }
+  .panel.after .k { color: var(--ok); }
+  .panel ul { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 13.5px; }
+  .panel li { position: relative; padding-left: 18px; overflow-wrap: break-word; }
+  .panel li::before { content: '—'; position: absolute; left: 0; color: var(--text-dim); }
+  .panel.after li::before { content: '+'; color: var(--ok); font-weight: 700; }
+
+  /* mermaid shell (copied pattern) */
+  .diagram-shell { position: relative; margin-top: 18px; }
+  .diagram-shell__hint { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-bottom: 8px; opacity: .75; }
+  .mermaid-wrap { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 400px; cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+  .mermaid-viewport { position: relative; overflow: hidden; width: 100%; height: 100%; min-height: 340px; }
+  .mermaid-canvas { position: absolute; top: 0; left: 0; }
+  .zoom-controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; z-index: 10; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+  .zoom-controls button { width: 28px; height: 28px; border: none; background: transparent; color: var(--text-dim); font-family: var(--font-mono); font-size: 14px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s; }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .zoom-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); padding: 0 6px; white-space: nowrap; display: flex; align-items: center; }
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; }
+  .mermaid .node rect, .mermaid .node polygon { stroke-width: 1.5px !important; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+  /* table */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin-top: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { position: sticky; top: 0; background: var(--surface-2); text-align: left; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); padding: 11px 14px; border-bottom: 1px solid var(--border-strong); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--surface-2); }
+  td.mono { font-family: var(--font-mono); font-size: 12px; color: var(--text); word-break: break-all; }
+  .pill { font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 5px; white-space: nowrap; }
+  .pill.new { background: var(--ok-dim); color: var(--ok); } .pill.mod { background: var(--primary-dim); color: var(--primary); }
+
+  /* callout */
+  .callout { border: 1px solid var(--border); border-left: 4px solid var(--gold); border-radius: 0 12px 12px 0; padding: 16px 20px; background: var(--surface); margin-top: 18px; }
+  .callout.danger { border-left-color: var(--danger); background: linear-gradient(180deg, var(--danger-dim), var(--surface) 70%); }
+  .callout .ci { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--gold); display: block; margin-bottom: 6px; }
+  .callout.danger .ci { color: var(--danger); }
+  .callout p { font-size: 13.5px; color: var(--text); }
+  .callout code { font-size: 11.5px; }
+
+  /* steps */
+  .steps { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; counter-reset: st; }
+  .step { display: flex; gap: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 13px 18px; background: var(--surface); align-items: flex-start; }
+  .step .num { counter-increment: st; flex-shrink: 0; width: 24px; height: 24px; border-radius: 6px; background: var(--primary); color: #fff; font-family: var(--font-mono); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .step .num::before { content: counter(st); }
+  .step .label { font-size: 14px; color: var(--text); }
+  .step .note { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
+  .step .note code { font-size: 11px; }
+
+  footer { margin-top: 46px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-dim); }
+  footer a { color: var(--primary); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .refs { list-style: none; margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .refs li { padding-left: 14px; position: relative; }
+  .refs li::before { content: '›'; position: absolute; left: 0; color: var(--text-dim); }
+
+  @media (max-width: 768px) { body { padding: 20px 14px 80px; } h1 { font-size: 25px; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="eyebrow animate" style="--i:0">Pull request · #121 · bs-point-infra · point-STG</div>
+  <h1 class="animate" style="--i:1">Move pod IPs off the exhausted /26 with <span class="hl">VPC CNI custom networking</span></h1>
+  <p class="subtitle animate" style="--i:2">base <b>release/verup</b> · account <b>471112755246</b> · commit <b>dbc0504d</b> · <b>OPEN · not yet applied</b></p>
+
+  <div class="stats">
+    <div class="stat hero animate" style="--i:3">
+      <div class="num">0</div>
+      <div class="lbl">free IPs · AZ-1 /26</div>
+      <div class="sub">10.51.187.64/26 — the wall that wedged CoreDNS + secrets-CSI pods</div>
+    </div>
+    <div class="stat ok animate" style="--i:4">
+      <div class="num">251×3</div>
+      <div class="lbl">free · secondary /24s</div>
+      <div class="sub">100.65.21/22/24.0/24 — already provisioned, was unused</div>
+    </div>
+    <div class="stat animate" style="--i:5">
+      <div class="num">5</div>
+      <div class="lbl">files · +80 / −3</div>
+      <div class="sub">3 terraform · 1 new manifest · 1 apply script</div>
+    </div>
+  </div>
+
+  <!-- PROBLEM -->
+  <section class="animate" style="--i:6">
+    <div class="sec-label">01 · the problem</div>
+    <h2>A /26 doing three jobs, doubled by a ladder hop</h2>
+    <p class="lede">STG's whole VPC primary range is one <code>/24</code>, carved into three <code>/26</code> private subnets (~59 usable IPs each). Each <code>/26</code> is shared three ways — and a ladder hop renames the managed node groups (<code>…-1-32-…</code> → <code>…-1-33-…</code>), forcing create-before-destroy so both node generations run at once. That doubling tipped AZ-1 to zero free.</p>
+
+    <div class="bar" title="AZ-1 /26 consumption at the moment of failure">
+      <div class="seg infra" style="flex:28">VPC infra ~28</div>
+      <div class="seg old" style="flex:21">old 1.32 · 21</div>
+      <div class="seg new" style="flex:10">new 1.33 · 10</div>
+      <div class="seg free" style="flex:1">0</div>
+    </div>
+    <div class="legend-row">
+      <span><i class="sw" style="background:#5a6b85"></i>Fixed VPC infra — VPCE / RDS / Redshift / Lambda ENIs</span>
+      <span><i class="sw" style="background:var(--gold)"></i>Retiring 1.32 nodes</span>
+      <span><i class="sw" style="background:var(--ok)"></i>New 1.33 nodes</span>
+    </div>
+
+    <div class="ba">
+      <div class="panel">
+        <div class="k">Before — default CNI</div>
+        <ul>
+          <li>Node <em>and</em> its pods draw from the same <code>/26</code></li>
+          <li>~28 of 59 IPs are immovable VPC infrastructure</li>
+          <li>Ladder doubling → <code>/26</code> hits 0 free</li>
+          <li>New pods: <code>aws-cni … failed to assign an IP address</code></li>
+        </ul>
+      </div>
+      <div class="panel after">
+        <div class="k">After — custom networking</div>
+        <ul>
+          <li>Node keeps its <code>/26</code> primary-ENI address</li>
+          <li>Pods draw from the secondary <code>/24</code> (251 free/AZ)</li>
+          <li>Per-AZ <code>ENIConfig</code>, auto-matched by zone label</li>
+          <li>Secondary subnets share the primary route tables → connectivity unchanged</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section class="animate" style="--i:7">
+    <div class="sec-label">02 · how it works</div>
+    <h2>The pod-IP assignment path with custom networking</h2>
+    <p class="lede dim">The CNI reads two env vars off <code>aws-node</code>, matches each node to the <code>ENIConfig</code> named after its zone, and creates the node's <em>secondary</em> ENIs in the secondary subnet. The primary ENI stays on the <code>/26</code> for the kubelet.</p>
+
+    <div class="diagram-shell">
+      <p class="diagram-shell__hint">Ctrl/Cmd + wheel to zoom · drag to pan · double-click to fit · ⛶ opens full size</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+          <span class="zoom-label">Loading…</span>
+        </div>
+        <div class="mermaid-viewport">
+          <div class="mermaid mermaid-canvas"></div>
+        </div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        graph TD
+          TF["terraform: eks add-on config<br/>enable_custom_networking = true"] -->|"sets 2 env vars"| CNI["VPC CNI aws-node<br/>CUSTOM_NETWORK_CFG = true"]
+          LBL["node label<br/>topology.kubernetes.io/zone = ap-northeast-1c"] -->|"ENI_CONFIG_LABEL_DEF"| CNI
+          CNI -->|"match name == AZ"| EC["ENIConfig ap-northeast-1c<br/>subnet 100.65.21.0/24 + eks-worker-sg"]
+          EC -->|"create secondary ENI here"| SEC["Secondary ENI<br/>100.65.21.x  (/24, 251 free)"]
+          SEC -->|"assign pod IPs"| POD["Pods → 100.65.21.x"]
+          PRI["Primary ENI<br/>10.51.187.x  (/26)"] -->|"reserved, not for pods"| KUBE["kubelet / node identity"]
+          NODE["EKS node · AZ ap-northeast-1c"] --- PRI
+          NODE --- SEC
+      </script>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><i class="sw" style="background:var(--primary)"></i>Primary ENI / /26 (node identity)</div>
+      <div class="legend-item"><i class="sw" style="background:var(--ok)"></i>Secondary ENI / /24 (pod pool)</div>
+    </div>
+  </section>
+
+  <!-- THE CHANGE -->
+  <section class="animate" style="--i:8">
+    <div class="sec-label">03 · the change</div>
+    <h2>Five files</h2>
+    <p class="lede dim">The gate, the switch that reads it, the STG opt-in, the manifest it needs, the apply wiring.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>File</th><th></th><th>What &amp; why</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">terraform/components/eks/variables.tf</td>
+            <td><span class="pill mod">mod +7</span></td>
+            <td>New gate <code>enable_custom_networking = optional(bool, false)</code> on the <code>eks</code> object. Default off → any env that doesn't opt in is untouched. Comment carries the max-pods caveat.</td>
+          </tr>
+          <tr>
+            <td class="mono">terraform/components/eks/main.tf</td>
+            <td><span class="pill mod">mod +12/−3</span></td>
+            <td>When the gate is on, merges <code>env = { AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=true, ENI_CONFIG_LABEL_DEF=topology.kubernetes.io/zone }</code> into the <code>vpc-cni</code> add-on <code>configuration_values</code>. In the add-on config (not <code>kubectl set env</code>) so it survives the add-on's <code>OVERWRITE</code> reconcile.</td>
+          </tr>
+          <tr>
+            <td class="mono">terraform/components/eks/tfvars/stg.tfvars</td>
+            <td><span class="pill mod">mod +4</span></td>
+            <td><code>enable_custom_networking = true</code> — STG only. DEV (a <code>/16</code>, no secondary subnets) stays on the default; enabling it there would strand pods with no <code>ENIConfig</code>.</td>
+          </tr>
+          <tr>
+            <td class="mono">k8s-manifests/point/stg/eniconfig.yaml</td>
+            <td><span class="pill new">new +47</span></td>
+            <td>Three <code>ENIConfig</code> CRs, each named after its AZ so the zone label auto-associates every node. Subnet = the AZ's secondary <code>/24</code>; SG = <code>eks-worker-sg</code> (the node primary-ENI SG) → identical connectivity.</td>
+          </tr>
+          <tr>
+            <td class="mono">k8s-manifests/bin/k8s_apply.sh</td>
+            <td><span class="pill mod">mod +10</span></td>
+            <td>Applies the ENIConfigs on STG, right after the existing WARM-target tuning. Keeps them in sync — but see the timing note in apply order.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TRAP -->
+  <section class="animate" style="--i:9">
+    <div class="sec-label">04 · the one real gotcha</div>
+    <h2>The max-pods trap</h2>
+    <p class="lede">Custom networking <strong>reserves the primary ENI</strong> — it no longer serves pod IPs. On the 4-ENI types STG uses (<code>r5.xlarge</code>, <code>c6i.2xlarge</code>) real per-node capacity drops, but the kubelet keeps advertising the old number.</p>
+    <div class="bar" style="border-color:var(--danger)">
+      <div class="seg" style="flex:44;background:var(--ok)">real capacity ~44 pods</div>
+      <div class="seg" style="flex:14;background:var(--danger)">phantom 45–58 → IP fail</div>
+    </div>
+    <div class="legend-row"><span>kubelet still advertises <b style="color:var(--danger)">58</b>; the CNI can only address <b style="color:var(--ok)">~44</b>. Pods 45–58 re-hit the exact IP-assignment failure this PR fixes.</span></div>
+    <div class="callout danger">
+      <span class="ci">Follow-up (not in this PR)</span>
+      <p>Lower <code>max-pods</code> to the custom-networking value on the launch templates — via <code>nodeadm</code> in the LT <code>user_data</code>, computed with <code>max-pods-calculator.sh --cni-custom-networking-enabled true</code>. It doesn't bite immediately (nodes aren't dense right after enablement) — it bites when autoscaling or a busy rollout pushes a node past ~44.</p>
+    </div>
+  </section>
+
+  <!-- APPLY -->
+  <section class="animate" style="--i:10">
+    <div class="sec-label">05 · apply order</div>
+    <h2>Sequence it into the 1.33 → 1.34 node roll</h2>
+    <p class="lede dim">Custom networking only affects <em>newly launched</em> nodes, so the next hop (which replaces every node) is the natural window. The one hard rule: the <code>ENIConfig</code>s must exist before the roll.</p>
+    <div class="steps">
+      <div class="step"><span class="num"></span><div><div class="label">Carry the PR onto the branch used for the node roll.</div><div class="note">The four shared files are identical across ladder branches; only <code>stg.tfvars</code> differs — a one-commit cherry-pick is clean.</div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Apply the eks component — the add-on env lands on <code>aws-node</code> (hostNetwork, no new IP).</div><div class="note"><code>../../terraform.sh --env stg plan</code> → vpc-cni config change only → <code>apply</code></div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Apply the ENIConfigs — <strong>before</strong> the node roll.</div><div class="note"><code>kubectl apply -f k8s-manifests/point/stg/eniconfig.yaml</code> · <code>kubectl get eniconfigs</code> → 3</div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">(At density) lower max-pods on the launch templates, then run the node roll.</div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Verify pods carry secondary-CIDR IPs.</div><div class="note"><code>kubectl get pods -A -o wide | grep 100\.65\.</code> · AZ-1 /26 free count climbs</div></div></div>
+    </div>
+    <div class="callout">
+      <span class="ci">Rollback</span>
+      <p>Set <code>enable_custom_networking = false</code>, re-apply, roll nodes — new nodes revert to default CNI. Existing pods keep their secondary-CIDR IPs until replaced (graceful roll-forward). Do <strong>not</strong> delete the <code>ENIConfig</code>s while nodes still rely on them.</p>
+    </div>
+  </section>
+
+  <footer class="animate" style="--i:11">
+    PR #121 · bs-point-infra · base <code>release/verup</code> · point-STG (471112755246) · commit <code>dbc0504d</code> (OPEN, not applied). IDs and paths are the change's subject matter; commands run in a maintenance window behind an account guard.
+    <ul class="refs">
+      <li><a href="https://docs.aws.amazon.com/eks/latest/best-practices/custom-networking.html">EKS Best Practices — Custom Networking</a></li>
+      <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/cni-custom-network.html">EKS User Guide — Pods in alternate subnets (primary-ENI IPs no longer serve pods)</a></li>
+      <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/choosing-instance-type.html">EKS User Guide — max-pods calculator (<code>--cni-custom-networking-enabled true</code>)</a></li>
+    </ul>
+  </footer>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const config = { fitPadding: 28, minHeight: 360, maxHeightPx: 900, maxHeightVh: 0.84, maxInitialZoom: 1.6, minZoom: 0.08, maxZoom: 6.5, zoomStep: 0.14, readabilityFloor: 0.55 };
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: false, theme: 'base', look: 'classic',
+    themeVariables: {
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+      fontSize: '15px',
+      primaryColor: isDark ? '#14213b' : '#e6edfa',
+      primaryBorderColor: isDark ? '#5b93f0' : '#2159c9',
+      primaryTextColor: isDark ? '#dbe5f5' : '#16233a',
+      lineColor: isDark ? '#8ca1c2' : '#59698a',
+      secondaryColor: isDark ? '#12321f' : '#e6f2e4',
+      secondaryBorderColor: isDark ? '#7cc072' : '#3f7d3a',
+      tertiaryColor: isDark ? '#111c31' : '#f4f7fc',
+      tertiaryBorderColor: isDark ? '#8ca1c2' : '#59698a',
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0;
+    let sx = 0, sy = 0, spx = 0, spy = 0, touchDist = 0, touchCx = 0, touchCy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight, rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+    function applyTransform() {
+      const svg = canvas.querySelector('svg'); if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px'; svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% — ' + fitMode;
+    }
+    function canPan() {
+      const rW = svgW * zoom, rH = svgH * zoom;
+      return rW + config.fitPadding * 2 > viewport.clientWidth || rH + config.fitPadding * 2 > viewport.clientHeight;
+    }
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding * 2), aH = Math.max(80, vpH - config.fitPadding * 2);
+      const contain = Math.min(aW / svgW, aH / svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH / svgW, vpR = vpH / Math.max(vpW, 1);
+        if (chartR >= vpR) { z = aW / svgW; mode = 'width-priority'; } else { z = aH / svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit(); zoom = fit.zoom; fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW * zoom) / 2; panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+    function setOneToOne() {
+      zoom = clamp(1, config.minZoom, config.maxZoom); fitMode = '1:1';
+      panX = (viewport.clientWidth - svgW * zoom) / 2; panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom * factor, config.minZoom, config.maxZoom), ratio = next / zoom;
+      panX = cx - ratio * (cx - panX); panY = cy - ratio * (cy - panY); zoom = next; fitMode = 'custom';
+      applyTransform();
+    }
+    function readSvgNaturalSize(svg) {
+      let w = 0, h = 0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width || 1000; h = r.height || 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg'); if (!svg) return;
+      const clone = svg.cloneNode(true); clone.style.width = ''; clone.style.height = '';
+      const bg = isDark ? '#0a1120' : '#eef2f9';
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+    async function render() {
+      try {
+        const code = source.textContent.trim(); if (!code) { label.textContent = 'Error: empty'; return; }
+        const id = 'd-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, code);
+        canvas.innerHTML = svg;
+        const svgNode = canvas.querySelector('svg'); if (!svgNode) { label.textContent = 'Error: no SVG'; return; }
+        const size = readSvgNaturalSize(svgNode); svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height'); svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) { console.error(err); label.textContent = 'Error: ' + (err.message || 'render'); }
+    }
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fitDiagram, 'zoom-one': setOneToOne, 'zoom-expand': openInNewTab
+    };
+    Object.entries(actions).forEach(([a, h]) => wrap.querySelector(`[data-action="${a}"]`)?.addEventListener('click', h));
+    viewport.addEventListener('dblclick', fitDiagram);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); const rect = viewport.getBoundingClientRect(); const f = e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep); zoomAround(f, e.clientX - rect.left, e.clientY - rect.top); return; }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning'); sx = e.clientX; sy = e.clientY; spx = panX; spy = panY; e.preventDefault();
+      activeDrag = { onMove: (ev) => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); }, onEnd: () => wrap.classList.remove('is-panning') };
+    });
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; }
+      else if (e.touches.length === 2) { const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY; touchDist = Math.sqrt(dx*dx+dy*dy); const r = viewport.getBoundingClientRect(); touchCx = (e.touches[0].clientX + e.touches[1].clientX)/2 - r.left; touchCy = (e.touches[0].clientY + e.touches[1].clientY)/2 - r.top; }
+    }, { passive: true });
+    viewport.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && canPan()) { if (touchDist > 0) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; touchDist = 0; } e.preventDefault(); panX = spx + (e.touches[0].clientX - sx); panY = spy + (e.touches[0].clientY - sy); applyTransform(); }
+      else if (e.touches.length === 2 && touchDist > 0) { e.preventDefault(); const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY, d = Math.sqrt(dx*dx+dy*dy); zoomAround(d / touchDist, touchCx, touchCy); touchDist = d; }
+    }, { passive: false });
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+</body>
+</html>
