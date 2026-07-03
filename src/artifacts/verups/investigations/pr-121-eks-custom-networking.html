@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR #121 — enable VPC CNI custom networking on point-STG</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3340;
+    --ink:#e6edf3; --mut:#9aa7b4; --dim:#6b7684;
+    --red:#ff6b6b; --redbg:#2a1416; --amber:#ffb454; --amberbg:#2a2110;
+    --grn:#3fb950; --grnbg:#0f2417; --blue:#58a6ff; --bluebg:#0f2033;
+    --cyan:#56d4dd; --violet:#bc8cff; --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1020px;margin:0 auto;padding:32px 22px 80px}
+  header.hero{border:1px solid var(--line);border-radius:16px;padding:28px 30px;
+    background:linear-gradient(160deg,#132a1f 0%,#161b22 55%);margin-bottom:24px}
+  .kick{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin:0 0 10px}
+  h1{margin:0 0 12px;font-size:26px;line-height:1.28;letter-spacing:-.01em}
+  h1 .accent{color:var(--grn)}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .chip{font-family:var(--mono);font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);
+    background:#0e1420;color:var(--mut)}
+  .chip b{color:var(--ink);font-weight:600}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;
+    padding:4px 11px;border-radius:999px;font-weight:600}
+  .badge.open{background:var(--grnbg);color:var(--grn);border:1px solid #1f4429}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+
+  h2{font-size:19px;margin:38px 0 4px;letter-spacing:-.01em;scroll-margin-top:20px}
+  h2 .n{font-family:var(--mono);color:var(--dim);font-size:15px;margin-right:10px}
+  .lead{color:var(--mut);margin:2px 0 18px}
+  h3{font-size:15.5px;margin:26px 0 8px;color:var(--ink)}
+  h3 .fp{font-family:var(--mono);font-size:12.5px;color:var(--cyan);font-weight:400}
+  p{margin:11px 0}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:12.5px;background:#0e1420;border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;color:var(--cyan)}
+  strong{color:#fff}
+
+  .tldr{border:1px solid #1f4429;background:linear-gradient(160deg,#0f2417,#161b22 70%);
+    border-radius:14px;padding:20px 24px;margin:8px 0}
+  .tldr .t{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--grn);margin-bottom:8px}
+  .tldr p{margin:8px 0}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel)}
+  .card .h{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  .card.red{border-color:#4a2226;background:linear-gradient(160deg,#1f1214,var(--panel) 80%)}
+  .card.grn{border-color:#1f4429;background:linear-gradient(160deg,#0f1f14,var(--panel) 80%)}
+
+  pre{background:#0a0e15;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;
+    font-family:var(--mono);font-size:12.5px;line-height:1.55;margin:14px 0;color:#c9d4e0}
+  pre .c{color:var(--dim)} pre .g{color:var(--grn)} pre .r{color:var(--red)} pre .a{color:var(--amber)}
+  pre .b{color:var(--blue)} pre .v{color:var(--violet)} pre .cy{color:var(--cyan)}
+  pre .add{color:var(--grn)} pre .del{color:var(--red)}
+  .cap{font-size:12px;color:var(--dim);margin:-6px 0 18px;font-style:italic}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  td.mono,th.mono{font-family:var(--mono);font-size:12px}
+  tr:hover td{background:#121821}
+
+  .flow{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap;margin:16px 0}
+  .flow .box{flex:1;min-width:220px;border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--panel)}
+  .flow .box.before{border-color:#4a2226}
+  .flow .box.after{border-color:#1f4429}
+  .flow .box .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+  .flow .box.before .lbl{color:var(--red)} .flow .box.after .lbl{color:var(--grn)}
+  .flow .arrow{display:flex;align-items:center;color:var(--dim);font-size:22px}
+  @media(max-width:680px){.flow .arrow{transform:rotate(90deg)}}
+
+  .callout{border-left:3px solid var(--blue);background:var(--bluebg);border-radius:0 10px 10px 0;padding:12px 16px;margin:16px 0}
+  .callout.warn{border-left-color:var(--amber);background:var(--amberbg)}
+  .callout.stop{border-left-color:var(--red);background:var(--redbg)}
+  .callout.ok{border-left-color:var(--grn);background:var(--grnbg)}
+  .callout .ci{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;display:block;margin-bottom:5px}
+  .callout.warn .ci{color:var(--amber)} .callout.stop .ci{color:var(--red)} .callout.ok .ci{color:var(--grn)} .callout .ci{color:var(--blue)}
+
+  .steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+  .steps>li{counter-increment:s;position:relative;padding:2px 0 16px 42px;border-left:2px solid var(--line);margin-left:14px}
+  .steps>li:last-child{border-left-color:transparent}
+  .steps>li::before{content:counter(s);position:absolute;left:-15px;top:0;width:28px;height:28px;border-radius:50%;
+    background:var(--panel2);border:1px solid var(--line);color:var(--cyan);font-family:var(--mono);font-size:12px;
+    display:flex;align-items:center;justify-content:center;font-weight:700}
+  .steps>li .st{font-weight:600;color:#fff}
+  .steps .sub{color:var(--mut);font-size:13px;display:block;margin-top:3px}
+
+  .fileblk{border:1px solid var(--line);border-radius:12px;margin:16px 0;overflow:hidden;background:var(--panel)}
+  .fileblk .fh{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0e1420;border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:12.5px;color:var(--ink);flex-wrap:wrap}
+  .fileblk .fh .tag{font-size:10px;padding:2px 7px;border-radius:5px;font-weight:600;letter-spacing:.05em}
+  .tag.new{background:var(--grnbg);color:var(--grn)} .tag.edit{background:var(--bluebg);color:var(--blue)}
+  .fileblk .body{padding:2px 16px 12px}
+  .fileblk pre{margin:12px 0 6px}
+
+  .toc{border:1px solid var(--line);border-radius:12px;padding:14px 20px;background:var(--panel);margin:22px 0 8px;
+    columns:2;column-gap:30px;font-size:13.5px}
+  @media(max-width:620px){.toc{columns:1}}
+  .toc a{display:block;padding:3px 0;color:var(--mut)} .toc a:hover{color:var(--blue)}
+  .toc a b{color:var(--dim);font-family:var(--mono);margin-right:8px}
+
+  hr.div{border:none;border-top:1px solid var(--line);margin:34px 0}
+  footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px}
+  .refs li{margin:4px 0;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="kick">Pull request explainer · point-STG EKS</p>
+    <h1>PR&nbsp;#121 — enable <span class="accent">VPC CNI custom networking</span> on point-STG so pods stop starving the /26</h1>
+    <p class="lead" style="margin-bottom:0">Five files. Pod IPs move off the tight primary <code>/26</code> private subnets onto the already-provisioned secondary CIDR <code>100.65.0.0/16</code>, gated to STG so DEV/PRD are untouched. This page walks the change file-by-file, the design decisions behind it, and the one operational trap it introduces (max-pods).</p>
+    <div class="meta">
+      <span class="badge open"><span class="dot"></span>OPEN · MERGEABLE · not yet applied</span>
+      <span class="chip">repo <b>bs-point-infra</b></span>
+      <span class="chip">base <b>release/verup</b></span>
+      <span class="chip">5 files · +80 / −3</span>
+      <span class="chip">env <b>point-STG</b> · 471112755246</span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <div class="t">What this PR does, in one paragraph</div>
+    <p>The default AWS VPC CNI hands each pod an IP from the <em>same</em> subnet its node lives in. On STG those are three <code>/26</code> private subnets (~59 usable IPs each) already half-consumed by VPC infrastructure — so when an EKS ladder hop transiently doubles the node fleet, a <code>/26</code> hits 0 free and new pods wedge with <code>aws-cni … failed to assign an IP address</code>.</p>
+    <p style="margin-bottom:0"><strong>Custom networking</strong> tells the CNI to draw <em>pod</em> IPs from a <em>secondary</em> VPC CIDR instead. STG already has that CIDR (<code>100.65.0.0/16</code>, three AZ-aligned <code>/24</code> subnets, ~251 free each) and the <code>ENIConfig</code> CRD — only the enablement was missing. The PR flips it on: two CNI env vars in the <code>vpc-cni</code> add-on config (gated by a new <code>enable_custom_networking</code> flag, STG-only) + three <code>ENIConfig</code> CRs (one per AZ). Nodes keep their primary-subnet address; only pods relocate.</p>
+  </div>
+
+  <nav class="toc">
+    <a href="#idea"><b>01</b>The one idea (before / after)</a>
+    <a href="#files"><b>02</b>File-by-file walkthrough</a>
+    <a href="#decisions"><b>03</b>Design decisions</a>
+    <a href="#maxpods"><b>04</b>The max-pods trap</a>
+    <a href="#apply"><b>05</b>Apply order &amp; verification</a>
+    <a href="#followups"><b>06</b>Open review comments</a>
+    <a href="#rollback"><b>07</b>Rollback</a>
+  </nav>
+
+  <!-- 01 -->
+  <h2 id="idea"><span class="n">01</span>The one idea — where do pod IPs come from</h2>
+  <p class="lead">Custom networking splits node IPs from pod IPs onto different subnets. That is the whole change; everything else is plumbing.</p>
+
+  <div class="flow">
+    <div class="box before">
+      <div class="lbl">Before — default CNI</div>
+      <p style="margin:2px 0 8px;font-size:13.5px">Node <em>and</em> its pods draw from the same <code>/26</code> private subnet.</p>
+<pre><span class="c">node ip-10-51-187-105  (az1 /26)</span>
+ ├ node primary ENI  <span class="r">10.51.187.x</span>
+ ├ pod coredns       <span class="r">10.51.187.x</span>
+ └ pod app           <span class="r">10.51.187.x</span>
+<span class="c">/26 = ~59 IPs, shared with</span>
+<span class="c">~28 IPs of VPCE/RDS/… ENIs</span></pre>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box after">
+      <div class="lbl">After — custom networking</div>
+      <p style="margin:2px 0 8px;font-size:13.5px">Node stays on the <code>/26</code>; pods move to the secondary <code>/24</code>.</p>
+<pre><span class="c">node ip-10-51-187-105  (az1)</span>
+ ├ node primary ENI  <span class="a">10.51.187.x</span>  <span class="c">(/26)</span>
+ ├ pod coredns       <span class="g">100.65.21.x</span> <span class="c">(/24)</span>
+ └ pod app           <span class="g">100.65.21.x</span> <span class="c">(/24)</span>
+<span class="c">secondary /24 = 251 free per AZ</span>
+<span class="c">via a per-AZ ENIConfig CR</span></pre>
+    </div>
+  </div>
+
+  <p>The CNI reads two env vars off the <code>aws-node</code> DaemonSet — <code>AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=true</code> turns the feature on, and <code>ENI_CONFIG_LABEL_DEF=topology.kubernetes.io/zone</code> tells it to pick the <code>ENIConfig</code> whose name matches the node's AZ label. Each <code>ENIConfig</code> names a secondary subnet + a security group; the CNI creates the node's <em>secondary</em> ENIs there and assigns pod IPs from it. The node's <em>primary</em> ENI keeps a routable <code>/26</code> address for the kubelet.</p>
+
+  <div class="callout ok">
+    <span class="ci">The prerequisites already existed on STG</span>
+    <code>100.65.0.0/16</code> is associated to the VPC; the three <code>/24</code> subnets exist and are AZ-aligned (<code>100.65.21/22/24.0/24</code> in c/d/a, 251 free each); the <code>ENIConfig</code> CRD is installed; and the secondary subnets' route tables are byte-identical to the primary ones (NAT egress, verup-STG peering, Ponta VGW, VPC-endpoint prefix list). So pods on <code>100.65.x</code> keep exactly the egress, peering, Ponta reachability and endpoint access they have today. This PR only supplies the enablement.
+  </div>
+
+  <!-- 02 -->
+  <h2 id="files"><span class="n">02</span>File-by-file walkthrough</h2>
+  <p class="lead">Five files: three Terraform (the gate + the add-on env + the STG switch), one new manifest (the ENIConfigs), one apply-script line.</p>
+
+  <div class="fileblk">
+    <div class="fh"><span class="tag edit">EDIT</span> terraform/components/eks/variables.tf</div>
+    <div class="body">
+      <p>Adds one optional field to the <code>eks</code> object — the per-env gate. Default <code>false</code> means every env that does not opt in is unaffected.</p>
+<pre><span class="add">+    # vpc-cni custom networking: pod IPs from a secondary VPC CIDR via per-AZ</span>
+<span class="add">+    # ENIConfig CRs; node primary-ENI IPs stay on the primary subnets. Enable only</span>
+<span class="add">+    # where those are too small (e.g. STG's /24); DEV/PRD off. Needs the ENIConfig</span>
+<span class="add">+    # CRs before nodes roll, else new pods get no IP. Also lower kubelet max-pods</span>
+<span class="add">+    # (custom networking reserves the primary ENI: ~58 -> ~44 on 4-ENI types) via</span>
+<span class="add">+    # nodeadm in the LT user_data, or bin-packed nodes re-hit IP failures.</span>
+<span class="add">+    enable_custom_networking = optional(bool, false)</span></pre>
+    </div>
+  </div>
+
+  <div class="fileblk">
+    <div class="fh"><span class="tag edit">EDIT</span> terraform/components/eks/main.tf <span style="color:var(--dim)">· vpc-cni add-on</span></div>
+    <div class="body">
+      <p>The heart of the change. When the gate is on, the two CNI env vars are merged into the <code>vpc-cni</code> add-on's <code>configuration_values</code>. Putting them <em>in the add-on config</em> (rather than a <code>kubectl set env</code>) is deliberate — see <a href="#decisions">§03</a>.</p>
+<pre><span class="del">-        configuration_values = jsonencode({</span>
+<span class="del">-          enableNetworkPolicy = "true"</span>
+<span class="del">-        })</span>
+<span class="add">+        configuration_values = jsonencode(merge(</span>
+<span class="add">+          { enableNetworkPolicy = "true" },</span>
+<span class="add">+          # Custom networking (gated per-env) … survives the OVERWRITE reconcile.</span>
+<span class="add">+          var.eks.enable_custom_networking ? {</span>
+<span class="add">+            env = {</span>
+<span class="add">+              AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG = "true"</span>
+<span class="add">+              ENI_CONFIG_LABEL_DEF               = "topology.kubernetes.io/zone"</span>
+<span class="add">+            }</span>
+<span class="add">+          } : {}</span>
+<span class="add">+        ))</span></pre>
+      <p class="cap">The <code>merge()</code> keeps the pre-existing <code>enableNetworkPolicy = "true"</code> and only appends the <code>env</code> block when the gate is set — so a plan on an env with the gate off is a no-op.</p>
+    </div>
+  </div>
+
+  <div class="fileblk">
+    <div class="fh"><span class="tag edit">EDIT</span> terraform/components/eks/tfvars/stg.tfvars</div>
+    <div class="body">
+      <p>Turns the gate on for STG only. DEV/PRD tfvars are untouched, so they inherit the <code>false</code> default.</p>
+<pre><span class="add">+  # STG primary subnets are /26 (from one /24) and exhaust when a ladder hop doubles</span>
+<span class="add">+  # the node fleet. Custom networking moves pod IPs to the secondary CIDR</span>
+<span class="add">+  # (100.65.0.0/16). Apply eniconfig.yaml before the node roll; new nodes only.</span>
+<span class="add">+  enable_custom_networking = true</span></pre>
+    </div>
+  </div>
+
+  <div class="fileblk">
+    <div class="fh"><span class="tag new">NEW</span> k8s-manifests/point/stg/eniconfig.yaml</div>
+    <div class="body">
+      <p>Three <code>ENIConfig</code> custom resources, one per AZ. Each is <strong>named exactly after its AZ</strong> so that <code>ENI_CONFIG_LABEL_DEF=topology.kubernetes.io/zone</code> auto-associates every node with its zone's config — no per-node annotation needed. The subnet is the AZ's secondary <code>/24</code>; the security group is the node's own primary-ENI SG (<code>eks-worker-sg</code>), so pods on the secondary ENI get identical connectivity.</p>
+<pre><span class="v">apiVersion:</span> crd.k8s.amazonaws.com/v1alpha1
+<span class="v">kind:</span> ENIConfig
+<span class="v">metadata:</span>
+  <span class="v">name:</span> ap-northeast-1c          <span class="c"># == AZ label, auto-matched</span>
+<span class="v">spec:</span>
+  <span class="v">subnet:</span> subnet-0ae7456ebaf6a73ba <span class="c"># 100.65.21.0/24 (az1/c)</span>
+  <span class="v">securityGroups:</span>
+    - sg-0d572c2fc2376c93f          <span class="c"># eks-worker-sg (node primary-ENI SG)</span>
+<span class="c"># … + ap-northeast-1d → 100.65.22.0/24, ap-northeast-1a → 100.65.24.0/24</span></pre>
+      <p class="cap">The manifest header also carries the apply order and the max-pods warning (see §04) so an operator reading only the file still gets the caveats.</p>
+    </div>
+  </div>
+
+  <div class="fileblk">
+    <div class="fh"><span class="tag edit">EDIT</span> k8s-manifests/bin/k8s_apply.sh</div>
+    <div class="body">
+      <p>Wires the ENIConfig apply into the standard STG deploy, gated to <code>stg</code>. It sits right after the existing <code>WARM_IP_TARGET</code>/<code>MINIMUM_IP_TARGET</code> tuning.</p>
+<pre> kubectl set env ds aws-node -n kube-system WARM_IP_TARGET=2
+ kubectl set env ds aws-node -n kube-system MINIMUM_IP_TARGET=1
+<span class="add">+</span>
+<span class="add">+if [ $ENV = stg ]; then</span>
+<span class="add">+  echo_label "apply: ENIConfig (custom networking, secondary CIDR)"</span>
+<span class="add">+  kubectl apply -f $APP_DIR/eniconfig.yaml</span>
+<span class="add">+fi</span></pre>
+      <p class="cap">Note the timing caveat in §06: this script runs at the app/bootstrap stage, so it keeps the ENIConfigs in sync but is not the place that lands them <em>before</em> the first node roll.</p>
+    </div>
+  </div>
+
+  <!-- 03 -->
+  <h2 id="decisions"><span class="n">03</span>Design decisions — why it looks like this</h2>
+
+  <table>
+    <thead><tr><th>Decision</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Env in the add-on <code>configuration_values</code>, not <code>kubectl set env</code></strong></td>
+        <td>The <code>vpc-cni</code> add-on runs with <code>resolve_conflicts_on_update = "OVERWRITE"</code>. Any env set out-of-band with <code>kubectl set env</code> is wiped the next time Terraform reconciles the add-on. Keeping the two CNI vars in the add-on config makes them durable across applies.</td>
+      </tr>
+      <tr>
+        <td><strong>A per-env gate (<code>enable_custom_networking</code>), on for STG only</strong></td>
+        <td>DEV is a <code>/16</code> with no secondary subnets and no <code>ENIConfig</code>s. Turning custom networking on there would leave pods with no config for their AZ and therefore <em>no IP at all</em>. The gate keeps DEV/PRD on the safe default and makes STG the explicit opt-in.</td>
+      </tr>
+      <tr>
+        <td><strong><code>ENIConfig</code> named after the AZ + <code>ENI_CONFIG_LABEL_DEF=…/zone</code></strong></td>
+        <td>Auto-association: the CNI matches each node to the <code>ENIConfig</code> whose name equals the node's <code>topology.kubernetes.io/zone</code> label. No per-node annotation, no webhook — three CRs cover the whole cluster.</td>
+      </tr>
+      <tr>
+        <td><strong><code>securityGroups</code> = <code>eks-worker-sg</code> (the node primary-ENI SG)</strong></td>
+        <td>Verified from a live node: the primary ENI carries only <code>eks-worker-sg</code>. Reusing it on the secondary ENI means pods keep identical intra-cluster + egress connectivity — no new SG surface to reason about.</td>
+      </tr>
+      <tr>
+        <td><strong>Secondary subnets picked to match AZ + routing</strong></td>
+        <td>The three <code>/24</code>s are in the same AZs as the primary <code>/26</code>s and share their route tables (NAT/peering/VGW/VPCE). So relocating pods changes their IP range but nothing about how they reach anything.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 04 -->
+  <h2 id="maxpods"><span class="n">04</span>The max-pods trap this introduces</h2>
+  <p class="lead">Custom networking is not free: it lowers real per-node pod capacity, but the kubelet does not know that unless you tell it. This is the one thing to get right before running the new nodes at density.</p>
+
+  <p>With custom networking, the node's <strong>primary ENI is reserved</strong> — it no longer serves pod IPs. Pods only get addresses from the <em>secondary</em> ENIs. On the 4-ENI instance types STG uses (<code>r5.xlarge</code>, <code>c6i.2xlarge</code>), that drops usable pod slots from the default <strong>58 to ~44</strong>. But the kubelet still advertises the static <strong>58</strong> unless <code>max-pods</code> is lowered — so the scheduler will happily bin-pack up to 58 pods onto a node that can only address 44, and the extra pods <strong>re-hit the exact <code>failed to assign an IP address</code> error</strong> this PR set out to fix.</p>
+
+  <div class="callout warn">
+    <span class="ci">Action before running these nodes at density</span>
+    Lower <code>max-pods</code> to the custom-networking value on the launch template (via <code>nodeadm</code> in the LT <code>user_data</code>). Compute it with the AWS helper: <code>max-pods-calculator.sh --instance-type &lt;t&gt; --cni-version &lt;v&gt; --cni-custom-networking-enabled true</code>. This is a separate follow-up to this PR (the launch templates are not touched here) and is called out in the <code>variables.tf</code> comment + the <code>eniconfig.yaml</code> header.
+  </div>
+  <p class="cap">Why it does not bite immediately: right after enablement the cluster is not densely packed, so nodes stay under ~44 pods and the gap is invisible — until autoscaling or a busy rollout pushes a node past 44. That is exactly the kind of latent failure worth pinning down before it happens in a window.</p>
+
+  <!-- 05 -->
+  <h2 id="apply"><span class="n">05</span>Apply order &amp; verification</h2>
+  <p class="lead">Custom networking only takes effect on newly launched nodes, so it sequences naturally into the next EKS node roll (the 1.33 → 1.34 ladder hop replaces every node). The one hard ordering rule: ENIConfigs must exist before the roll.</p>
+
+  <ol class="steps">
+    <li><span class="st">Merge / carry the PR onto the branch used for the node roll.</span> <span class="sub">The three shared files (<code>main.tf</code>, <code>variables.tf</code>, <code>eniconfig.yaml</code>, <code>k8s_apply.sh</code>) are identical across the ladder branches; only <code>stg.tfvars</code> differs, so a cherry-pick of the one commit is clean.</span></li>
+    <li><span class="st">Apply the eks component</span> so the add-on env lands on <code>aws-node</code> (hostNetwork — needs no new IP).
+<pre>cd terraform/components/eks
+../../terraform.sh --env stg plan   <span class="c"># vpc-cni add-on configuration_values change only</span>
+../../terraform.sh --env stg apply</pre></li>
+    <li><span class="st">Apply the ENIConfigs — before the node roll.</span>
+<pre>kubectl apply -f k8s-manifests/point/stg/eniconfig.yaml
+kubectl get eniconfigs   <span class="c"># ap-northeast-1a / -1c / -1d</span></pre></li>
+    <li><span class="st">(If running at density) lower max-pods</span> on the launch templates per §04, then run the node roll.</li>
+    <li><span class="st">Verify pods now carry secondary-CIDR IPs.</span>
+<pre>kubectl get pods -A -o wide | grep -E '100\.65\.'   <span class="c"># pod IPs in the secondary space</span>
+aws ec2 describe-subnets --subnet-ids subnet-005d982175e7f1416 \
+  --query 'Subnets[0].AvailableIpAddressCount'      <span class="c"># /26 pressure relieved</span></pre></li>
+  </ol>
+
+  <!-- 06 -->
+  <h2 id="followups"><span class="n">06</span>Open review comments</h2>
+  <p class="lead">Two inline comments on the PR — one worth acting on, one a heads-up.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="h">MED · consolidate WARM targets</div>
+      <p style="margin:4px 0 0">Now that CNI env is managed in the add-on config (<code>OVERWRITE</code>), the <code>WARM_IP_TARGET=2</code>/<code>MINIMUM_IP_TARGET=1</code> set imperatively in <code>k8s_apply.sh</code> get stripped on every <code>terraform apply</code> → aws-node reverts to the <code>WARM_ENI_TARGET=1</code> default and reserves a full warm ENI (more <code>/26</code> consumption). Consider moving both keys into the same <code>env</code> block so they are durable too.</p>
+    </div>
+    <div class="card">
+      <div class="h">LOW-MED · ENIConfig timing</div>
+      <p style="margin:4px 0 0"><code>k8s_apply.sh</code> runs at the app-bootstrap stage, which per the release order is <em>after</em> the node roll. The <code>kubectl apply</code> there keeps the ENIConfigs in sync for steady state, but the <em>first</em> enablement still needs them applied manually before the roll (as step 3 above and the manifest header note). No code change required if understood.</p>
+    </div>
+  </div>
+
+  <!-- 07 -->
+  <h2 id="rollback"><span class="n">07</span>Rollback</h2>
+  <p>Flip <code>enable_custom_networking = false</code> and re-apply, then roll nodes — new nodes revert to default CNI (pods back on the <code>/26</code>). Existing pods keep their secondary-CIDR IPs until they are replaced, so it is a graceful, roll-forward-style revert. <strong>Do not delete the <code>ENIConfig</code>s while nodes still rely on them</strong> — a node whose CNI has custom networking on but finds no matching <code>ENIConfig</code> cannot assign pod IPs.</p>
+
+  <hr class="div">
+  <h2 id="refs" style="margin-top:0">References</h2>
+  <ul class="refs">
+    <li><a href="https://docs.aws.amazon.com/eks/latest/best-practices/custom-networking.html">Amazon EKS Best Practices — Custom Networking</a></li>
+    <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/cni-custom-network.html">EKS User Guide — Deploy Pods in alternate subnets with custom networking</a> (primary-ENI IPs no longer serve pods)</li>
+    <li><a href="https://docs.aws.amazon.com/eks/latest/userguide/choosing-instance-type.html">EKS User Guide — max-pods &amp; the max-pods calculator</a> (<code>--cni-custom-networking-enabled true</code>)</li>
+    <li>Companion incident analysis (this folder): <em>point-STG · CoreDNS update stuck — private subnet IPv4 exhaustion</em> — the root-cause write-up this PR fixes.</li>
+  </ul>
+
+  <footer>
+    PR&nbsp;#121 · bs-point-infra · base <code>release/verup</code> · point-STG (471112755246). Explains the change as of commit <code>dbc0504d</code> (OPEN, not yet applied). File paths and IDs are the change's subject matter; all commands are for an operator to run in a maintenance window with an account guard (<code>aws sts get-caller-identity</code> → 471112755246) first.
+  </footer>
+
+</div>
+</body>
+</html>
