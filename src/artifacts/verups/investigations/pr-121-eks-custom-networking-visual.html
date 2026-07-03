@@ -313,34 +313,38 @@
 
   <!-- TRAP -->
   <section class="animate" style="--i:9">
-    <div class="sec-label">04 · the one real gotcha</div>
-    <h2>The max-pods trap</h2>
-    <p class="lede">Custom networking <strong>reserves the primary ENI</strong> — it no longer serves pod IPs. On the 4-ENI types STG uses (<code>r5.xlarge</code>, <code>c6i.2xlarge</code>) real per-node capacity drops, but the kubelet keeps advertising the old number.</p>
-    <div class="bar" style="border-color:var(--danger)">
-      <div class="seg" style="flex:44;background:var(--ok)">real capacity ~44 pods</div>
-      <div class="seg" style="flex:14;background:var(--danger)">phantom 45–58 → IP fail</div>
+    <div class="sec-label">04 · max-pods (auto-handled here)</div>
+    <h2>max-pods drops 58 → 44 — but EKS sets it for you</h2>
+    <p class="lede">Custom networking <strong>reserves the primary ENI</strong> — it no longer serves pod IPs — so real per-node capacity drops from <strong>58 to 44</strong> on the 4-ENI types STG uses (<code>r5.xlarge</code>, <code>c6i.2xlarge</code>). The correction after research: you do <strong>not</strong> set this by hand here.</p>
+    <div class="bar" style="border-color:var(--ok)">
+      <div class="seg" style="flex:44;background:var(--ok)">EKS auto-sets max-pods = 44</div>
+      <div class="seg" style="flex:14;background:#5a6b85">primary-ENI slots reserved</div>
     </div>
-    <div class="legend-row"><span>kubelet still advertises <b style="color:var(--danger)">58</b>; the CNI can only address <b style="color:var(--ok)">~44</b>. Pods 45–58 re-hit the exact IP-assignment failure this PR fixes.</span></div>
-    <div class="callout danger">
-      <span class="ci">Follow-up (not in this PR)</span>
-      <p>Lower <code>max-pods</code> to the custom-networking value on the launch templates — via <code>nodeadm</code> in the LT <code>user_data</code>, computed with <code>max-pods-calculator.sh --cni-custom-networking-enabled true</code>. It doesn't bite immediately (nodes aren't dense right after enablement) — it bites when autoscaling or a busy rollout pushes a node past ~44.</p>
+    <div class="legend-row"><span>Managed node group reads the <code>aws-node</code> DaemonSet (needs VPC CNI ≥ 1.9) and bakes a custom-networking-aware <b style="color:var(--ok)">44</b> into the node bootstrap. <b>Verified live:</b> nodes booted after the flag advertise <code>allocatable.pods=44</code>.</span></div>
+    <div class="callout">
+      <span class="ci" style="color:var(--ok)">No manual step — and don't create one</span>
+      <p>Because these are <strong>managed node groups with no custom AMI</strong>, EKS computes 44 automatically (<a href="https://aws.amazon.com/blogs/containers/amazon-vpc-cni-increases-pods-per-node-limits/">AWS Containers blog</a>). You'd only set <code>maxPods</code> by hand (nodeadm <code>maxPodsExpression</code>) on a <strong>custom AMI</strong>, self-managed nodes, or Karpenter — so <strong>do not</strong> uncomment the launch-template <code>user_data</code> just to set max-pods: that switches you onto the manual path where you then <em>must</em> set it yourself.</p>
     </div>
   </section>
 
   <!-- APPLY -->
   <section class="animate" style="--i:10">
-    <div class="sec-label">05 · apply order</div>
-    <h2>Sequence it into the 1.33 → 1.34 node roll</h2>
-    <p class="lede dim">Custom networking only affects <em>newly launched</em> nodes, so the next hop (which replaces every node) is the natural window. The one hard rule: the <code>ENIConfig</code>s must exist before the roll.</p>
+    <div class="sec-label">05 · apply order (corrected)</div>
+    <h2>ENIConfig first — flag and roll as separate applies</h2>
+    <p class="lede dim">Custom networking only affects <em>newly launched</em> nodes. The rule the manifest header originally got wrong: apply the <code>ENIConfig</code>s <strong>before the flag</strong>, and never flip the flag and roll nodes in one apply — a node that boots with the flag on but no ENIConfig fails hard (gotcha below).</p>
     <div class="steps">
-      <div class="step"><span class="num"></span><div><div class="label">Carry the PR onto the branch used for the node roll.</div><div class="note">The four shared files are identical across ladder branches; only <code>stg.tfvars</code> differs — a one-commit cherry-pick is clean.</div></div></div>
-      <div class="step"><span class="num"></span><div><div class="label">Apply the eks component — the add-on env lands on <code>aws-node</code> (hostNetwork, no new IP).</div><div class="note"><code>../../terraform.sh --env stg plan</code> → vpc-cni config change only → <code>apply</code></div></div></div>
-      <div class="step"><span class="num"></span><div><div class="label">Apply the ENIConfigs — <strong>before</strong> the node roll.</div><div class="note"><code>kubectl apply -f k8s-manifests/point/stg/eniconfig.yaml</code> · <code>kubectl get eniconfigs</code> → 3</div></div></div>
-      <div class="step"><span class="num"></span><div><div class="label">(At density) lower max-pods on the launch templates, then run the node roll.</div></div></div>
-      <div class="step"><span class="num"></span><div><div class="label">Verify pods carry secondary-CIDR IPs.</div><div class="note"><code>kubectl get pods -A -o wide | grep 100\.65\.</code> · AZ-1 /26 free count climbs</div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Carry the PR onto the branch used for the roll.</div><div class="note">Four shared files identical across ladder branches; only <code>stg.tfvars</code> differs — one-commit cherry-pick.</div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Apply the ENIConfigs FIRST — they're inert until the flag is on, so zero downside and it closes the danger window.</div><div class="note"><code>kubectl apply -f k8s-manifests/point/stg/eniconfig.yaml</code> · <code>kubectl get eniconfigs</code> → 3</div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Enable the flag via terraform — env only, NO roll (keep <code>node_group_name</code> unchanged).</div><div class="note"><code>../../terraform.sh --env stg plan</code> → vpc-cni configuration_values change only, 0 node-group changes → <code>apply</code></div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Roll nodes as a separate step. Prefer in-place rolling (gentle on the /26). max-pods auto-set to 44 — no manual step.</div><div class="note"><code>aws eks update-nodegroup-version --cluster-name point --region ap-northeast-1 --nodegroup-name &lt;ng&gt; --force</code></div></div></div>
+      <div class="step"><span class="num"></span><div><div class="label">Verify.</div><div class="note"><code>kubectl get nodes</code> (all Ready) · <code>kubectl get pods -A -o wide | grep 100\.65\.</code></div></div></div>
+    </div>
+    <div class="callout danger">
+      <span class="ci">Gotcha — verified in production (CNI ≥ 1.13)</span>
+      <p>Flag on but <strong>no ENIConfig</strong> for a node's AZ → on VPC CNI v1.13.0+ the node stays <code>NotReady</code> and <code>aws-node</code> init <strong>fails</strong> (<code>Failed to attach any ENIs for custom networking</code> / <code>cni plugin not initialized</code>) with <strong>no fallback</strong> to the primary subnet (<a href="https://github.com/aws/amazon-vpc-cni-k8s/issues/2683">maintainer, amazon-vpc-cni-k8s#2683</a>). Recovery: apply the ENIConfigs, then <strong>replace</strong> the stuck nodes (terminate → ASG re-creates them) — a plain <code>rollout restart</code> is not the documented fix.</p>
     </div>
     <div class="callout">
-      <span class="ci">Rollback</span>
+      <span class="ci" style="color:var(--ok)">Rollback</span>
       <p>Set <code>enable_custom_networking = false</code>, re-apply, roll nodes — new nodes revert to default CNI. Existing pods keep their secondary-CIDR IPs until replaced (graceful roll-forward). Do <strong>not</strong> delete the <code>ENIConfig</code>s while nodes still rely on them.</p>
     </div>
   </section>
