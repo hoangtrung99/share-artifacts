@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Making EKS custom networking enablement order-safe</title>
+<script>
+  /* apply theme before paint to avoid flash */
+  (function () {
+    try {
+      var t = localStorage.getItem('theme');
+      if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      if (t === 'dark') document.documentElement.classList.add('dark');
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root {
+    --bg:        #FAF9F5;
+    --surface:   #ffffff;
+    --ink:       #141413;
+    --body:      #3D3D3A;
+    --muted:     #87867F;
+    --border:    #D1CFC5;
+    --border-soft:#E3DACC;
+    --wash:      #F0EEE6;
+    --clay:      #C25A38;   /* manual / caution */
+    --clay-wash: rgba(194, 90, 56, 0.09);
+    --olive:     #5F7A46;   /* safe / recommended */
+    --olive-wash:rgba(95, 122, 70, 0.10);
+    --sky:       #4E749B;   /* info / links */
+    --red:       #A8423A;   /* failure */
+    --red-wash:  rgba(168, 66, 58, 0.10);
+
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono:  ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg:        #191816;
+    --surface:   #211F1C;
+    --ink:       #F5F3EE;
+    --body:      #D6D3CA;
+    --muted:     #9A978D;
+    --border:    #38352F;
+    --border-soft:#38352F;
+    --wash:      #262420;
+    --clay:      #E0895F;
+    --clay-wash: rgba(224, 137, 95, 0.12);
+    --olive:     #9DB37D;
+    --olive-wash:rgba(157, 179, 125, 0.13);
+    --sky:       #8FB0D0;
+    --red:       #DE7168;
+    --red-wash:  rgba(222, 113, 104, 0.13);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--body);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    padding: 52px 24px 120px;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .page {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: 52px;
+  }
+  @media (max-width: 980px) {
+    .page { grid-template-columns: 1fr; gap: 32px; }
+    aside { order: -1; position: static !important; }
+  }
+
+  /* ── theme toggle ── */
+  .toggle {
+    position: fixed; top: 18px; right: 18px; z-index: 50;
+    appearance: none; cursor: pointer;
+    width: 38px; height: 38px; border-radius: 9px;
+    border: 1.5px solid var(--border); background: var(--surface);
+    color: var(--muted); font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .toggle:hover { color: var(--ink); border-color: var(--muted); }
+  html.dark .toggle .sun { display: inline; }
+  html.dark .toggle .moon { display: none; }
+  .toggle .sun { display: none; }
+  .toggle .moon { display: inline; }
+
+  /* ── header ── */
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 500; font-size: 34px;
+    color: var(--ink); letter-spacing: -0.015em; line-height: 1.15; margin-bottom: 14px;
+  }
+  h1 em { font-style: italic; color: var(--olive); }
+  .lead { font-size: 16.5px; max-width: 660px; margin-bottom: 6px; color: var(--body); }
+  .byline {
+    font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+    margin: 14px 0 4px; display: flex; flex-wrap: wrap; gap: 6px 16px;
+  }
+
+  h2 {
+    font-family: var(--serif); font-weight: 500; font-size: 23px;
+    color: var(--ink); margin: 46px 0 6px; letter-spacing: -0.01em; scroll-margin-top: 24px;
+  }
+  h2 .kicker {
+    display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 400;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--olive); margin-bottom: 6px;
+  }
+  h3 { font-family: var(--sans); font-weight: 600; font-size: 15.5px; color: var(--ink); margin: 20px 0 6px; }
+  p { margin-bottom: 13px; max-width: 700px; }
+  strong { color: var(--ink); font-weight: 600; }
+  em { font-style: italic; }
+  a { color: var(--sky); text-decoration: none; border-bottom: 1px solid transparent; }
+  a:hover { border-bottom-color: var(--sky); }
+  code {
+    font-family: var(--mono); font-size: 12.8px;
+    background: var(--wash); color: var(--ink);
+    padding: 1px 5px; border-radius: 4px; word-break: break-word;
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0 0; }
+
+  ul.notes, ol.notes { max-width: 700px; margin: 8px 0 14px; padding-left: 0; list-style: none; }
+  ul.notes li, ol.notes li { position: relative; padding-left: 26px; margin-bottom: 11px; }
+  ul.notes li::before { content: '—'; position: absolute; left: 2px; color: var(--olive); font-weight: 600; }
+  ol.notes { counter-reset: n; }
+  ol.notes li { counter-increment: n; }
+  ol.notes li::before {
+    content: counter(n); position: absolute; left: 0; top: 1px;
+    width: 18px; height: 18px; border-radius: 5px; background: var(--olive-wash); color: var(--olive);
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── pull / insight ── */
+  .insight {
+    border-left: 3px solid var(--olive); padding: 4px 0 4px 20px; margin: 24px 0;
+    max-width: 700px;
+  }
+  .insight p { font-family: var(--serif); font-size: 19px; font-style: italic; line-height: 1.45; color: var(--ink); margin: 0; }
+  .insight p strong { font-style: normal; color: var(--olive); }
+
+  /* ── callouts ── */
+  .call { border-radius: 10px; padding: 14px 18px; margin: 18px 0; max-width: 700px; border: 1px solid var(--border); }
+  .call.warn { background: var(--clay-wash); border-color: color-mix(in srgb, var(--clay) 34%, transparent); }
+  .call.danger { background: var(--red-wash); border-color: color-mix(in srgb, var(--red) 34%, transparent); }
+  .call .t { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+  .call.warn .t { color: var(--clay); }
+  .call.danger .t { color: var(--red); }
+  .call p { font-size: 13.5px; margin: 0; }
+
+  /* ── the two orderings ── */
+  .orderings { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 16px 0 6px; max-width: 760px; }
+  @media (max-width: 720px) { .orderings { grid-template-columns: 1fr; } }
+  .ord {
+    border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden;
+  }
+  .ord__head { padding: 12px 16px; font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; }
+  .ord.bad .ord__head { background: var(--red-wash); color: var(--red); border-bottom: 1px solid color-mix(in srgb, var(--red) 30%, transparent); }
+  .ord.good .ord__head { background: var(--olive-wash); color: var(--olive); border-bottom: 1px solid color-mix(in srgb, var(--olive) 30%, transparent); }
+  .ord ol { list-style: none; counter-reset: s; padding: 14px 16px; margin: 0; }
+  .ord ol li { counter-increment: s; position: relative; padding-left: 26px; margin-bottom: 11px; font-size: 13.3px; line-height: 1.5; }
+  .ord ol li:last-child { margin-bottom: 0; }
+  .ord ol li::before {
+    content: counter(s); position: absolute; left: 0; top: 1px;
+    width: 18px; height: 18px; border-radius: 50%; font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; background: var(--wash); color: var(--muted);
+  }
+  .ord li .out { display: block; margin-top: 3px; font-family: var(--mono); font-size: 11px; font-weight: 600; }
+  .ord.bad li.final .out { color: var(--red); }
+  .ord.good li.final .out { color: var(--olive); }
+  .ord.bad li.final::before { background: var(--red-wash); color: var(--red); }
+  .ord.good li.final::before { background: var(--olive-wash); color: var(--olive); }
+
+  /* ── table ── */
+  .tablewrap { overflow-x: auto; max-width: 760px; margin: 14px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  thead th {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); font-weight: 500; white-space: nowrap; border-bottom: 1.5px solid var(--border);
+  }
+  td.opt { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  td.opt small { display: block; font-family: var(--mono); font-size: 10px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  td.good { color: var(--olive); font-family: var(--mono); font-size: 12px; }
+  td.bad { color: var(--red); font-family: var(--mono); font-size: 12px; }
+  td.warn { color: var(--clay); font-family: var(--mono); font-size: 12px; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* ── code ── */
+  figure.code { margin: 14px 0; max-width: 760px; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; }
+  figure.code figcaption {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    padding: 9px 14px; background: var(--wash); border-bottom: 1px solid var(--border);
+  }
+  figure.code pre {
+    font-family: var(--mono); font-size: 12.4px; line-height: 1.55; color: var(--ink);
+    padding: 14px; overflow-x: auto; background: var(--surface); white-space: pre; tab-size: 2;
+  }
+  figure.code .c { color: var(--muted); }
+
+  /* ── sources ── */
+  ol.src { list-style: none; counter-reset: r; padding: 0; margin: 10px 0 0; max-width: 760px; }
+  ol.src li { counter-increment: r; position: relative; padding-left: 30px; margin-bottom: 10px; font-size: 13.5px; line-height: 1.5; }
+  ol.src li::before {
+    content: counter(r); position: absolute; left: 0; top: 0;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    width: 20px; text-align: right; padding-right: 4px;
+  }
+
+  /* ── sidebar ── */
+  aside { position: sticky; top: 28px; align-self: start; display: grid; gap: 16px; }
+  .panel { border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface); padding: 16px 16px 6px; }
+  .panel .label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .rec { border-left: 3px solid var(--olive); }
+  .rec .big { font-family: var(--serif); font-size: 18px; color: var(--ink); margin-bottom: 4px; }
+  .rec .sub { font-size: 12.5px; color: var(--body); margin-bottom: 12px; }
+  dl.facts { margin: 0; }
+  dl.facts dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+  dl.facts dd { margin: 1px 0 12px; font-size: 13px; color: var(--ink); }
+  dl.facts dd b { font-family: var(--serif); font-size: 17px; font-weight: 500; }
+  nav.toc a { display: block; font-size: 12.5px; color: var(--body); padding: 4px 0; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { color: var(--olive); border-bottom-color: transparent; }
+  nav.toc a .n { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-right: 8px; }
+
+  footer { margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--muted); max-width: 760px; }
+</style>
+</head>
+<body>
+
+<button class="toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">
+  <span class="moon">☾</span><span class="sun">☀</span>
+</button>
+
+<div class="page">
+  <main>
+    <div class="eyebrow">Infrastructure research · Amazon EKS VPC CNI</div>
+    <h1>Making EKS custom networking enablement <em>order-safe</em></h1>
+    <p class="lead">
+      Enabling VPC CNI custom networking today relies on a runbook: apply the <code>ENIConfig</code> first,
+      flip the flag second, roll nodes third — in that exact order, by hand. This report answers one question:
+      can we make the apply impossible to get wrong, so nobody forgets the ENIConfig step and no node is rolled
+      before it exists?
+    </p>
+    <div class="byline">
+      <span>2026-07-03</span><span>· 8 cited sources</span><span>· Confidence: High</span>
+    </div>
+
+    <hr>
+
+    <h2 id="s1"><span class="kicker">01 · The short answer</span>Yes — three ways, one removes the risk entirely</h2>
+    <p>
+      Bring the <code>ENIConfig</code> <strong>into Terraform</strong> inside the same <code>eks</code> component, so a
+      single <code>terraform apply</code> owns both the flag and the ENIConfig. The dependency graph then enforces
+      ordering — not human memory — and the dangerous window <strong>self-heals</strong>. This also hardens the exact
+      pattern our production-track point-STG <code>/26</code> cluster depends on.
+    </p>
+    <p>
+      A useful piece of context on our setup: the <code>eks</code> component uses the
+      <strong>terraform-aws-modules/eks</strong> module (<code>addons = local.cluster_addons</code> with
+      <code>before_compute = true</code>), currently declares <strong>only the AWS provider</strong>, and already uses a
+      <code>data "aws_subnets"</code> lookup. That is precisely the shape the AWS EKS Blueprints custom-networking
+      pattern targets, so the Terraform-managed approach drops in cleanly.
+    </p>
+
+    <h2 id="s2"><span class="kicker">02 · The failure</span>Why the manual approach is fragile</h2>
+    <ul class="notes">
+      <li><strong>A node stuck <code>NotReady</code> is official behaviour, and it does not recover on its own if the ENIConfig never arrives.</strong>
+        The VPC CNI maintainer (issue #2683): <em>"In v1.13.0+, the node will not be marked Ready until pod IPs are available… a valid ENIConfig must be present, otherwise the node will remain Not Ready until an ENI is attached."</em></li>
+      <li><strong>The most common failure is a "partial rollout" — the flag is on but the ENIConfig is missing.</strong>
+        As one practitioner puts it: <em>"addon config applies fine but ENIConfig creation fails silently… the most common cause of partial rollouts. The order matters."</em></li>
+      <li><strong>Today the work is split across two tools.</strong> The flag is set by <code>terraform</code> (the <code>eks</code> component); the ENIConfig is applied by <code>kubectl</code> (<code>k8s_apply.sh</code>). Ordering is therefore guaranteed only by the runbook — that is, by the operator's memory.</li>
+    </ul>
+
+    <h2 id="s3"><span class="kicker">03 · The mechanism</span>The two orderings, side by side</h2>
+    <p>Same flag, same ENIConfig. The only difference is <strong>who enforces the order</strong>. A runbook can be skipped; a dependency graph cannot.</p>
+    <div class="orderings">
+      <div class="ord bad">
+        <div class="ord__head">Manual — ordered by the runbook</div>
+        <ol>
+          <li><code>terraform apply</code> sets the flag on.</li>
+          <li>Operator is <em>supposed</em> to run <code>kubectl apply eniconfig.yaml</code>…</li>
+          <li class="final">A new node boots with the flag on but no ENIConfig.
+            <span class="out">→ aws-node init fails · node NotReady · window stays OPEN</span></li>
+        </ol>
+      </div>
+      <div class="ord good">
+        <div class="ord__head">Terraform-managed — ordered by the graph</div>
+        <ol>
+          <li>One <code>terraform apply</code> creates the addon flag <em>and</em> the ENIConfig (one depends on the other).</li>
+          <li>A new node boots; if it's a touch early it is <em>briefly</em> NotReady.</li>
+          <li class="final">The ENIConfig is already present, aws-node retries and attaches.
+            <span class="out">→ node Ready · window SELF-HEALS</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="insight">
+      <p><strong>The key insight.</strong> When Terraform creates the ENIConfig in the same apply as the flag, an early-booting node is only <em>briefly</em> NotReady — the window closes itself. The manual path leaves that window open <em>indefinitely</em> if the operator forgets.</p>
+    </div>
+
+    <h2 id="s4"><span class="kicker">04 · The options</span>Three ways to fix it, ranked</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Option</th><th>Can't forget</th><th>Order-safe</th><th>Self-heals</th><th>No hardcoded IDs</th><th>Cost</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="opt">1 · TF-managed ENIConfig<small>alekc/kubectl</small></td>
+            <td class="good">yes</td><td class="good">yes</td><td class="good">yes</td><td class="good">yes</td><td>+1 provider</td>
+          </tr>
+          <tr>
+            <td class="opt">2 · Helm chart<small>eniConfig.create</small></td>
+            <td class="good">yes</td><td class="good">yes</td><td class="good">yes</td><td class="good">yes</td><td class="bad">drops managed addon</td>
+          </tr>
+          <tr>
+            <td class="opt">3 · Preflight-gated roll<small>bash guard</small></td>
+            <td class="warn">partial</td><td class="good">at roll</td><td class="bad">no</td><td class="bad">no</td><td>~10 lines</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Option 1 — Terraform-managed ENIConfig  <span style="font-family:var(--mono);font-size:11px;color:var(--olive)">▸ recommended</span></h3>
+    <p>
+      Make the ENIConfig a Terraform resource inside the <code>eks</code> component, gated on
+      <code>enable_custom_networking</code>. This is the canonical AWS EKS Blueprints pattern.
+    </p>
+    <div class="call warn">
+      <div class="t">Provider choice matters</div>
+      <p>Use <code>alekc/kubectl</code> (<code>kubectl_manifest</code>), <strong>not</strong> <code>kubernetes_manifest</code>. The latter needs the ENIConfig CRD to exist <em>at plan time</em> — but that CRD is installed by the vpc-cni addon itself, so a fresh cluster can't plan (Blueprints #1675). <code>kubectl_manifest</code> applies at apply time and avoids this.</p>
+    </div>
+    <figure class="code">
+      <figcaption>terraform/components/eks — added</figcaption>
+<pre><span class="c"># versions.tf — add provider (in addition to aws)</span>
+kubectl = { source = "alekc/kubectl", version = "&gt;= 2.0" }
+
+<span class="c"># providers.tf — auth via module outputs (runs on bastion; creds from instance role)</span>
+provider "kubectl" {
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+  }
+  load_config_file = false
+}
+
+<span class="c"># eniconfig.tf — derive subnets by TAG (no account-specific hardcoded IDs)</span>
+data "aws_subnets" "pod_secondary" {
+  count  = var.eks.enable_custom_networking ? 1 : 0
+  filter { name = "tag:Name", values = ["point-secondary-cidr-private-*"] }
+  filter { name = "vpc-id",   values = [module.eks.vpc_id] }
+}
+data "aws_subnet" "pod" {
+  for_each = var.eks.enable_custom_networking ? toset(data.aws_subnets.pod_secondary[0].ids) : []
+  id       = each.value
+}
+resource "kubectl_manifest" "eniconfig" {
+  for_each  = { for s in data.aws_subnet.pod : s.availability_zone =&gt; s }  <span class="c"># key = AZ</span>
+  yaml_body = yamlencode({
+    apiVersion = "crd.k8s.amazonaws.com/v1alpha1"
+    kind       = "ENIConfig"
+    metadata   = { name = each.key }                       <span class="c"># name MUST equal the AZ</span>
+    spec       = { subnet = each.value.id, securityGroups = [module.eks.node_security_group_id] }  <span class="c"># a LIST</span>
+  })
+  depends_on = [module.eks]   <span class="c"># addon is already before_compute = true in the module</span>
+  wait       = true
+}</pre>
+    </figure>
+    <p>What this buys us:</p>
+    <ul class="notes">
+      <li><strong>Impossible to forget</strong> — flag and ENIConfig live in one <code>terraform apply</code>.</li>
+      <li><strong>The window self-heals</strong> — an early-booting node goes Ready once Terraform creates the ENIConfig moments later.</li>
+      <li><strong>No hardcoded subnet/SG IDs</strong> — derived by tag, so the same code is correct for every environment and account. This removes the "copied the wrong account's IDs" class of error outright.</li>
+      <li><strong><code>securityGroups</code> is a list</strong> — avoids the silent-failure trap (#2416).</li>
+      <li><strong>Hardens point-STG too</strong> — same module, so the production-track cluster benefits directly.</li>
+    </ul>
+    <p style="color:var(--muted); font-size:14px;">Cost is one extra provider plus auth wiring (~30 lines). Drop the <code>kubectl apply eniconfig.yaml</code> from <code>k8s_apply.sh</code>, or keep it as an idempotent belt-and-suspenders. On an existing cluster you still roll old nodes — but the roll is now completely safe, because Terraform has guaranteed the ENIConfig exists.</p>
+
+    <h3>Option 2 — Helm chart <code>eniConfig.create</code>  <span style="font-family:var(--mono);font-size:11px;color:var(--red)">▸ ruled out</span></h3>
+    <p>
+      The aws-vpc-cni Helm chart templates the ENIConfig <strong>and</strong> sets the env in one <code>helm_release</code> —
+      the most atomic option of all. But we run the <strong>EKS managed addon</strong>, whose
+      <code>configuration_values</code> has no field to create ENIConfigs (that is a Helm-chart-only value). Switching
+      to Helm-managed CNI would mean giving up managed-addon lifecycle — version management through the EKS API and
+      <code>before_compute</code> — which is too invasive to justify here.
+    </p>
+
+    <h3>Option 3 — Preflight-gated roll  <span style="font-family:var(--mono);font-size:11px;color:var(--clay)">▸ lightweight</span></h3>
+    <p>
+      If we don't want to change the architecture yet, block mistakes with a preflight gate before any roll. It's
+      cheap and stops both "forgot the step" and "wrong order" — but it does not close the autoscaling window as
+      tightly as Option 1 (a node the autoscaler launches between "flag on" and "ENIConfig applied" still waits).
+    </p>
+    <figure class="code">
+      <figcaption>preflight — refuse to roll unless ENIConfig covers every node AZ</figcaption>
+<pre>need=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}' | sort -u)
+have=$(kubectl get eniconfig -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort -u)
+missing=$(comm -23 &lt;(echo "$need") &lt;(echo "$have"))
+[ -n "$missing" ] &amp;&amp; { echo "ABORT: missing ENIConfig for AZ: $missing"; exit 1; }
+<span class="c"># plus verify the flag is actually on: aws eks describe-addon ... | grep CUSTOM_NETWORK_CFG</span></pre>
+    </figure>
+
+    <h2 id="s5"><span class="kicker">05 · Belt and braces</span>Guardrails that apply either way</h2>
+    <ol class="notes">
+      <li><strong>Verify both sides.</strong> After enabling: the addon shows <code>CUSTOM_NETWORK_CFG=true</code> <em>and</em> <code>kubectl get eniconfig</code> covers every AZ. A partial rollout is the single most common failure.</li>
+      <li><strong><code>securityGroups</code> must be a YAML list.</strong> If it's a string, ENIConfig creation fails <em>silently</em> — the node stays Ready but can't schedule pods (#2416). <code>yamlencode([...])</code> guarantees a list.</li>
+      <li><strong><code>metadata.name</code> must equal the AZ.</strong> The CNI resolves ENIConfig by the node's <code>topology.kubernetes.io/zone</code> value. Derive the name from <code>data.aws_subnet.availability_zone</code>; never hardcode it.</li>
+      <li><strong><code>before_compute = true</code></strong> (we already have it). On a greenfield cluster the addon and flag come up before the nodes, so no roll is needed at all. Only an existing, running cluster needs a roll.</li>
+    </ol>
+
+    <h2 id="s6"><span class="kicker">06 · Applied</span>What this means for our clusters</h2>
+    <p>
+      <strong>point-STG</strong> is <code>/26</code>, production-track, and the highest-risk cluster — choose Option 1.
+      Terraform-managed, derive-by-tag ENIConfig removes exactly the two errors we've already nearly hit: a forgotten
+      ENIConfig leaving a node stuck, and wrong-account IDs copied into the manifest.
+    </p>
+    <p>
+      <strong>dev-ex</strong> is the <code>/24</code> validation bed and is being sunset — Option 1 if we want the
+      fragility gone permanently, or Option 3 as a quick guard for a handful of trial applies.
+    </p>
+
+    <h2 id="s7"><span class="kicker">07 · Provenance</span>Sources</h2>
+    <ol class="src">
+      <li><a href="https://github.com/aws/amazon-vpc-cni-k8s/issues/2683" target="_blank" rel="noopener">amazon-vpc-cni-k8s #2683</a> — maintainer confirms NotReady-until-ENIConfig (v1.13+).</li>
+      <li><a href="https://github.com/aws-ia/terraform-aws-eks-blueprints/issues/1675" target="_blank" rel="noopener">EKS Blueprints #1675</a> — <code>kubernetes_manifest</code> fails at plan time on the CRD; use the <code>kubectl</code> provider.</li>
+      <li><a href="https://aws-ia.github.io/terraform-aws-eks-blueprints/snippets/vpc-cni-custom-networking/" target="_blank" rel="noopener">EKS Blueprints — VPC CNI custom networking snippet</a> — the <code>kubectl_manifest</code> + addon-config pattern.</li>
+      <li><a href="https://wiemers.me/blog/2026/2026-03-07-eks-custom-networking/" target="_blank" rel="noopener">Wiemers, 2026 — Your EKS Pods Are Eating Your VPC</a> — partial rollout, ordering, name==AZ, validate both sides.</li>
+      <li><a href="https://github.com/aws/amazon-vpc-cni-k8s/blob/master/charts/aws-vpc-cni/templates/eniconfig.yaml" target="_blank" rel="noopener">aws-vpc-cni Helm chart eniconfig template</a> + <a href="https://github.com/aws/amazon-vpc-cni-k8s/blob/master/charts/aws-vpc-cni/values.yaml" target="_blank" rel="noopener">values.yaml</a> — <code>eniConfig.create</code>.</li>
+      <li><a href="https://github.com/aws/amazon-vpc-cni-k8s/issues/2416" target="_blank" rel="noopener">amazon-vpc-cni-k8s #2416</a> — <code>securityGroups</code> must be a list (silent failure).</li>
+      <li><a href="https://aws.amazon.com/blogs/containers/leveraging-cni-custom-networking-alongside-security-groups-for-pods-in-amazon-eks/" target="_blank" rel="noopener">AWS Containers — CNI custom networking + security groups for pods</a> — create the node group after enabling to avoid pod migration.</li>
+      <li><a href="https://github.com/terraform-aws-modules/terraform-aws-eks/issues/2593" target="_blank" rel="noopener">terraform-aws-modules/eks #2593</a> &amp; <a href="https://github.com/terraform-aws-modules/terraform-aws-eks/issues/3327" target="_blank" rel="noopener">#3327</a> — the module won't create k8s ENIConfig; <code>before_compute</code> orders addon↔nodes.</li>
+    </ol>
+
+    <footer>Bottom line — for point-STG (real risk) choose Option 1; dev-ex can use Option 1 or temporarily Option 3.</footer>
+  </main>
+
+  <aside>
+    <div class="panel rec">
+      <div class="label">Recommendation</div>
+      <div class="big">Option 1</div>
+      <div class="sub">Terraform-managed <code>ENIConfig</code> — one apply owns flag + ENIConfig; the danger window self-heals.</div>
+    </div>
+    <div class="panel">
+      <div class="label">At a glance</div>
+      <dl class="facts">
+        <dt>Failure modes today</dt><dd><b>2</b> — forgotten step · wrong-order roll</dd>
+        <dt>Option 1 apply count</dt><dd><b>1</b> terraform apply</dd>
+        <dt>Hard-block threshold</dt><dd><b>v1.13+</b> CNI</dd>
+        <dt>Sources</dt><dd><b>8</b> cited</dd>
+      </dl>
+    </div>
+    <nav class="panel toc">
+      <div class="label">Contents</div>
+      <a href="#s1"><span class="n">01</span>The short answer</a>
+      <a href="#s2"><span class="n">02</span>Why it's fragile</a>
+      <a href="#s3"><span class="n">03</span>The two orderings</a>
+      <a href="#s4"><span class="n">04</span>Three fixes, ranked</a>
+      <a href="#s5"><span class="n">05</span>Guardrails</a>
+      <a href="#s6"><span class="n">06</span>Our clusters</a>
+      <a href="#s7"><span class="n">07</span>Sources</a>
+    </nav>
+  </aside>
+
+</div>
+
+<script>
+  var toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', function () {
+    var root = document.documentElement;
+    var dark = root.classList.toggle('dark');
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
+  });
+</script>
+</body>
+</html>
