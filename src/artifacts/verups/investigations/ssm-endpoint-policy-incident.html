@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSM ConnectionLost — VPC Endpoint Policy Incident (point stg)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #0b1220;
+    --grid: rgba(120, 150, 200, 0.06);
+    --surface: #121c30;
+    --surface-2: #0e1728;
+    --border: rgba(140, 165, 210, 0.14);
+    --text: #dbe4f2;
+    --text-dim: #8394b0;
+
+    --blue: #4c8dff;
+    --blue-dim: rgba(76, 141, 255, 0.12);
+    --danger: #f2585f;
+    --danger-dim: rgba(242, 88, 95, 0.13);
+    --ok: #38cf8b;
+    --ok-dim: rgba(56, 207, 139, 0.13);
+    --amber: #eeb03e;
+    --amber-dim: rgba(238, 176, 62, 0.13);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eef2f9;
+      --grid: rgba(30, 60, 110, 0.06);
+      --surface: #ffffff;
+      --surface-2: #f4f7fc;
+      --border: rgba(20, 40, 80, 0.10);
+      --text: #14233d;
+      --text-dim: #55688a;
+
+      --blue: #1d4ed8;
+      --blue-dim: rgba(29, 78, 216, 0.09);
+      --danger: #d21f27;
+      --danger-dim: rgba(210, 31, 39, 0.09);
+      --ok: #0d8f5b;
+      --ok-dim: rgba(13, 143, 91, 0.10);
+      --amber: #b1741a;
+      --amber-dim: rgba(177, 116, 26, 0.11);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    padding: 40px 24px 80px;
+  }
+
+  .container { max-width: 1040px; margin: 0 auto; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .animate { animation: fadeUp 0.45s ease-out both; animation-delay: calc(var(--i, 0) * 0.05s); }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; transition-duration: 0.01ms !important; } }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+
+  h1 {
+    font-size: clamp(28px, 5vw, 46px);
+    font-weight: 700;
+    letter-spacing: -1.2px;
+    line-height: 1.08;
+    margin-bottom: 14px;
+    text-wrap: balance;
+  }
+  h1 .accent { color: var(--danger); }
+
+  .lead {
+    font-size: 17px;
+    color: var(--text-dim);
+    max-width: 760px;
+    margin-bottom: 26px;
+  }
+  .lead b { color: var(--text); font-weight: 600; }
+
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim);
+    margin-bottom: 40px;
+  }
+  .chip {
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 12px; background: var(--surface-2);
+  }
+  .chip b { color: var(--text); font-weight: 600; }
+
+  /* ---- verdict hero ---- */
+  .verdict {
+    position: relative;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--danger);
+    background:
+      radial-gradient(120% 140% at 100% 0%, var(--danger-dim), transparent 60%),
+      var(--surface);
+    border-radius: 4px 14px 14px 4px;
+    padding: 28px 30px;
+    margin-bottom: 40px;
+  }
+  .verdict .tag { font-family: var(--font-mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--danger); margin-bottom: 10px; }
+  .verdict p { font-size: clamp(18px, 2.6vw, 25px); font-weight: 600; letter-spacing: -0.4px; color: var(--text); }
+  .verdict p code { font-family: var(--font-mono); font-size: 0.82em; background: var(--danger-dim); color: var(--danger); padding: 2px 7px; border-radius: 5px; }
+  .verdict .sub { margin-top: 14px; font-size: 15px; font-weight: 400; color: var(--text-dim); letter-spacing: 0; }
+
+  /* ---- stat strip ---- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 48px; }
+  .stat { border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 18px 18px 16px; min-width: 0; }
+  .stat .n { font-size: 30px; font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums; line-height: 1; }
+  .stat .n.blue { color: var(--blue); } .stat .n.danger { color: var(--danger); } .stat .n.ok { color: var(--ok); } .stat .n.amber { color: var(--amber); }
+  .stat .k { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.4; }
+  @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ---- section ---- */
+  section { margin-bottom: 48px; }
+  .section-label {
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-dim); margin-bottom: 18px; display: flex; align-items: center; gap: 10px;
+  }
+  .section-label .num { color: var(--blue); font-weight: 600; }
+  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.6px; margin-bottom: 6px; }
+  .section-intro { color: var(--text-dim); font-size: 15px; max-width: 760px; margin-bottom: 22px; }
+
+  /* ---- timeline ---- */
+  .timeline { position: relative; padding-left: 26px; }
+  .timeline::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+  .tl { position: relative; margin-bottom: 20px; }
+  .tl::before { content: ""; position: absolute; left: -26px; top: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); border: 2px solid var(--blue); }
+  .tl.crit::before { border-color: var(--danger); background: var(--danger-dim); }
+  .tl.fix::before { border-color: var(--ok); background: var(--ok-dim); }
+  .tl .t { font-family: var(--font-mono); font-size: 12px; color: var(--blue); font-weight: 600; }
+  .tl.crit .t { color: var(--danger); } .tl.fix .t { color: var(--ok); }
+  .tl .d { font-size: 14.5px; color: var(--text); margin-top: 2px; }
+  .tl .d span { color: var(--text-dim); }
+  .tl .d code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--text); }
+
+  /* ---- table ---- */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th { position: sticky; top: 0; background: var(--surface-2); text-align: left; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-dim); padding: 12px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) { background: var(--surface-2); }
+  td .cause { font-weight: 600; color: var(--text); }
+  td code { font-family: var(--font-mono); font-size: 12px; color: var(--blue); background: var(--blue-dim); padding: 1px 5px; border-radius: 4px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+  .pill.no { background: var(--ok-dim); color: var(--ok); } .pill.no::before { background: var(--ok); }
+  .pill.yes { background: var(--danger-dim); color: var(--danger); } .pill.yes::before { background: var(--danger); }
+
+  /* ---- code / exhibit ---- */
+  .exhibit { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 18px; background: var(--surface-2); }
+  .exhibit .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .exhibit .head .name { font-family: var(--font-mono); font-size: 12px; color: var(--text); font-weight: 600; }
+  .exhibit .head .badge { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; padding: 3px 8px; border-radius: 5px; }
+  .badge.evidence { background: var(--blue-dim); color: var(--blue); }
+  .badge.deny { background: var(--danger-dim); color: var(--danger); }
+  .badge.fix { background: var(--ok-dim); color: var(--ok); }
+  pre { margin: 0; padding: 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65; color: var(--text); white-space: pre; }
+  pre .c { color: var(--text-dim); }
+  pre .r { color: var(--danger); font-weight: 600; }
+  pre .g { color: var(--ok); font-weight: 600; }
+  pre .b { color: var(--blue); }
+  pre .a { color: var(--amber); }
+
+  /* ---- allowlist columns ---- */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+  .listcard { border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; background: var(--surface); min-width: 0; }
+  .listcard h3 { font-size: 15px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .listcard h3 .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .listcard.ok h3 .dot { background: var(--ok); } .listcard.no h3 .dot { background: var(--danger); }
+  .listcard .cap { font-size: 12.5px; color: var(--text-dim); margin-bottom: 12px; }
+  .listcard ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .listcard li { font-family: var(--font-mono); font-size: 12.5px; color: var(--text); position: relative; padding-left: 18px; word-break: break-word; }
+  .listcard li::before { content: "›"; position: absolute; left: 2px; color: var(--text-dim); }
+  .listcard.no li { color: var(--danger); }
+
+  /* ---- callout ---- */
+  .callout { border: 1px solid var(--border); border-left: 3px solid var(--blue); background: var(--surface); border-radius: 0 12px 12px 0; padding: 18px 22px; font-size: 14.5px; color: var(--text-dim); }
+  .callout.ok { border-left-color: var(--ok); }
+  .callout strong { color: var(--text); }
+  .callout code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--text); }
+
+  /* ---- mermaid ---- */
+  .diagram-shell { position: relative; }
+  .diagram-shell__hint { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-bottom: 8px; opacity: 0.75; }
+  .mermaid-wrap { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; overflow: auto; display: flex; justify-content: center; align-items: center; min-height: 400px; cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+  .zoom-controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; z-index: 10; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+  .zoom-controls button { width: 28px; height: 28px; border: none; background: transparent; color: var(--text-dim); font-family: var(--font-mono); font-size: 14px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .mermaid-viewport { position: relative; overflow: hidden; width: 100%; height: 100%; min-height: 300px; }
+  .mermaid-canvas { position: absolute; top: 0; left: 0; }
+  .zoom-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); padding: 0 6px; white-space: nowrap; }
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; }
+  .mermaid .node rect, .mermaid .node polygon { stroke-width: 1.5px !important; }
+
+  footer { border-top: 1px solid var(--border); margin-top: 60px; padding-top: 24px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 6px 20px; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="eyebrow animate" style="--i:0">Infra Incident · point stg · account 471112755246</div>
+  <h1 class="animate" style="--i:1">Two boxes went dark on SSM.<br>The box was fine. The <span class="accent">policy said no.</span></h1>
+  <p class="lead animate" style="--i:2">
+    On 2026-06-30 two live EC2 instances — <b>hulft</b> (HULFT file transfer / NFS) and <b>ponta-proxy</b> (Squid egress) —
+    dropped off Systems Manager and stayed <b>ConnectionLost</b> for 8 days. Every early guess was wrong: not the box,
+    not the network, not the clock, not credentials, not a dead agent. One line settled it — the SSM agent's own log.
+  </p>
+  <div class="meta-row animate" style="--i:3">
+    <span class="chip"><b>hulft</b> i-042325ebdb8991aa9</span>
+    <span class="chip"><b>ponta-proxy</b> i-0ce6fa785d00e57a0</span>
+    <span class="chip">vpc-08888557d0bd0cead</span>
+    <span class="chip">investigated <b>2026-07-08</b></span>
+    <span class="chip">fix <b>PR #135</b></span>
+  </div>
+
+  <div class="verdict animate" style="--i:4">
+    <div class="tag">Root cause</div>
+    <p>The <code>endpoints</code> Terraform apply on 06-30 rewrote the VPC endpoint policies for <code>ssm</code> / <code>ssmmessages</code> / <code>ec2messages</code>. The new <code>aws:PrincipalArn</code> allowlist dropped <code>ponta-proxy-role</code> and <code>point-hulft-role</code>.</p>
+    <p class="sub">Agent talks to the endpoint. Endpoint checks the role against the list. Role not on list → <b>AccessDenied</b> on every <code>UpdateInstanceInformation</code> and <code>GetMessages</code> → PingStatus freezes, agent retries forever. Box, clock, creds, agent: all healthy the whole time.</p>
+  </div>
+
+  <div class="stats animate" style="--i:5">
+    <div class="stat"><div class="n danger">2</div><div class="k">boxes locked out<br>(2 roles missing)</div></div>
+    <div class="stat"><div class="n amber">8</div><div class="k">days ConnectionLost<br>continuous retry loop</div></div>
+    <div class="stat"><div class="n blue">0</div><div class="k">reboots that would<br>have fixed it</div></div>
+    <div class="stat"><div class="n ok">2</div><div class="k">lines added to<br>stg.tfvars = fix</div></div>
+  </div>
+
+  <!-- MECHANISM -->
+  <section class="animate" style="--i:6">
+    <div class="section-label"><span class="num">01</span> How it breaks</div>
+    <h2>Same wire, same endpoint — the gate is the role</h2>
+    <p class="section-intro">Six roles were on the allowlist and stayed Online. Two were not. Same VPC, same interface endpoints, same network path (Flow Logs: 926 ACCEPT / 0 REJECT). The only difference is the name in the policy.</p>
+    <div class="diagram-shell">
+      <p class="diagram-shell__hint">Ctrl/Cmd + wheel to zoom · drag to pan · double-click to fit · ⛶ opens full size</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+          <span class="zoom-label">Loading...</span>
+        </div>
+        <div class="mermaid-viewport"><div class="mermaid mermaid-canvas"></div></div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        graph TD
+          AGENT["amazon-ssm-agent<br/>hulft + ponta-proxy<br/><small>alive · clock synced · creds valid</small>"]
+          AGENT -->|"ssm:UpdateInstanceInformation<br/>ec2messages:GetMessages"| VPCE["VPC Interface Endpoints<br/>ssm · ssmmessages · ec2messages<br/><small>926 ACCEPT / 0 REJECT</small>"]
+          VPCE --> POL{"Endpoint policy<br/>aws:PrincipalArn ArnEquals"}
+          POL -->|"role ON allowlist"| OK["ALLOW<br/><small>point-bastion-role, point-cd-runner-role,<br/>point-data-transfer-role, bastion-proxy-role...</small><br/>peers stay Online"]
+          POL -->|"ponta-proxy-role<br/>point-hulft-role<br/>NOT on allowlist"| DENY["AccessDenied 400<br/>'no VPC endpoint policy allows the action'<br/><small>PingStatus frozen · retry storm</small>"]
+          classDef ok fill:#12351f,stroke:#38cf8b,color:#d7f5e6;
+          classDef deny fill:#3a1417,stroke:#f2585f,color:#ffdfe0;
+          class OK ok;
+          class DENY deny;
+      </script>
+    </div>
+  </section>
+
+  <!-- WHAT IT WAS NOT -->
+  <section class="animate" style="--i:7">
+    <div class="section-label"><span class="num">02</span> Dead ends, ruled out with evidence</div>
+    <h2>Everything the symptom looked like — and why it wasn't</h2>
+    <p class="section-intro">ConnectionLost while the box is up looks like a hundred things. Each was killed with a direct observation before the log was even read.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suspect</th><th>Was it?</th><th>Evidence that killed it</th></tr></thead>
+        <tbody>
+          <tr><td class="cause">Box dead / hung</td><td><span class="pill no">no</span></td><td>Status 2/2 <code>ok</code>, CPU flat ~0.5%, uptime 300+ days, no reboot. A hung box shows iowait/CPU→0.</td></tr>
+          <tr><td class="cause">Network / SG / NACL</td><td><span class="pill no">no</span></td><td>Flow Logs box↔SSM endpoints: <code>926 ACCEPT / 0 REJECT</code>. hulft-sg egress open, NACL clean.</td></tr>
+          <tr><td class="cause">VPC endpoint outage</td><td><span class="pill no">no</span></td><td>4 peer instances in the <b>same VPC</b> using the <b>same endpoints</b> stayed Online the whole time.</td></tr>
+          <tr><td class="cause">AWS-side config change</td><td><span class="pill no">no</span></td><td>First CloudTrail scan (paginated, missed it) showed no mutation — later corrected, see exhibit C.</td></tr>
+          <tr><td class="cause">Clock skew (SigV4)</td><td><span class="pill no">no</span></td><td>In-guest <code>timedatectl</code>: synchronized <b>yes</b>, offset ~1 nanosecond, source 169.254.169.123 (Amazon Time Sync).</td></tr>
+          <tr><td class="cause">IMDS / credential loss</td><td><span class="pill no">no</span></td><td>IAM RoleLastUsed = today; profile associated; IMDSv2 healthy. Role authenticates fine.</td></tr>
+          <tr><td class="cause">Agent process dead / deadlocked</td><td><span class="pill no">no</span></td><td>Agent <code>active (running)</code>, retry storm to ec2messages for 8 days straight. Dead agent goes silent.</td></tr>
+          <tr><td class="cause">VPC endpoint policy allowlist</td><td><span class="pill yes">YES</span></td><td>Agent log: <code>AccessDenied ... because no VPC endpoint policy allows the action</code>. Confirmed by policy + CloudTrail.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- EXHIBITS -->
+  <section class="animate" style="--i:8">
+    <div class="section-label"><span class="num">03</span> The three exhibits that agree</div>
+    <h2>Log · policy · change event — one story</h2>
+    <p class="section-intro">The mechanism, the state, and the trigger. Read together, no other explanation survives.</p>
+
+    <div class="exhibit">
+      <div class="head"><span class="name">Exhibit A — /var/log/amazon/ssm/amazon-ssm-agent.log (ponta-proxy, in-guest via EICE)</span><span class="badge deny">the mechanism</span></div>
+<pre><span class="c"># health ping — freezes PingStatus</span>
+ERROR [HealthCheck] ... ssm:<span class="a">UpdateInstanceInformation</span> on resource:
+  arn:...:instance/i-0ce6fa785d00e57a0
+  <span class="r">because no VPC endpoint policy allows the ssm:UpdateInstanceInformation action</span>
+
+<span class="c"># message channel — drives the retry storm</span>
+ERROR [MDSInteractor] GetMessages Error: AccessDeniedException: User:
+  assumed-role/<span class="b">ponta-proxy-role</span>/i-0ce6fa785d00e57a0 is not authorized to perform:
+  ec2messages:<span class="a">GetMessages</span>
+  <span class="r">because no VPC endpoint policy allows the ec2messages:GetMessages action</span>
+        status code: 400</pre>
+    </div>
+
+    <div class="exhibit">
+      <div class="head"><span class="name">Exhibit B — live VPC endpoint policy (ssm / ssmmessages)</span><span class="badge evidence">the state</span></div>
+<pre>Effect=Allow  Principal="*"  Action="*"
+Condition ArnEquals aws:PrincipalArn = [
+  role/bastion-proxy-role,      role/custodian-AdministratorRole,
+  role/custodian-CICDRole,      role/custodian-OperatorRole,
+  role/point-bastion-role,      role/point-cd-runner-role,
+  role/point-data-transfer-role
+]
+<span class="r"># ponta-proxy-role   → NOT present</span>
+<span class="r"># point-hulft-role   → NOT present</span></pre>
+    </div>
+
+    <div class="exhibit">
+      <div class="head"><span class="name">Exhibit C — CloudTrail ModifyVpcEndpoint (server-side EventName filter)</span><span class="badge evidence">the trigger</span></div>
+<pre><span class="c"># applied from the bastion — matches last-ping 06:25:04 UTC to the second</span>
+2026-06-30 <span class="a">06:26:54Z</span>  ModifyVpcEndpoint  by i-08a90d... (bastion)  vpce-06eb99c291feda63a  <span class="c">(ssm)</span>
+2026-06-30 <span class="a">06:26:54Z</span>  ModifyVpcEndpoint  by i-08a90d... (bastion)  vpce-026c159655832a3dd  <span class="c">(ec2messages)</span>
+2026-06-30 <span class="a">06:27:11Z</span>  ModifyVpcEndpoint  by i-08a90d... (bastion)  vpce-0d998e66d240289f9  <span class="c">(ssmmessages)</span></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Why the first CloudTrail pass missed it.</strong> The initial scan filtered event names client-side over a broad
+      <code>lookup-events</code> call that paginates at ~50 rows — the 06:26 events were past page one. Re-running with a
+      server-side <code>AttributeKey=EventName,AttributeValue=ModifyVpcEndpoint</code> filter surfaced them instantly. Lesson: filter at the API, not in <code>--query</code>.
+    </div>
+  </section>
+
+  <!-- WHY IT ROTS -->
+  <section class="animate" style="--i:9">
+    <div class="section-label"><span class="num">04</span> Why exactly these two</div>
+    <h2>The allowlist is keyed by role name</h2>
+    <p class="section-intro">The <code>endpoints</code> component builds each endpoint policy from a <code>role_endpoint_access</code> map. Migrated roles are in it. Two legacy point-stg boxes that pre-date the migration were not — so the apply locked them out and no one else.</p>
+    <div class="cols">
+      <div class="listcard ok">
+        <h3><span class="dot"></span> On the allowlist → stayed Online</h3>
+        <div class="cap">Migrated / managed roles present in the stg map</div>
+        <ul>
+          <li>point-bastion-role</li>
+          <li>point-cd-runner-role</li>
+          <li>point-data-transfer-role</li>
+          <li>bastion-proxy-role</li>
+          <li>custodian-* roles</li>
+          <li>eks-worker-role, irsa roles…</li>
+        </ul>
+      </div>
+      <div class="listcard no">
+        <h3><span class="dot"></span> Missing → locked out</h3>
+        <div class="cap">Legacy point-stg EC2, still live, omitted from the map</div>
+        <ul>
+          <li>ponta-proxy-role &nbsp;<span style="color:var(--text-dim)">(Squid)</span></li>
+          <li>point-hulft-role &nbsp;<span style="color:var(--text-dim)">(HULFT/NFS)</span></li>
+        </ul>
+        <div class="cap" style="margin-top:14px">SSM agent needs group <code style="color:var(--danger);background:var(--danger-dim)">ssm</code> (ssm+ssmmessages) + <code style="color:var(--danger);background:var(--danger-dim)">compute</code> (ec2messages). Neither role had either.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TIMELINE -->
+  <section class="animate" style="--i:10">
+    <div class="section-label"><span class="num">05</span> Timeline</div>
+    <h2>From apply to fix</h2>
+    <div class="timeline">
+      <div class="tl crit"><div class="t">2026-06-30 · 06:25:04 UTC</div><div class="d">Last successful SSM ping from hulft &amp; ponta-proxy. <span>PingStatus about to freeze.</span></div></div>
+      <div class="tl crit"><div class="t">2026-06-30 · 06:26:54 UTC</div><div class="d"><code>endpoints</code> applied from bastion → ssm/ec2messages/ssmmessages policies rewritten. <span>Two roles dropped.</span></div></div>
+      <div class="tl"><div class="t">2026-06-30 · ~07:45 UTC</div><div class="d">Pre-authorized MGS session tokens expire; message channel collapses; <span>~15× retry storm to ec2messages begins (runs for days).</span></div></div>
+      <div class="tl"><div class="t">2026-06-30 → 07-08</div><div class="d"><span>8 days ConnectionLost. Box, NFS, Squid keep serving. Agent retries every few seconds, always AccessDenied.</span></div></div>
+      <div class="tl"><div class="t">2026-07-08 · investigation</div><div class="d">SSM down (the fault) · sshd off on hulft · serial console has no OS password · EICE blocked by SG+IAM. <span>Path finally: EICE into ponta-proxy (AL2023) after SG+IAM fix.</span></div></div>
+      <div class="tl fix"><div class="t">2026-07-08 · agent log read</div><div class="d">The real cause surfaces: <code>no VPC endpoint policy allows the action</code>. <span>All prior theories retracted.</span></div></div>
+      <div class="tl fix"><div class="t">2026-07-08 · PR #135</div><div class="d">Add both roles to <code>tfvars/stg.tfvars</code>. <span>Apply → agents recover on next retry, no reboot.</span></div></div>
+    </div>
+  </section>
+
+  <!-- FIX -->
+  <section class="animate" style="--i:11">
+    <div class="section-label"><span class="num">06</span> The fix</div>
+    <h2>Two lines. No reboot. Both boxes recover.</h2>
+    <p class="section-intro">Add the missing roles to the stg <code>role_endpoint_access</code> map. Endpoint policies match <code>aws:PrincipalArn</code> at request time, so this only extends the allowlist — it does not require the roles to be Terraform-managed.</p>
+    <div class="exhibit">
+      <div class="head"><span class="name">terraform/components/endpoints/tfvars/stg.tfvars</span><span class="badge fix">PR #135</span></div>
+<pre><span class="c">  "point-data-transfer-role" = ["secrets", "storage", "compute", "ssm", "observability"]</span>
+<span class="g">+ "ponta-proxy-role" = ["secrets", "storage", "compute", "ssm", "observability"]</span>
+<span class="g">+ "point-hulft-role" = ["secrets", "storage", "compute", "ssm", "observability"]</span></pre>
+    </div>
+    <div class="callout ok">
+      <strong>Recovery.</strong> No reboot, no in-guest action. Once the policy allows the roles, each agent's next retry
+      succeeds and both instances return to <code>Online</code> within minutes. Verify:
+      <code>aws ssm describe-instance-information --filters Key=InstanceIds,Values=i-042325ebdb8991aa9,i-0ce6fa785d00e57a0</code>.
+      <br><br><strong>Note.</strong> A reboot or <code>systemctl restart amazon-ssm-agent</code> would <em>not</em> have fixed it —
+      the agent comes back and hits the same endpoint-policy denial. prd hosts an equivalent hulft; if its endpoint policies
+      apply from the same map they will need the same two roles.
+    </div>
+  </section>
+
+  <footer>
+    <span>SSM ConnectionLost · VPC endpoint policy allowlist · point stg 471112755246</span>
+    <span>evidence: agent log · endpoint policy · CloudTrail · VPC Flow Logs</span>
+  </footer>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const config = { fitPadding: 28, minHeight: 360, maxHeightPx: 960, maxHeightVh: 0.84, maxInitialZoom: 1.7, minZoom: 0.08, maxZoom: 6.5, zoomStep: 0.14, readabilityFloor: 0.55 };
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: false, theme: 'base', look: 'classic',
+    themeVariables: {
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif", fontSize: '15px',
+      primaryColor: isDark ? '#16233d' : '#e8eefb',
+      primaryBorderColor: isDark ? '#4c8dff' : '#1d4ed8',
+      primaryTextColor: isDark ? '#dbe4f2' : '#14233d',
+      lineColor: isDark ? '#8394b0' : '#55688a',
+      tertiaryColor: isDark ? '#3a2b12' : '#fdf4e3',
+      tertiaryBorderColor: isDark ? '#eeb03e' : '#b1741a',
+    }
+  });
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0;
+    let sx = 0, sy = 0, spx = 0, spy = 0, touchDist = 0, touchCx = 0, touchCy = 0;
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight, rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+    function applyTransform() {
+      const svg = canvas.querySelector('svg'); if (!svg || !svgW) return;
+      constrainPan(); svg.style.width = (svgW * zoom) + 'px'; svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`; label.textContent = Math.round(zoom * 100) + '% — ' + fitMode;
+    }
+    function canPan() {
+      const rW = svgW * zoom, rH = svgH * zoom;
+      return rW + config.fitPadding * 2 > viewport.clientWidth || rH + config.fitPadding * 2 > viewport.clientHeight;
+    }
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding * 2), aH = Math.max(80, vpH - config.fitPadding * 2);
+      const contain = Math.min(aW / svgW, aH / svgH); let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH / svgW, vpR = vpH / Math.max(vpW, 1);
+        if (chartR >= vpR) { z = aW / svgW; mode = 'width-priority'; } else { z = aH / svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+    function fitDiagram() { if (!svgW) return; const fit = computeSmartFit(); zoom = fit.zoom; fitMode = fit.mode; panX = (viewport.clientWidth - svgW * zoom) / 2; panY = (viewport.clientHeight - svgH * zoom) / 2; applyTransform(); }
+    function setOneToOne() { zoom = clamp(1, config.minZoom, config.maxZoom); fitMode = '1:1'; panX = (viewport.clientWidth - svgW * zoom) / 2; panY = (viewport.clientHeight - svgH * zoom) / 2; applyTransform(); }
+    function zoomAround(factor, cx, cy) { const next = clamp(zoom * factor, config.minZoom, config.maxZoom); const ratio = next / zoom; panX = cx - ratio * (cx - panX); panY = cy - ratio * (cy - panY); zoom = next; fitMode = 'custom'; applyTransform(); }
+    function readSvgNaturalSize(svg) {
+      let w = 0, h = 0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width || 1000; h = r.height || 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg'); if (!svg) return;
+      const clone = svg.cloneNode(true); clone.style.width = ''; clone.style.height = '';
+      const bg = isDark ? '#0b1220' : '#eef2f9';
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+    async function render() {
+      try {
+        const code = source.textContent.trim(); if (!code) { label.textContent = 'Error: Empty'; return; }
+        const id = 'd-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, code); canvas.innerHTML = svg;
+        const svgNode = canvas.querySelector('svg'); if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
+        const size = readSvgNaturalSize(svgNode); svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height'); svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) { console.error(err); label.textContent = 'Error: ' + (err.message || 'render'); }
+    }
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fitDiagram, 'zoom-one': setOneToOne, 'zoom-expand': openInNewTab
+    };
+    Object.entries(actions).forEach(([a, h]) => wrap.querySelector(`[data-action="${a}"]`)?.addEventListener('click', h));
+    viewport.addEventListener('dblclick', fitDiagram);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); const rect = viewport.getBoundingClientRect(); const factor = e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep); zoomAround(factor, e.clientX - rect.left, e.clientY - rect.top); return; }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning'); sx = e.clientX; sy = e.clientY; spx = panX; spy = panY; e.preventDefault();
+      activeDrag = { onMove: (ev) => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); }, onEnd: () => wrap.classList.remove('is-panning') };
+    });
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+</body>
+</html>
