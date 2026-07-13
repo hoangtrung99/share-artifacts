@@ -240,35 +240,58 @@
   <div class="eyebrow">Runbook · hai máy, một môi trường</div>
   <h1>MacBook Pro ⇄ Mac mini</h1>
   <p class="lede">
-    Mac mini là bản sao đầy đủ của môi trường Claude + project verup trên MacBook.
+    Mac mini là bản sao đầy đủ của môi trường Claude + project trên MacBook.
     MacBook là nguồn sự thật. Nền tảng: một lần seed bằng rsync, sau đó Mutagen giữ đồng bộ liên tục qua Tailscale.
+    Mọi thứ chia thành các <strong>unit</strong> độc lập — bật/tắt riêng từng cái.
   </p>
 </header>
 
 <section>
+  <h3>Ba unit</h3>
+  <div class="states">
+    <div class="state s-on">
+      <h4>claude</h4>
+      <p>Môi trường Claude Code: skills, agents, hooks, plugins, MCP, transcript. Độc lập với mọi project — dựng một lần rồi không cần đụng lại.</p>
+    </div>
+    <div class="state s-now">
+      <h4>machine</h4>
+      <p>ssh key, AWS profile, shell dotfile. Chỉ rsync, không sync liên tục.</p>
+    </div>
+    <div class="state s-off">
+      <h4>verup</h4>
+      <p>Một project: repo seed bằng rsync, <code>docs/</code> giữ live bằng Mutagen. Thêm project khác = thả thêm 2 file config.</p>
+    </div>
+  </div>
+</section>
+
+<section>
   <h3>Dùng hằng ngày</h3>
+  <p>Mọi lệnh nhận một unit tuỳ chọn; bỏ trống là <code>all</code>.</p>
   <div class="card">
     <div class="cmdrow">
       <code>msync status</code>
-      <span>Daemon, autostart, và 11 session đang ở trạng thái nào.</span>
+      <span>Từng unit đang ON hay OFF, và mỗi session ở trạng thái nào.</span>
 
-      <code>msync off</code>
-      <span>Tắt sync nền. Session vẫn còn, chỉ ngừng truyền. Hai máy bắt đầu lệch nhau.</span>
+      <code>msync off verup</code>
+      <span>Tắt sync nền của riêng verup. <strong>claude vẫn chạy.</strong></span>
 
-      <code>msync on</code>
-      <span>Bật lại sync nền. Thay đổi lan sang máy kia trong ~2 giây.</span>
+      <code>msync on claude</code>
+      <span>Bật lại một unit. Thay đổi lan sang máy kia trong ~2 giây.</span>
 
       <code>msync now</code>
-      <span>Sync một lần rồi <em>trả về đúng trạng thái trước đó</em>. Chạy được cả khi đang tắt.</span>
+      <span>Sync một lần rồi <em>trả về đúng trạng thái trước đó</em> của từng unit. Chạy được cả khi đang tắt, và kéo <strong>cả hai chiều</strong> với unit two-way.</span>
 
-      <code>msync config</code>
-      <span>In <code>mutagen.yml</code> — nơi 11 session được khai báo.</span>
+      <code>msync seed machine</code>
+      <span>rsync bulk: bản copy đầu tiên, và những thứ Mutagen không gánh.</span>
 
-      <code>msync apply</code>
-      <span>Đọc lại <code>mutagen.yml</code> sau khi sửa. Không truyền lại dữ liệu.</span>
+      <code>msync apply verup</code>
+      <span>Đọc lại <code>&lt;unit&gt;.mutagen.yml</code> sau khi sửa. Không truyền lại dữ liệu.</span>
 
-      <code>msync seed</code>
-      <span>rsync toàn bộ: repo code + secrets + config. Thứ Mutagen không gánh.</span>
+      <code>msync units</code>
+      <span>Liệt kê unit đang có.</span>
+
+      <code>msync config claude</code>
+      <span>In config của một unit.</span>
 
       <code>msync audit</code>
       <span>34 phép kiểm tra hành vi trên mini. Chuẩn: 34 pass / 0 fail.</span>
@@ -364,8 +387,16 @@
       <thead><tr><th>Vị trí</th><th>Nội dung</th></tr></thead>
       <tbody>
         <tr>
-          <td><code>scripts/sync-machines/mutagen.yml</code></td>
-          <td><strong>Đây mới là config thật.</strong> Mutagen project file — cả 11 session, chế độ, ignore rule khai báo bằng YAML. Sửa file này rồi <code>msync apply</code>.</td>
+          <td><code>machine-sync/config/units/&lt;unit&gt;.mutagen.yml</code></td>
+          <td><strong>Đây mới là config thật.</strong> Mutagen project file cho từng unit — session, chế độ, ignore rule khai báo bằng YAML. Sửa file rồi <code>msync apply &lt;unit&gt;</code>.</td>
+        </tr>
+        <tr>
+          <td><code>machine-sync/config/units/&lt;unit&gt;.rsync.conf</code></td>
+          <td>Khai báo unit đó seed những đường dẫn nào, exclude gì, có <code>--delete</code> hay không.</td>
+        </tr>
+        <tr>
+          <td><code>machine-sync/config/host.conf</code></td>
+          <td>File duy nhất mang tính máy: ssh alias, <code>$HOME</code>, đường dẫn mutagen.</td>
         </tr>
         <tr>
           <td><code>~/.mutagen/sessions/</code></td>
@@ -398,16 +429,12 @@
 ssh-copy-id -o PreferredAuthentications=password -o PubkeyAuthentication=no \
             -o IdentityAgent=none -i ~/.ssh/id_ed25519.pub hoangtrung@hongs-mac-mini.tail7d178b.ts.net
 
-<span class="cmt"># 2. Seed toàn bộ bằng rsync (~20 GB, ~8 phút qua LAN)</span>
-cd ~/Work/solashi/verup/scripts/sync-machines
-./sync-machines.sh preflight     <span class="cmt"># ssh, $HOME khớp, dung lượng, rsync, đường truyền</span>
-./sync-machines.sh all -n        <span class="cmt"># dry-run: in ra mọi file sẽ đụng tới</span>
-./sync-machines.sh all           <span class="cmt"># chạy thật</span>
-./sync-machines.sh postflight    <span class="cmt"># prune worktree cũ + in checklist re-auth</span>
+<span class="cmt"># 2. Seed bulk (~20 GB, ~8 phút qua LAN)</span>
+msync seed                       <span class="cmt"># mọi unit; hoặc: msync seed claude</span>
 
 <span class="cmt"># 3. Sync liên tục</span>
-brew install mutagen-io/mutagen/mutagen
-mutagen project start            <span class="cmt"># đọc ./mutagen.yml, dựng 11 session</span>
+brew install mutagen-io/mutagen/mutagen   <span class="cmt"># chỉ máy này; agent tự copy sang mini</span>
+msync apply                      <span class="cmt"># dựng session của mọi unit</span>
 msync autostart on
 msync audit                      <span class="cmt"># kỳ vọng: 34 pass / 0 fail</span>
 
@@ -416,14 +443,31 @@ msync audit                      <span class="cmt"># kỳ vọng: 34 pass / 0 fa
 </section>
 
 <section>
-  <h2>Sửa cấu hình</h2>
+  <h2>Thêm một project mới</h2>
   <p>
-    Cả 11 session được khai báo trong <code>mutagen.yml</code> — project file native của Mutagen.
-    Thêm thư mục, đổi chế độ, thêm ignore rule: sửa file đó rồi <code>msync apply</code>.
+    Không sửa dòng code nào. Thả 3 file vào <code>config/units/</code> rồi chạy 2 lệnh:
   </p>
-  <pre><code>msync config              <span class="cmt"># xem cấu hình hiện tại</span>
-$EDITOR mutagen.yml       <span class="cmt"># sửa</span>
-msync apply               <span class="cmt"># terminate + recreate từ file</span></code></pre>
+  <pre><code>cd ~/Work/solashi/machine-sync/config/units
+cp _template.rsync.conf  myproject.rsync.conf     <span class="cmt"># seed đường dẫn nào, exclude gì</span>
+cp _template.mutagen.yml myproject.mutagen.yml    <span class="cmt"># chỉ khi cần sync liên tục</span>
+$EDITOR myproject.rsync.conf myproject.mutagen.yml
+cp ../../exclude/verup.txt ../../exclude/myproject.txt
+
+msync seed  myproject     <span class="cmt"># copy bulk lần đầu</span>
+msync apply myproject     <span class="cmt"># dựng session live</span></code></pre>
+  <p>
+    Unit được nhận diện từ <em>tên file</em> trong <code>config/units/</code>. File bắt đầu bằng <code>_</code> bị bỏ qua —
+    nên template là trơ, không tạo unit.
+  </p>
+  <p class="note">
+    <strong>Tên session nằm trong một namespace phẳng duy nhất</strong> của Mutagen daemon.
+    Đặt tiền tố bằng tên unit thì không bao giờ đụng nhau.
+  </p>
+
+  <h3 style="margin-top:1rem">Sửa cấu hình sẵn có</h3>
+  <pre><code>msync config claude                     <span class="cmt"># xem</span>
+$EDITOR config/units/claude.mutagen.yml <span class="cmt"># sửa</span>
+msync apply claude                      <span class="cmt"># terminate + recreate từ file</span></code></pre>
   <p class="note">
     <strong>Vì sao <code>apply</code> phải terminate rồi tạo lại:</strong> Mutagen không có lệnh reload —
     session đang sống là protobuf nhị phân trong daemon. Nhưng thao tác này <em>rẻ</em>: session mới scan hai máy,
@@ -493,9 +537,9 @@ msync apply               <span class="cmt"># terminate + recreate từ file</sp
 <hr>
 
 <footer>
-  Toolkit: <code>~/Work/solashi/verup/scripts/sync-machines/</code> —
-  <code>sync-machines.sh</code> (seed) · <code>mutagen.yml</code> (khai báo session) ·
-  <code>sync-ctl.sh</code> (lệnh <code>msync</code>) · <code>audit-mini.sh</code> (34 phép kiểm tra).
+  Toolkit: <code>~/Work/solashi/machine-sync/</code> — nằm ngoài mọi project mà nó sync.
+  <code>msync</code> (CLI) · <code>config/units/</code> (khai báo unit) ·
+  <code>lib/seed.sh</code> (engine rsync) · <code>lib/audit.sh</code> (34 phép kiểm tra).
 </footer>
 
 </div>
