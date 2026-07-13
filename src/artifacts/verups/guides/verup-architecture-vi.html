@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verup Platform — Tổng quan kiến trúc</title>
+<script>
+(function(){var s=localStorage.getItem('theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark');})();
+</script>
+<style>
+:root{
+  --bg:#FAF9F5;--bg-card:#fff;--text:#141413;--text-soft:#3D3D3A;--text-mute:#87867F;
+  --accent:#D97757;--accent-bg:rgba(217,119,87,.08);--oat:#E3DACC;--olive:#788C5D;--rust:#B04A3F;
+  --border:#D1CFC5;--border-soft:#F0EEE6;
+  --serif:ui-serif,Georgia,'Times New Roman',serif;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;
+}
+html.dark{
+  --bg:#16140F;--bg-card:#211E18;--text:#E8E6DC;--text-soft:#C9C5B5;--text-mute:#7E7B6E;
+  --accent:#E08866;--accent-bg:rgba(224,136,102,.10);--oat:#3A3528;--olive:#9CAF7A;--rust:#D4665A;
+  --border:#3A362D;--border-soft:#2A2722;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text-soft);font-family:var(--sans);font-size:15px;line-height:1.65;padding:48px 24px 80px}
+.page{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:36px}
+@media(max-width:900px){.page{grid-template-columns:1fr}}
+header{grid-column:1/-1;margin-bottom:8px}
+.eyebrow{font-family:var(--mono);font-size:12px;color:var(--text-mute);margin-bottom:10px;letter-spacing:.02em}
+h1{font-family:var(--serif);font-weight:500;font-size:34px;line-height:1.2;color:var(--text);margin-bottom:14px}
+.lead{max-width:760px;font-size:15.5px}
+.lead code{font-family:var(--mono);font-size:13px}
+h2{font-family:var(--serif);font-weight:500;font-size:23px;color:var(--text);margin:40px 0 14px;scroll-margin-top:20px}
+h3{font-family:var(--sans);font-weight:600;font-size:15px;color:var(--text);margin:24px 0 8px}
+p{margin-bottom:10px}
+code{font-family:var(--mono);font-size:13px;background:var(--border-soft);padding:1px 5px;border-radius:4px}
+html.dark code{background:#2A2722}
+strong{color:var(--text)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+section{scroll-margin-top:20px}
+.toc{position:sticky;top:20px;align-self:start}
+.toc .label{font-family:var(--sans);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);margin-bottom:10px}
+.toc ol{list-style:none}
+.toc li{margin-bottom:6px}
+.toc a{font-size:12.5px;color:var(--text-soft);font-family:var(--mono)}
+.toc a:hover{color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0 20px}
+th{text-align:left;font-family:var(--sans);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-mute);border-bottom:2px solid var(--border);padding:8px 10px;vertical-align:bottom}
+td{border-bottom:1px solid var(--border-soft);padding:8px 10px;vertical-align:top;line-height:1.5}
+td code{font-size:11.5px}
+tr:hover td{background:var(--border-soft)}
+html.dark tr:hover td{background:#262320}
+.diagram{border:1.5px solid var(--border);border-radius:12px;background:var(--bg-card);padding:20px;overflow-x:auto;margin:14px 0 22px}
+svg.flow{display:block;max-width:100%;height:auto}
+svg.flow text{font-family:var(--mono);font-size:12px;fill:var(--text)}
+svg.flow .sub{font-size:10px;fill:var(--text-mute)}
+svg.flow .box{fill:var(--bg-card);stroke:var(--border);stroke-width:1.5}
+svg.flow .box.accent{fill:var(--accent-bg);stroke:var(--accent)}
+svg.flow .box.olive{fill:rgba(120,140,93,.10);stroke:var(--olive)}
+svg.flow .box.dark{fill:#2A2722;stroke:var(--accent)}
+html.dark svg.flow .box.dark{fill:#0D0C0A}
+svg.flow .arr{stroke:var(--text-mute);stroke-width:1.5;fill:none;marker-end:url(#ah)}
+svg.flow .arr.dash{stroke-dasharray:5 4}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin:14px 0 22px}
+.card{border:1.5px solid var(--border);border-radius:10px;background:var(--bg-card);padding:16px 18px}
+.card .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:600}
+.card h4{font-family:var(--serif);font-weight:500;font-size:16px;color:var(--text);margin:4px 0 8px}
+.card p{font-size:13px;margin-bottom:0}
+.callout{border:1.5px solid var(--accent);border-radius:10px;background:var(--accent-bg);padding:16px 20px;margin:14px 0 22px}
+.callout .head{font-family:var(--sans);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:8px}
+.callout p{font-size:13.5px;margin-bottom:6px}
+.callout p:last-child{margin-bottom:0}
+pre.code{background:#141413;color:#E8E6DC;font-family:var(--mono);font-size:12.5px;line-height:1.7;border-radius:8px;padding:14px 16px;overflow-x:auto;margin:12px 0 20px}
+html.dark pre.code{background:#0D0C0A;border:1px solid var(--border)}
+pre.code .c{color:#87867F}
+pre.code .k{color:#C9B98A}
+pre.code .s{color:#A8BC8C}
+.badge{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:4px;font-weight:600;vertical-align:middle}
+.badge.rust{background:rgba(176,74,63,.14);color:var(--rust)}
+.badge.olive{background:rgba(120,140,93,.14);color:var(--olive)}
+.badge.accent{background:var(--accent-bg);color:var(--accent)}
+.toggle{position:fixed;bottom:24px;right:24px;width:42px;height:42px;border-radius:50%;border:1.5px solid var(--border);background:var(--bg-card);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.12);transition:border-color .2s}
+.toggle:hover{border-color:var(--accent)}
+.toggle .moon{display:none}
+html.dark .toggle .sun{display:none}
+html.dark .toggle .moon{display:block}
+td .yes{color:var(--olive);font-weight:600}
+td .no{color:var(--rust)}
+</style>
+</head>
+<body>
+<button class="toggle" onclick="var e=document.documentElement;var d=e.classList.toggle('dark');localStorage.setItem('theme',d?'dark':'light')">
+<span class="sun">&#9728;</span><span class="moon">&#9790;</span>
+</button>
+<div class="page">
+
+<header>
+<div class="eyebrow">verup &middot; ghi chú kiến trúc &middot; 07-2026</div>
+<h1>Verup Platform &mdash; Tổng quan kiến trúc</h1>
+<p class="lead">
+  <strong>Verup</strong> là sáp nhập 2 hệ thống: <strong>Exchange</strong> (sàn crypto cũ) và <strong>Point</strong> (nền tảng điểm/thưởng). Codebase thống nhất absorb code Exchange, hạ tầng, và frontend, giữ Point làm reference cho kiến trúc đích. Migration Verup &rarr; Point đang diễn ra &mdash; Phase 3 (apply DEV) xong; Phase 4 (apply STG) đang chờ EKS ladder, Aurora cutover, và CTO phê duyệt.
+</p>
+</header>
+
+<nav class="toc">
+<div class="label">Mục lục</div>
+<ol>
+<li><a href="#overview">Tổng quan</a></li>
+<li><a href="#backend">Backend</a></li>
+<li><a href="#worker">Worker / SQS / Redis</a></li>
+<li><a href="#database">Cơ sở dữ liệu</a></li>
+<li><a href="#infra">Hạ tầng</a></li>
+<li><a href="#etl">ETL Pipeline</a></li>
+<li><a href="#observability">Giám sát</a></li>
+<li><a href="#frontend">Frontend</a></li>
+<li><a href="#cicd">CI/CD</a></li>
+<li><a href="#request">Luồng request</a></li>
+<li><a href="#decisions">Quyết định kỹ thuật</a></li>
+</ol>
+</nav>
+
+<main>
+
+<!-- ===================== OVERVIEW ===================== -->
+<section id="overview">
+<h2>1 &middot; Topology Repository</h2>
+<p>12 sub-repo trong một workspace. Quy tắc: chỉ <code>bs-point-infra</code> và <code>bs-point-server</code> thuộc phe Point; mọi <code>bs-*</code> khác = Verup.</p>
+
+<table>
+<thead><tr><th>Sub-repo</th><th>Phe</th><th>Vai trò</th></tr></thead>
+<tbody>
+<tr><td><code>bs-integration-server</code></td><td><span class="badge rust">Verup</span></td><td>Backend &mdash; Java 17 + Kotlin + Spring Boot 2.5/2.6. Monolith exchange + point gộp. 6 module Gradle.</td></tr>
+<tr><td><code>bs-point-server</code></td><td><span class="badge olive">Point</span></td><td>Backend reference cho migration target. Fork point-only &mdash; cùng kiến trúc, bỏ code exchange.</td></tr>
+<tr><td><code>bs-exchange-infra</code></td><td><span class="badge rust">Verup</span></td><td>Terraform + Kustomize k8s manifests. Đang chạy cho <code>dev-ex</code> / <code>stg-ex</code>.</td></tr>
+<tr><td><code>bs-point-infra</code></td><td><span class="badge olive">Point</span></td><td>Terraform migration target. Code sống ở branch <code>release/verup</code> (39+ PR merged).</td></tr>
+<tr><td><code>bs-observability-infra</code></td><td><span class="badge rust">Verup</span></td><td>Chỉ CloudWatch dashboards (9 dashboards). Không có alarms, SNS, hay Lambda.</td></tr>
+<tr><td><code>bs-glue-jobs</code></td><td><span class="badge rust">Verup</span></td><td>ETL artefacts: PySpark script, configs per-env, GitHub Actions, ops scripts.</td></tr>
+<tr><td><code>bs-exchange-front</code></td><td><span class="badge rust">Verup</span></td><td>Next.js 12 + React 17. Customer exchange web (basePath <code>/exchange</code>).</td></tr>
+<tr><td><code>bs-point-front</code></td><td><span class="badge olive">Point</span></td><td>Next.js 15 + React 18. Customer point web.</td></tr>
+<tr><td><code>bs-admin-front</code></td><td><span class="badge rust">Verup</span></td><td>Vue 2.6 + Vuetify 2.5. Admin panel.</td></tr>
+<tr><td><code>bs-game-front</code></td><td><span class="badge rust">Verup</span></td><td>Next.js 15 + React 18. Mini-game (basePath <code>/farm-game</code>).</td></tr>
+<tr><td><code>bs-DBmigration-Tools</code></td><td><span class="badge rust">Verup</span></td><td>DB migration utilities.</td></tr>
+<tr><td><code>bs-infra-doc</code></td><td><span class="badge rust">Verup</span></td><td>Docs repo &mdash; deep-dives + playbooks cho infra components.</td></tr>
+</tbody>
+</table>
+
+<div class="callout">
+<div class="head">Trạng thái migration</div>
+<p><strong>Phase 3 (apply DEV):</strong> <span class="yes">&#10003; Xong</span> &mdash; ~38 component/infra/k8s targets applied lên point-DEV (<code>905418018638</code>).</p>
+<p><strong>Phase 4 (apply STG):</strong> <span class="no">&#9679; Đang chờ</span> &mdash; STG (<code>471112755246</code>) chưa bắt đầu; blocked on EKS ladder, Aurora cutover, CTO sign-off.</p>
+<p><strong>Thứ tự apply (serial nghiêm ngặt):</strong> <code>secrets_manager &rarr; vpc &rarr; vpc_peering &rarr; endpoints &rarr; security_group &rarr; eks &rarr; aurora &rarr; elasticache &rarr; redshift</code></p>
+</div>
+</section>
+
+<!-- ===================== BACKEND ===================== -->
+<section id="backend">
+<h2>2 &middot; Kiến trúc Backend</h2>
+<p>Cả 2 backend repo có cấu trúc Gradle module giống hệt nhau: <strong>6 module</strong>, mỗi module là một Spring Boot deployable riêng. Tất cả module executable chỉ phụ thuộc <code>point-common</code> &mdash; không có dependency giữa các module. Giao tiếp cross-module dùng <code>RestTemplate</code> &rarr; Kubernetes DNS.</p>
+
+<div class="diagram">
+<svg class="flow" viewBox="0 0 760 380">
+<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-mute)"/></marker></defs>
+<rect x="280" y="10" width="200" height="56" rx="10" class="box accent"/>
+<text x="380" y="32" text-anchor="middle" font-weight="600">point-common</text>
+<text x="380" y="48" text-anchor="middle" class="sub">shared kernel &middot; entities &middot; repos</text>
+<text x="380" y="60" text-anchor="middle" class="sub">Redis &middot; AWS &middot; DB config &middot; Flyway</text>
+<line x1="330" y1="66" x2="120" y2="120" class="arr"/>
+<line x1="360" y1="66" x2="270" y2="120" class="arr"/>
+<line x1="380" y1="66" x2="380" y2="120" class="arr"/>
+<line x1="400" y1="66" x2="490" y2="120" class="arr"/>
+<line x1="430" y1="66" x2="620" y2="120" class="arr"/>
+<rect x="40" y="124" width="160" height="52" rx="8" class="box"/>
+<text x="120" y="146" text-anchor="middle" font-weight="600">point-api</text>
+<text x="120" y="162" text-anchor="middle" class="sub">public REST API</text>
+<rect x="220" y="124" width="140" height="52" rx="8" class="box"/>
+<text x="290" y="146" text-anchor="middle" font-weight="600">point-admin</text>
+<text x="290" y="162" text-anchor="middle" class="sub">back-office API</text>
+<rect x="380" y="124" width="130" height="52" rx="8" class="box"/>
+<text x="445" y="146" text-anchor="middle" font-weight="600">point-app</text>
+<text x="445" y="162" text-anchor="middle" class="sub">customer portal</text>
+<rect x="530" y="124" width="130" height="52" rx="8" class="box"/>
+<text x="595" y="146" text-anchor="middle" font-weight="600">point-mmh</text>
+<text x="595" y="162" text-anchor="middle" class="sub">market maker hub</text>
+<rect x="680" y="124" width="70" height="52" rx="8" class="box"/>
+<text x="700" y="146" text-anchor="middle" font-weight="600" font-size="10">point-&#8203;worker</text>
+<text x="700" y="162" text-anchor="middle" class="sub" font-size="9">async engine</text>
+<rect x="250" y="250" width="260" height="44" rx="8" class="box olive"/>
+<text x="380" y="276" text-anchor="middle">point-api-service.default.svc.cluster.local:8080</text>
+<line x1="120" y1="176" x2="290" y2="250" class="arr dash"/>
+<line x1="290" y1="176" x2="330" y2="250" class="arr dash"/>
+<line x1="445" y1="176" x2="400" y2="250" class="arr dash"/>
+<line x1="595" y1="176" x2="430" y2="250" class="arr dash"/>
+<text x="380" y="230" text-anchor="middle" class="sub">HTTP RestTemplate (không service mesh)</text>
+<rect x="560" y="250" width="160" height="44" rx="8" class="box olive"/>
+<text x="640" y="276" text-anchor="middle">Redis pub/sub (price feed)</text>
+<line x1="595" y1="176" x2="640" y2="250" class="arr dash"/>
+<line x1="445" y1="176" x2="600" y2="250" class="arr dash"/>
+</svg>
+</div>
+
+<h3>Vai trò từng module</h3>
+<table>
+<thead><tr><th>Module</th><th>Vai trò</th><th>Integration server</th><th>Point server</th></tr></thead>
+<tbody>
+<tr><td><code>point-common</code></td><td>Shared kernel</td><td>Lớn hơn: + spot/exchange entities, MyBatis-Plus, Fireblocks, Athena, Redisson</td><td>Nhỏ hơn: chỉ point/pos/invest/operate</td></tr>
+<tr><td><code>point-api</code></td><td>Public REST API</td><td><span class="yes">Exchange + Point</span>: spot/order, ticker, orderbook, candlestick, asset, webhooks</td><td><span class="no">Chỉ asset + webhooks</span></td></tr>
+<tr><td><code>point-admin</code></td><td>Back-office API</td><td><span class="yes">279 controllers</span>: AML, spot, staking, IEO, CSV export</td><td><span class="no">~136 controllers</span>: chỉ point/invest/operate</td></tr>
+<tr><td><code>point-app</code></td><td>Customer portal</td><td><span class="yes">invest/ + operate/ + exchange/ + game/</span></td><td><span class="no">invest/ + operate/ + game/</span> (bỏ exchange/)</td></tr>
+<tr><td><code>point-mmh</code></td><td>Market Maker Hub &mdash; SQS workers tạo POS market data</td><td>Exchange + POS makers (PosBestPriceMaker, PosCandlestickMaker, v.v.)</td><td>Chỉ POS makers</td></tr>
+<tr><td><code>point-worker</code></td><td>Batch / async job engine</td><td><span class="yes">~80 workers</span>: spot executor, AML, staking, sygna, chainalysis</td><td><span class="no">~35 workers</span>: chỉ point/invest/operate</td></tr>
+</tbody>
+</table>
+
+<div class="callout">
+<div class="head">integration-server vs point-server: khác biệt thực sự</div>
+<p><code>bs-point-server</code> <strong>không phải rename</strong> &mdash; là <strong>fork subset point-only</strong>. Cấu trúc Gradle identical, Spring Boot version identical, worker engine và DB pattern identical. Exchange controllers, workers, entities, và dependencies (MyBatis-Plus, Fireblocks, Athena, Redisson) bị xoá.</p>
+</div>
+</section>
+
+<!-- ===================== WORKER ===================== -->
+<section id="worker">
+<h2>3 &middot; Luồng Worker / SQS / Redis</h2>
+<p>Workers là <strong>event-driven</strong>, không phải cron-driven. Mỗi worker class có SQS queue riêng (auto-created). Message dạng SNS-wrapped. Execution gate bởi Redis lock với <strong>TTL&nbsp;=&nbsp;0</strong> (không bao giờ tự expire).</p>
+
+<div class="diagram">
+<svg class="flow" viewBox="0 0 760 340">
+<defs><marker id="ah2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-mute)"/></marker></defs>
+<rect x="20" y="20" width="120" height="44" rx="8" class="box"/>
+<text x="80" y="46" text-anchor="middle">Trigger (SNS)</text>
+<rect x="180" y="20" width="120" height="44" rx="8" class="box"/>
+<text x="240" y="40" text-anchor="middle">SQS Queue</text>
+<text x="240" y="54" text-anchor="middle" class="sub">auto-created</text>
+<rect x="340" y="20" width="130" height="44" rx="8" class="box"/>
+<text x="405" y="40" text-anchor="middle">SqsSubscriber</text>
+<text x="405" y="54" text-anchor="middle" class="sub">long-poll 20s</text>
+<rect x="510" y="20" width="130" height="44" rx="8" class="box"/>
+<text x="575" y="40" text-anchor="middle">SqsCallback</text>
+<text x="575" y="54" text-anchor="middle" class="sub">parse &rarr; WorkerForm</text>
+<line x1="140" y1="42" x2="180" y2="42" class="arr"/>
+<line x1="300" y1="42" x2="340" y2="42" class="arr"/>
+<line x1="470" y1="42" x2="510" y2="42" class="arr"/>
+<rect x="680" y="20" width="70" height="44" rx="8" class="box olive"/>
+<text x="715" y="40" text-anchor="middle" font-size="10">Worker-&#8203;Master</text>
+<text x="715" y="54" text-anchor="middle" class="sub" font-size="9">DB table</text>
+<line x1="640" y1="42" x2="680" y2="42" class="arr"/>
+<rect x="200" y="130" width="140" height="50" rx="8" class="box accent"/>
+<text x="270" y="152" text-anchor="middle">Redis Lock</text>
+<text x="270" y="168" text-anchor="middle" class="sub">setIfAbsent(key, date)</text>
+<text x="270" y="178" text-anchor="middle" class="sub" fill="var(--rust)" font-weight="600">TTL = 0 (không expire!)</text>
+<line x1="575" y1="64" x2="340" y2="130" class="arr"/>
+<rect x="400" y="130" width="140" height="50" rx="8" class="box"/>
+<text x="470" y="152" text-anchor="middle">Worker.execute()</text>
+<text x="470" y="168" text-anchor="middle" class="sub">business logic</text>
+<line x1="340" y1="155" x2="400" y2="155" class="arr"/>
+<text x="370" y="148" text-anchor="middle" class="sub" fill="var(--olive)">acquired</text>
+<rect x="200" y="220" width="140" height="40" rx="8" class="box" fill="rgba(176,74,63,.06)" stroke="var(--rust)"/>
+<text x="270" y="244" text-anchor="middle" fill="var(--rust)">lock failed &rarr; return</text>
+<line x1="270" y1="180" x2="270" y2="220" class="arr" stroke="var(--rust)"/>
+<text x="285" y="200" class="sub" fill="var(--rust)">held</text>
+<rect x="400" y="220" width="140" height="40" rx="8" class="box olive"/>
+<text x="470" y="244" text-anchor="middle">unlock (finally block)</text>
+<line x1="470" y1="180" x2="470" y2="220" class="arr"/>
+</svg>
+</div>
+
+<table>
+<thead><tr><th>Quyết định design</th><th>Chi tiết</th><th>Bằng chứng</th></tr></thead>
+<tbody>
+<tr><td><strong>Redis lock TTL = 0</strong></td><td><code>LockParams.WORKER</code> có <code>lockExpireSeconds = 0</code>. Lock không tự expire &mdash; phụ thuộc <code>finally</code> unlock. <strong>Rủi ro: pod crash = lock kẹt</strong> cần can thiệp thủ công.</td><td><code>RedisManager.java</code></td></tr>
+<tr><td><strong>SQS auto-create</strong></td><td>Queue tạo on-demand per worker class, tên <code>&lt;env&gt;-&lt;workerClassName&gt;</code>, attach SNS topic policy.</td><td><code>SqsManager.java</code></td></tr>
+<tr><td><strong>Không có dead-letter queue</strong></td><td>Không DLQ &mdash; message fail chỉ retry theo Glue built-in (max 1) hoặc visibility timeout (120s).</td><td><code>SqsCallback.java</code></td></tr>
+<tr><td><strong>Không event bus</strong></td><td>Không Kafka, RabbitMQ, Spring Cloud Stream. Chỉ SNS/SQS cho job distribution + Redis pub/sub cho WebSocket price broadcast.</td><td><code>Application.java</code></td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ===================== DATABASE ===================== -->
+<section id="database">
+<h2>4 &middot; Pattern truy cập Database</h2>
+<p>Tồn tại 2 lớp. Không được nhầm lẫn.</p>
+
+<h3>Lớp 1 &mdash; Infra / Secrets Manager (DB users)</h3>
+<table>
+<thead><tr><th>Secret ID</th><th>DB User</th><th>Quyền</th></tr></thead>
+<tbody>
+<tr><td><code>point/aurora/master_user</code></td><td><code>master_user</code></td><td>DDL, GRANT, CREATE USER</td></tr>
+<tr><td><code>point/aurora/editor_service</code></td><td><code>editor</code> / <code>point</code></td><td>Write: INSERT/UPDATE/DELETE/DDL</td></tr>
+<tr><td><code>point/aurora/viewer_service</code></td><td><code>viewer</code> / <code>point_viewer</code></td><td>Read-only: SELECT</td></tr>
+<tr><td><code>point/redshift/*</code></td><td>Tương tự</td><td>Redshift tách biệt Aurora</td></tr>
+</tbody>
+</table>
+
+<h3>Lớp 2 &mdash; Application code (dual datasource, không tự route)</h3>
+<div class="diagram">
+<svg class="flow" viewBox="0 0 760 240">
+<defs><marker id="ah3" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-mute)"/></marker></defs>
+<rect x="40" y="20" width="280" height="70" rx="10" class="box olive"/>
+<text x="180" y="44" text-anchor="middle" font-weight="600">master DataSource</text>
+<text x="180" y="60" text-anchor="middle" class="sub">MariaDB JDBC &middot; MySQL5Dialect</text>
+<text x="180" y="74" text-anchor="middle" class="sub">Aurora MySQL (port 13306)</text>
+<text x="180" y="84" text-anchor="middle" class="sub">scans: point.common.repos, point.pos.repos</text>
+<rect x="440" y="20" width="280" height="70" rx="10" class="box accent"/>
+<text x="580" y="44" text-anchor="middle" font-weight="600">historical DataSource</text>
+<text x="580" y="60" text-anchor="middle" class="sub">PostgreSQL JDBC &middot; PostgreSQL82Dialect</text>
+<text x="580" y="74" text-anchor="middle" class="sub">Amazon Redshift (port 5439)</text>
+<text x="580" y="84" text-anchor="middle" class="sub">qua JdbcTemplate / NamedParameterJdbcTemplate</text>
+<rect x="60" y="140" width="240" height="36" rx="8" class="box"/>
+<text x="180" y="162" text-anchor="middle" class="sub">masterTransactionManager</text>
+<rect x="460" y="140" width="240" height="36" rx="8" class="box"/>
+<text x="580" y="162" text-anchor="middle" class="sub">historicalJpaTransactionManager</text>
+<line x1="180" y1="90" x2="180" y2="140" class="arr"/>
+<line x1="580" y1="90" x2="580" y2="140" class="arr"/>
+<text x="380" y="200" text-anchor="middle" class="sub" font-weight="600">Dev tự chọn datasource mỗi method &mdash; không tự route read/write</text>
+</svg>
+</div>
+
+<pre class="code"><span class="c">// Read-only master query</span>
+@Transactional(readOnly = <span class="k">true</span>, transactionManager = CommonConstants.MASTER_TRANSACTION_MANAGER)
+<span class="k">public</span> User findById(Long id) { ... }
+
+<span class="c">// Write to master</span>
+@Transactional(transactionManager = CommonConstants.MASTER_TRANSACTION_MANAGER, rollbackFor = Exception.class)
+<span class="k">public void</span> save(User user) { ... }
+
+<span class="c">// Archive to historical (Redshift)</span>
+@Transactional(transactionManager = <span class="s">"historicalJpaTransactionManager"</span>)
+<span class="k">public void</span> archive() { ... }</pre>
+
+<p><strong>Schema management:</strong> <code>ddl-auto: validate</code> (không auto-create). Flyway quản lý schema qua <code>docker/flyway-*</code>. Integration server thêm MyBatis-Plus (<code>MasterMybatisConfig.java</code>) và Glue historical access (<code>GlueHistoricalDataSourceConfig.java</code>); point server không có.</p>
+</section>
+
+<!-- ===================== INFRA ===================== -->
+<section id="infra">
+<h2>5 &middot; Hạ tầng (Terraform + k8s)</h2>
+<p>Cả 2 repo dùng <code>terraform.sh</code> wrapper với S3 remote state + DynamoDB lock. k8s manifests dùng Kustomize (base + overlays).</p>
+
+<table>
+<thead><tr><th>Khía cạnh</th><th>bs-exchange-infra (Verup)</th><th>bs-point-infra (Point)</th></tr></thead>
+<tbody>
+<tr><td><strong>Environments</strong></td><td><code>dev-ex</code>, <code>stg-ex</code></td><td><code>dev</code>, <code>dev2</code>, <code>dev3</code>, <code>stg</code>, <code>prd</code></td></tr>
+<tr><td><strong>EKS module</strong></td><td><code>terraform-aws-modules/eks ~&gt; 21.1.0</code> (access_entries API)</td><td><code>terraform-aws-modules/eks 17.24.0</code> (legacy, <code>aws_eks_addon</code>)</td></tr>
+<tr><td><strong>Extra components</strong></td><td>glue-etl, s3-csv-export, waf-*, cloudfront-*, lambda-*, ec2-proxy, eice</td><td>s3-waf-logging, schedule-costsaver-lambda, event-notification</td></tr>
+<tr><td><strong>Accounts</strong></td><td>dev <code>845131030484</code>, stg <code>520411743393</code></td><td>dev <code>905418018638</code>, stg <code>471112755246</code>, prd <code>211125716602</code></td></tr>
+</tbody>
+</table>
+
+<h3>Kết nối network</h3>
+<div class="diagram">
+<svg class="flow" viewBox="0 0 760 200">
+<defs><marker id="ah4" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-mute)"/></marker></defs>
+<rect x="260" y="20" width="240" height="60" rx="10" class="box accent"/>
+<text x="380" y="44" text-anchor="middle" font-weight="600">point VPC</text>
+<text x="380" y="60" text-anchor="middle" class="sub">172.18.0.0/16 (dev) / 172.19.0.0/16 (stg)</text>
+<text x="380" y="72" text-anchor="middle" class="sub">EKS cluster &middot; namespace: default</text>
+<rect x="20" y="130" width="160" height="44" rx="8" class="box"/>
+<text x="100" y="156" text-anchor="middle">VPC Peering</text>
+<rect x="220" y="130" width="140" height="44" rx="8" class="box"/>
+<text x="290" y="156" text-anchor="middle">VPN &mdash; Ponta</text>
+<rect x="400" y="130" width="160" height="44" rx="8" class="box"/>
+<text x="480" y="156" text-anchor="middle">PrivateLink &mdash; WhaleFin</text>
+<line x1="290" y1="80" x2="100" y2="130" class="arr dash"/>
+<line x1="350" y1="80" x2="290" y2="130" class="arr dash"/>
+<line x1="420" y1="80" x2="480" y2="130" class="arr dash"/>
+<text x="620" y="156" text-anchor="middle" class="sub">Không Transit Gateway</text>
+</svg>
+</div>
+
+<div class="callout">
+<div class="head">Quy tắc Terraform quan trọng</div>
+<p><strong>Không dùng <code>data</code> sources để query resources tạo bởi cùng component.</strong> Dùng direct resource references. STG (greenfield) sẽ fail ở plan time. Ví dụ: reference <code>aws_iam_policy.ViewerRole[0].arn</code> trực tiếp, không phải <code>data.aws_iam_policy.viewer[0].arn</code>.</p>
+</div>
+
+<p><strong>Pod runtime:</strong> Paketo Buildpacks Base Bionic (Ubuntu 18.04). User <code>cnb</code>. <strong>Không có AWS CLI, curl, wget, nslookup, dig, nc</strong> trong pod.</p>
+</section>
+
+<!-- ===================== ETL ===================== -->
+<section id="etl">
+<h2>6 &middot; ETL Pipeline (Glue)</h2>
+<p><strong>Ownership 2 repo:</strong> <code>bs-glue-jobs</code> sở hữu artefacts (PySpark script, configs, ops scripts). <code>bs-exchange-infra/terraform/components/glue-etl/</code> sở hữu AWS resources (S3, KMS, IAM, Glue jobs, triggers, alarms).</p>
+
+<div class="diagram">
+<svg class="flow" viewBox="0 0 760 200">
+<defs><marker id="ah5" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-mute)"/></marker></defs>
+<rect x="10" y="40" width="140" height="60" rx="10" class="box olive"/>
+<text x="80" y="64" text-anchor="middle" font-weight="600">Aurora MySQL</text>
+<text x="80" y="80" text-anchor="middle" class="sub">db=point, port 13306</text>
+<text x="80" y="92" text-anchor="middle" class="sub">JDBC read</text>
+<rect x="200" y="30" width="160" height="80" rx="10" class="box accent"/>
+<text x="280" y="54" text-anchor="middle" font-weight="600">AWS Glue Job</text>
+<text x="280" y="70" text-anchor="middle" class="sub">Spark 3.5.4, Glue 5.0</text>
+<text x="280" y="84" text-anchor="middle" class="sub">G.1X &times; 2 workers</text>
+<text x="280" y="96" text-anchor="middle" class="sub">keyset pagination 50k/batch</text>
+<rect x="410" y="40" width="150" height="60" rx="10" class="box"/>
+<text x="485" y="64" text-anchor="middle" font-weight="600">S3 Parquet</text>
+<text x="485" y="80" text-anchor="middle" class="sub">snappy, partitioned</text>
+<text x="485" y="92" text-anchor="middle" class="sub">year/month/day</text>
+<rect x="610" y="40" width="140" height="60" rx="10" class="box"/>
+<text x="680" y="64" text-anchor="middle" font-weight="600">Redshift Spectrum</text>
+<text x="680" y="80" text-anchor="middle" class="sub">đọc S3 externally</text>
+<text x="680" y="92" text-anchor="middle" class="sub">(KHÔNG write trực tiếp)</text>
+<line x1="150" y1="70" x2="200" y2="70" class="arr"/>
+<line x1="360" y1="70" x2="410" y2="70" class="arr"/>
+<line x1="560" y1="70" x2="610" y2="70" class="arr dash"/>
+</svg>
+</div>
+
+<div class="callout">
+<div class="head">Gotcha đặt tên</div>
+<p>Tên bucket prefix <code>aurora-to-redshift-</code> là <strong>historical và misleading</strong>. Glue job write Parquet lên S3 &mdash; <strong>không</strong> write trực tiếp Redshift. Redshift Spectrum đọc data S3 qua external tables.</p>
+</div>
+
+<h3>Batches (5 Glue job slots, hằng ngày 02:05 JST)</h3>
+<table>
+<thead><tr><th>Batch</th><th>Label</th><th>Tables ví dụ</th></tr></thead>
+<tbody>
+<tr><td><code>batch-01</code></td><td>master-data</td><td><code>user</code>, <code>user_info</code>, <code>bank</code>, <code>bank_account</code></td></tr>
+<tr><td><code>batch-02</code></td><td>tx-pos-fiat</td><td><code>pos_order</code>, <code>pos_trade</code>, <code>fiat_deposit</code>, <code>gmo_deposit</code></td></tr>
+<tr><td><code>batch-03</code></td><td>tx-spot</td><td><code>spot_order_ada_jpy</code>, <code>spot_trade_nidt_jpy</code></td></tr>
+<tr><td><code>batch-04</code></td><td>security-events</td><td><code>suspicious_login_distance</code>, <code>waf_blocked_access</code></td></tr>
+<tr><td><code>batch-05</code></td><td>batch05 / aml-monitoring</td><td><code>user_first_trade</code>, <code>suspicious_large_withdrawal</code></td></tr>
+</tbody>
+</table>
+<p><strong>Sync modes:</strong> <code>FULL</code> (không bookmark) &middot; <code>INCREMENTAL</code> (bookmark keyset pagination) &middot; <code>BACKFILL</code> (date window) &middot; <code>FULL FILL</code> (tables có bookmark key include <code>id</code>). Bookmark lưu JSON trong S3 meta bucket.</p>
+</section>
+
+<!-- ===================== OBSERVABILITY ===================== -->
+<section id="observability">
+<h2>7 &middot; Giám sát (Observability)</h2>
+<p><code>bs-observability-infra</code> provision <strong>chỉ CloudWatch dashboards</strong> &mdash; không alarms, SNS topics, hay Lambda. Alerting provision ở <code>bs-exchange-infra</code> (EventBridge &rarr; SNS &rarr; Slack).</p>
+
+<div class="card-grid">
+<div class="card"><span class="num">01</span><h4>point-health</h4><p>NOC landing: CF 5xx, ALB p99, app errors, SQS gap, cert expiry, Aurora/Redis.</p></div>
+<div class="card"><span class="num">02</span><h4>point-frontend</h4><p>CloudFront customer + admin, WAF blocked/allowed.</p></div>
+<div class="card"><span class="num">03</span><h4>point-customer</h4><p>Customer path: WAF per-rule, ALB, pod CPU/mem/restarts.</p></div>
+<div class="card"><span class="num">04</span><h4>point-admin</h4><p>Admin path: WAF/CF admin, ALB admin, admin-private WAF (stg-ex).</p></div>
+<div class="card"><span class="num">05</span><h4>point-backend</h4><p>App errors by service, lock/OOM/circuitBreaker, active connections.</p></div>
+<div class="card"><span class="num">06</span><h4>point-workload</h4><p>EKS Container Insights: node/pod CPU/mem, fluent-bit, cw-agent.</p></div>
+<div class="card"><span class="num">07</span><h4>point-data</h4><p>Aurora, Redis, Redshift, S3, Glue batches, Firehose.</p></div>
+<div class="card"><span class="num">08</span><h4>point-async</h4><p>SQS, EventBridge, SNS, alert Lambdas, worker locks.</p></div>
+<div class="card"><span class="num">09</span><h4>point-platform</h4><p>NAT, PrivateLink endpoints, EC2, EBS, ACM certs.</p></div>
+</div>
+<p><strong>Không APM / distributed tracing.</strong> Monitoring thuần metric-based: AWS service namespaces + custom <code>point-metrics</code> namespace.</p>
+</section>
+
+<!-- ===================== FRONTEND ===================== -->
+<section id="frontend">
+<h2>8 &middot; Frontend Stack</h2>
+<p>Cả 4 frontend đều <strong>static export</strong> và serve từ S3 qua CloudFront. Không SSR runtime.</p>
+<table>
+<thead><tr><th>Repo</th><th>Framework</th><th>Node</th><th>Base path</th><th>Backend endpoint</th></tr></thead>
+<tbody>
+<tr><td><code>bs-exchange-front</code></td><td>Next.js 12 + React 17 + MobX 5 + WindiCSS</td><td>~14</td><td><code>/exchange</code></td><td><code>dev-ex.backseat-service.com</code></td></tr>
+<tr><td><code>bs-point-front</code></td><td>Next.js 15 + React 18 + MobX 6 + WindiCSS</td><td>20</td><td>&mdash;</td><td><code>dev-ex.backseat-service.com</code></td></tr>
+<tr><td><code>bs-admin-front</code></td><td>Vue 2.6 + Vuetify 2.5 + Vuex</td><td>16</td><td>&mdash;</td><td><code>bo.dev-ex.backseat-service.com/admin</code></td></tr>
+<tr><td><code>bs-game-front</code></td><td>Next.js 15 + React 18 + MobX</td><td>.nvmrc</td><td><code>/farm-game</code></td><td><code>wss://dev-ex.../websocket</code></td></tr>
+</tbody>
+</table>
+<p><strong>Shared code:</strong> <code>@cxrinc/frontend-utils</code> được <strong>vendored locally</strong> (<code>lib/@cxrinc/frontend-utils/</code>) qua <code>tsconfig.json</code> path mapping. Secret <code>READ_PACKAGES</code> + <code>npm.pkg.github.com</code> registry thực chất <strong>không dùng</strong>.</p>
+</section>
+
+<!-- ===================== CI/CD ===================== -->
+<section id="cicd">
+<h2>9 &middot; CI/CD &mdash; Tất cả deploy từ GitHub Actions</h2>
+<p><strong>Không GitOps</strong> (không ArgoCD / Flux). 3 đường deploy:</p>
+
+<div class="diagram">
+<svg class="flow" viewBox="0 0 760 280">
+<defs><marker id="ah6" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-mute)"/></marker></defs>
+<rect x="10" y="10" width="100" height="30" rx="6" class="box"/>
+<text x="60" y="29" text-anchor="middle" class="sub">Git push dev/stg</text>
+<rect x="130" y="10" width="110" height="30" rx="6" class="box"/>
+<text x="185" y="29" text-anchor="middle" class="sub">GitHub Actions</text>
+<rect x="260" y="10" width="100" height="30" rx="6" class="box"/>
+<text x="310" y="29" text-anchor="middle" class="sub">next export / vue build</text>
+<rect x="380" y="10" width="80" height="30" rx="6" class="box olive"/>
+<text x="420" y="29" text-anchor="middle" class="sub">S3 sync</text>
+<rect x="480" y="10" width="100" height="30" rx="6" class="box olive"/>
+<text x="530" y="29" text-anchor="middle" class="sub">CloudFront invalid.</text>
+<line x1="110" y1="25" x2="130" y2="25" class="arr"/>
+<line x1="240" y1="25" x2="260" y2="25" class="arr"/>
+<line x1="360" y1="25" x2="380" y2="25" class="arr"/>
+<line x1="460" y1="25" x2="480" y2="25" class="arr"/>
+<text x="620" y="29" class="sub" font-weight="600">Frontend deploy</text>
+<rect x="10" y="70" width="100" height="30" rx="6" class="box"/>
+<text x="60" y="89" text-anchor="middle" class="sub">Git push dev/stg</text>
+<rect x="130" y="70" width="110" height="30" rx="6" class="box"/>
+<text x="185" y="89" text-anchor="middle" class="sub">GitHub Actions</text>
+<rect x="260" y="70" width="110" height="30" rx="6" class="box"/>
+<text x="315" y="89" text-anchor="middle" class="sub">gradle bootBuildImage</text>
+<rect x="390" y="70" width="70" height="30" rx="6" class="box accent"/>
+<text x="425" y="89" text-anchor="middle" class="sub">ECR push</text>
+<rect x="480" y="70" width="120" height="30" rx="6" class="box accent"/>
+<text x="540" y="89" text-anchor="middle" class="sub">SSM &rarr; point-cd-runner</text>
+<rect x="620" y="70" width="120" height="30" rx="6" class="box accent"/>
+<text x="680" y="89" text-anchor="middle" class="sub">kubectl rollout</text>
+<line x1="110" y1="85" x2="130" y2="85" class="arr"/>
+<line x1="240" y1="85" x2="260" y2="85" class="arr"/>
+<line x1="370" y1="85" x2="390" y2="85" class="arr"/>
+<line x1="460" y1="85" x2="480" y2="85" class="arr"/>
+<line x1="600" y1="85" x2="620" y2="85" class="arr"/>
+<text x="620" y="115" class="sub" font-weight="600">Backend deploy</text>
+<rect x="10" y="140" width="100" height="30" rx="6" class="box"/>
+<text x="60" y="159" text-anchor="middle" class="sub">Git push configs/</text>
+<rect x="130" y="140" width="110" height="30" rx="6" class="box"/>
+<text x="185" y="159" text-anchor="middle" class="sub">GitHub Actions</text>
+<rect x="260" y="140" width="120" height="30" rx="6" class="box olive"/>
+<text x="320" y="159" text-anchor="middle" class="sub">upload to S3 meta</text>
+<rect x="400" y="140" width="120" height="30" rx="6" class="box olive"/>
+<text x="460" y="159" text-anchor="middle" class="sub">Glue reads on run</text>
+<line x1="110" y1="155" x2="130" y2="155" class="arr"/>
+<line x1="240" y1="155" x2="260" y2="155" class="arr"/>
+<line x1="380" y1="155" x2="400" y2="155" class="arr"/>
+<text x="560" y="159" class="sub" font-weight="600">Glue ETL deploy</text>
+</svg>
+</div>
+
+<p><strong>Backend deploy:</strong> EKS API private. GitHub Actions push image lên ECR, rồi gửi SSM <code>send-command</code> tới <code>point-cd-runner</code> EC2, chạy <code>kubectl rollout restart deployment/point-*</code>. Không kubectl trực tiếp từ CI.</p>
+
+<table>
+<thead><tr><th>Repo</th><th>Dev account</th><th>Stg account</th><th>Prd account</th></tr></thead>
+<tbody>
+<tr><td>Verup frontends + integration-server</td><td><code>845131030484</code></td><td><code>520411743393</code></td><td>&mdash;</td></tr>
+<tr><td>Point server</td><td><code>905418018638</code></td><td><code>471112755246</code></td><td><code>211125716602</code></td></tr>
+<tr><td>Glue jobs</td><td><code>845131030484</code></td><td><code>520411743393</code></td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ===================== REQUEST FLOW ===================== -->
+<section id="request">
+<h2>10 &middot; Luồng Request End-to-End</h2>
+<div class="diagram">
+<svg class="flow" viewBox="0 0 760 360">
+<defs><marker id="ah7" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-mute)"/></marker></defs>
+<rect x="310" y="10" width="140" height="34" rx="8" class="box"/>
+<text x="380" y="31" text-anchor="middle">User Browser</text>
+<rect x="310" y="60" width="140" height="34" rx="8" class="box"/>
+<text x="380" y="81" text-anchor="middle">CloudFront (HTTPS)</text>
+<rect x="310" y="110" width="140" height="34" rx="8" class="box accent"/>
+<text x="380" y="131" text-anchor="middle">AWS WAF</text>
+<rect x="310" y="160" width="140" height="34" rx="8" class="box"/>
+<text x="380" y="181" text-anchor="middle">ALB / Ingress</text>
+<rect x="310" y="210" width="140" height="34" rx="8" class="box"/>
+<text x="380" y="231" text-anchor="middle">EKS pod</text>
+<line x1="380" y1="44" x2="380" y2="60" class="arr"/>
+<line x1="380" y1="94" x2="380" y2="110" class="arr"/>
+<line x1="380" y1="144" x2="380" y2="160" class="arr"/>
+<line x1="380" y1="194" x2="380" y2="210" class="arr"/>
+<rect x="100" y="280" width="120" height="40" rx="8" class="box olive"/>
+<text x="160" y="304" text-anchor="middle">Aurora MySQL</text>
+<rect x="260" y="280" width="100" height="40" rx="8" class="box olive"/>
+<text x="310" y="304" text-anchor="middle">Redis cache</text>
+<rect x="390" y="280" width="100" height="40" rx="8" class="box"/>
+<text x="440" y="304" text-anchor="middle">SQS queue</text>
+<rect x="520" y="280" width="130" height="40" rx="8" class="box accent"/>
+<text x="585" y="298" text-anchor="middle">point-worker</text>
+<text x="585" y="312" text-anchor="middle" class="sub">(async jobs)</text>
+<line x1="340" y1="244" x2="160" y2="280" class="arr dash"/>
+<line x1="370" y1="244" x2="310" y2="280" class="arr dash"/>
+<line x1="400" y1="244" x2="440" y2="280" class="arr dash"/>
+<line x1="440" y1="280" x2="520" y2="280" class="arr dash"/>
+</svg>
+</div>
+<p>API requests (<code>/api/v1/*</code>) vào <code>point-api</code> pods, check Redis cache trước, rồi Aurora khi cache miss. App requests (<code>/app/v1/*</code>) vào <code>point-app</code> pods trực tiếp. Async operations publish lên SQS qua SNS, consume bởi <code>point-worker</code> pods với Redis locking.</p>
+</section>
+
+<!-- ===================== KEY DECISIONS ===================== -->
+<section id="decisions">
+<h2>11 &middot; Quyết định kỹ thuật chính</h2>
+<table>
+<thead><tr><th>#</th><th>Quyết định</th><th>Tradeoff</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>Monolithic multi-module build</strong></td><td>1 repo build 6 deployables từ shared <code>point-common</code>. Đơn giản cho team nhỏ, coupling cao.</td></tr>
+<tr><td>2</td><td><strong>Không service mesh / Feign</strong></td><td>Inter-service = plain <code>RestTemplate</code> &rarr; k8s DNS. Đơn giản, nhưng không circuit breaker / retry ở transport layer.</td></tr>
+<tr><td>3</td><td><strong>SNS/SQS cho job distribution</strong></td><td>Workers event-driven, không cron-driven. Queue auto-created per worker class.</td></tr>
+<tr><td>4</td><td><strong>Redis lock TTL = 0</strong></td><td>Lock không tự expire. <span class="no">Rủi ro: pod crash = lock kẹt.</span> Phụ thuộc <code>finally</code> unlock.</td></tr>
+<tr><td>5</td><td><strong>Explicit dual transaction managers</strong></td><td>Không tự route read/write. Dev chọn master vs historical mỗi method. Max explicitness.</td></tr>
+<tr><td>6</td><td><strong>ddl-auto: validate + Flyway</strong></td><td>Schema quản lý bởi Flyway migrations, Spring chỉ validate. Không auto-DDL.</td></tr>
+<tr><td>7</td><td><strong>Không GitOps</strong></td><td>Direct GitHub Actions &rarr; SSM kubectl. Đơn giản, nhưng không reconciliation loop.</td></tr>
+<tr><td>8</td><td><strong>Backend deploy qua SSM</strong></td><td>EKS API private. Deploy qua <code>point-cd-runner</code> EC2 thay vì kubectl trực tiếp từ CI.</td></tr>
+<tr><td>9</td><td><strong>Glue &rarr; S3 Parquet, KHÔNG Redshift trực tiếp</strong></td><td>Redshift Spectrum đọc S3 externally. Tên bucket <code>aurora-to-redshift-</code> misleading.</td></tr>
+<tr><td>10</td><td><strong>Frontend: static export + S3/CloudFront</strong></td><td>Không SSR &mdash; Next.js <code>output: 'export'</code> / Vue CLI dist. Đơn giản, rẻ.</td></tr>
+</tbody>
+</table>
+</section>
+
+</main>
+</div>
+</body>
+</html>
