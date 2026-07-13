@@ -261,6 +261,12 @@
       <code>msync now</code>
       <span>Sync một lần rồi <em>trả về đúng trạng thái trước đó</em>. Chạy được cả khi đang tắt.</span>
 
+      <code>msync config</code>
+      <span>In <code>mutagen.yml</code> — nơi 11 session được khai báo.</span>
+
+      <code>msync apply</code>
+      <span>Đọc lại <code>mutagen.yml</code> sau khi sửa. Không truyền lại dữ liệu.</span>
+
       <code>msync seed</code>
       <span>rsync toàn bộ: repo code + secrets + config. Thứ Mutagen không gánh.</span>
 
@@ -358,20 +364,20 @@
       <thead><tr><th>Vị trí</th><th>Nội dung</th></tr></thead>
       <tbody>
         <tr>
-          <td><code>scripts/sync-machines/mutagen-sessions.sh</code></td>
-          <td><strong>Đây mới là config thật.</strong> Khai báo cả 11 session bằng text, chạy lại được, idempotent.</td>
+          <td><code>scripts/sync-machines/mutagen.yml</code></td>
+          <td><strong>Đây mới là config thật.</strong> Mutagen project file — cả 11 session, chế độ, ignore rule khai báo bằng YAML. Sửa file này rồi <code>msync apply</code>.</td>
         </tr>
         <tr>
           <td><code>~/.mutagen/sessions/</code></td>
-          <td>11 file <strong>binary protobuf</strong> — không đọc, không sửa bằng tay được. Chỉ là cache của daemon. Mất thư mục này thì <code>mutagen-sessions.sh create</code> dựng lại toàn bộ.</td>
+          <td>11 file <strong>binary protobuf</strong> — không đọc, không sửa bằng tay được. Chỉ là cache của daemon. Mất thư mục này thì <code>msync apply</code> dựng lại toàn bộ từ YAML.</td>
         </tr>
         <tr>
           <td><code>~/.mutagen/{caches,staging,daemon}/</code></td>
           <td>State runtime. Xoá được, sẽ tự dựng lại.</td>
         </tr>
         <tr>
-          <td><code>~/.mutagen.yml</code></td>
-          <td>Không tồn tại. Mọi thiết lập nằm ở flag lúc <code>sync create</code> — tức là trong <code>mutagen-sessions.sh</code>.</td>
+          <td><code>mutagen.yml.lock</code></td>
+          <td>Mutagen khoá file project khi đang chạy. State cục bộ — bị loại khỏi rsync, không sang mini.</td>
         </tr>
         <tr>
           <td><code>~/Library/LaunchAgents/io.mutagen.mutagen.plist</code></td>
@@ -401,12 +407,28 @@ cd ~/Work/solashi/verup/scripts/sync-machines
 
 <span class="cmt"># 3. Sync liên tục</span>
 brew install mutagen-io/mutagen/mutagen
-./mutagen-sessions.sh create     <span class="cmt"># dựng 11 session từ định nghĩa text</span>
+mutagen project start            <span class="cmt"># đọc ./mutagen.yml, dựng 11 session</span>
 msync autostart on
 msync audit                      <span class="cmt"># kỳ vọng: 34 pass / 0 fail</span>
 
 <span class="cmt"># 4. Trên mini, một lần: chạy `claude`, đăng nhập, auth MCP OAuth.</span>
 <span class="cmt">#    Không cơ chế file-sync nào làm thay được bước này.</span></code></pre>
+</section>
+
+<section>
+  <h2>Sửa cấu hình</h2>
+  <p>
+    Cả 11 session được khai báo trong <code>mutagen.yml</code> — project file native của Mutagen.
+    Thêm thư mục, đổi chế độ, thêm ignore rule: sửa file đó rồi <code>msync apply</code>.
+  </p>
+  <pre><code>msync config              <span class="cmt"># xem cấu hình hiện tại</span>
+$EDITOR mutagen.yml       <span class="cmt"># sửa</span>
+msync apply               <span class="cmt"># terminate + recreate từ file</span></code></pre>
+  <p class="note">
+    <strong>Vì sao <code>apply</code> phải terminate rồi tạo lại:</strong> Mutagen không có lệnh reload —
+    session đang sống là protobuf nhị phân trong daemon. Nhưng thao tác này <em>rẻ</em>: session mới scan hai máy,
+    thấy đã bằng nhau, và không truyền lại byte nào (<code>~/.mutagen/staging</code> vẫn 0 B).
+  </p>
 </section>
 
 <section>
@@ -472,7 +494,7 @@ msync audit                      <span class="cmt"># kỳ vọng: 34 pass / 0 fa
 
 <footer>
   Toolkit: <code>~/Work/solashi/verup/scripts/sync-machines/</code> —
-  <code>sync-machines.sh</code> (seed) · <code>mutagen-sessions.sh</code> (định nghĩa session) ·
+  <code>sync-machines.sh</code> (seed) · <code>mutagen.yml</code> (khai báo session) ·
   <code>sync-ctl.sh</code> (lệnh <code>msync</code>) · <code>audit-mini.sh</code> (34 phép kiểm tra).
 </footer>
 
