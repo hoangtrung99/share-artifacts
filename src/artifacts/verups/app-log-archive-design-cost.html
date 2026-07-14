@@ -127,17 +127,13 @@
     <p class="slabel"><span class="dot"></span>Consideration 1</p>
     <h2>Target log groups &amp; destination bucket <span class="confirm">✓ confirmed</span></h2>
     <div class="card hero-card">
-      <p>Six <b>application</b> log groups archive to one <b>new</b> bucket. Audit sources are handled separately, and RDS log archival was dropped.</p>
-      <ul class="lg-list">
-        <li>/aws/containerinsights/point/application</li>
-        <li>/aws/containerinsights/point/dataplane</li>
-        <li>/aws/containerinsights/point/host</li>
-        <li>/aws/containerinsights/point/performance</li>
-        <li>/aws/eks/point/cluster</li>
-        <li>/aws/lambda/sns-to-slack</li>
+      <p><b>One</b> application log group archives to a <b>new</b> bucket. Audit sources are handled separately, and RDS log archival was dropped.</p>
+      <ul class="lg-list" style="grid-template-columns:1fr">
+        <li>/aws/containerinsights/point/application &nbsp;<span style="color:var(--teal)">← archived</span></li>
       </ul>
+      <p class="disc">The other application groups (dataplane, host, performance, eks/cluster, lambda/sns-to-slack) stay in CloudWatch only — they are not archived to S3.</p>
       <div class="flowline">
-        <span class="pill">6 log groups</span>
+        <span class="pill">1 log group</span>
         <span class="arrow">→</span>
         <span class="pill">Firehose app-log</span>
         <span class="arrow">→</span>
@@ -155,13 +151,16 @@
     <p class="slabel"><span class="dot"></span>Consideration 2</p>
     <h2>S3 storage class (cost-saving)</h2>
     <div class="card">
-      <p>The app-logs lifecycle is <span class="k">STANDARD → 30d → GLACIER_IR → expire</span>. Firehose writes large objects (~40&nbsp;MB per flush), far above the GLACIER_IR 128&nbsp;KB minimum, so Instant Retrieval is the sweet spot: ~5× cheaper than STANDARD, still instant reads for incident debugging.</p>
+      <p>The app-logs lifecycle transitions to <span class="k">GLACIER_IR immediately (day 0)</span>, then expires — no STANDARD window. Firehose writes large objects (~40&nbsp;MB per flush), far above the GLACIER_IR 128&nbsp;KB minimum, so Instant Retrieval is the sweet spot: ~5× cheaper than STANDARD, still instant reads for incident debugging.</p>
+      <div class="callout good">
+        <b>Why immediate (day 0), no STANDARD tier:</b> the logs stay queryable in <b>CloudWatch for ~1 year</b>, so any hot / fast query hits CloudWatch — S3 is a pure <b>cold archive</b>. There is no need to pay STANDARD rates for a hot window in S3. GLACIER_IR has no minimum transition age, so a day-0 transition is valid.
+      </div>
       <div class="tscroll">
         <table>
           <thead><tr><th>Class</th><th>$/GB-mo</th><th>Retrieval</th><th>Min duration</th><th>App-logs verdict</th></tr></thead>
           <tbody>
-            <tr><td>S3 STANDARD</td><td class="num">0.025</td><td>instant</td><td>—</td><td>first 30 days only</td></tr>
-            <tr><td>GLACIER Instant Retrieval</td><td class="num">0.005</td><td>instant (ms)</td><td>90 days</td><td class="verdict-pick">✓ aged tier</td></tr>
+            <tr><td>S3 STANDARD</td><td class="num">0.025</td><td>instant</td><td>—</td><td>landing only (&lt;1 day)</td></tr>
+            <tr><td>GLACIER Instant Retrieval</td><td class="num">0.005</td><td>instant (ms)</td><td>90 days</td><td class="verdict-pick">✓ from day 0</td></tr>
             <tr><td>GLACIER Deep Archive</td><td class="num">0.00099</td><td>~12 hours</td><td>180 days</td><td class="verdict-no">too slow for debug</td></tr>
           </tbody>
         </table>
@@ -180,10 +179,10 @@
     <div class="card">
       <div class="metricrow">
         <div class="metric"><div class="v">128 MB / 900 s</div><div class="l">buffer: flush on size <b>or</b> time, whichever first</div></div>
-        <div class="metric"><div class="v">~96 / day</div><div class="l">objects at measured volume (time-triggered, ~40 MB each)</div></div>
+        <div class="metric"><div class="v">~96 / day</div><div class="l">objects (time-triggered every 15 min; size scales with volume)</div></div>
         <div class="metric"><div class="v">UNCOMPRESSED</div><div class="l">payload is already gzip L6 from CloudWatch</div></div>
       </div>
-      <p style="margin-top:16px">At the measured volumes, the buffer is <b>time-triggered every 15 minutes</b> (daily volume &lt; 128&nbsp;MB per 15&nbsp;min), producing ~40&nbsp;MB objects — comfortably above the GLACIER_IR minimum. Compression stays <b>UNCOMPRESSED</b> at Firehose because the CloudWatch→Firehose payload is already gzip level 6; setting GZIP would double-compress for no gain.</p>
+      <p style="margin-top:16px">At these volumes the buffer is <b>time-triggered every 15 minutes</b> (a 15-min slice is well under 128&nbsp;MB), producing objects comfortably above the GLACIER_IR 128&nbsp;KB minimum. Compression stays <b>UNCOMPRESSED</b> at Firehose because the CloudWatch→Firehose payload is already gzip level 6; setting GZIP would double-compress for no gain.</p>
       <div class="callout good">
         <b>Monitoring:</b> a delivery-error log group <span class="k">/aws/kinesisfirehose/app-log</span> captures failures, plus Firehose CloudWatch metrics <span class="k">DeliveryToS3.Success</span> and <span class="k">DeliveryToS3.DataFreshness</span> (alarm-able for staleness).
       </div>
@@ -198,13 +197,13 @@
       <div class="calc">
         <div class="controls">
           <div class="ctl">
-            <label>Ingest volume <b><span id="vVal">3.8</span> GB/day</b></label>
-            <input type="range" id="v" min="0.5" max="15" step="0.1" value="3.8">
+            <label>Archived volume, compressed <b><span id="vVal">2.6</span> GB/day</b></label>
+            <input type="range" id="v" min="0.5" max="10" step="0.1" value="2.6">
             <div class="presets" id="presets">
-              <button data-v="3.8">dev-ex 3.8</button>
-              <button data-v="6.85">stg-ex 6.85</button>
-              <button data-v="2.28">point-dev 2.28</button>
-              <button data-v="1.92">point-stg 1.92</button>
+              <button data-v="2.6">dev-ex 2.6</button>
+              <button data-v="4.8">stg-ex 4.8</button>
+              <button data-v="3.5">point-dev 3.5</button>
+              <button data-v="1.2">point-stg 1.2</button>
             </div>
           </div>
           <div class="ctl">
@@ -226,8 +225,7 @@
           <div class="biglabel">steady-state monthly cost, one environment</div>
           <ul class="breakdown">
             <li><span>Firehose ingest <span class="disc" style="font-style:normal">30.4 × V × $0.029</span></span><span class="num" id="bIngest"></span></li>
-            <li><span>STANDARD, first 30 days</span><span class="num" id="bStd"></span></li>
-            <li><span>Aged tier <span class="disc" style="font-style:normal">(R·365−30) × V × rate</span></span><span class="num" id="bAged"></span></li>
+            <li><span>Archive storage <span class="disc" style="font-style:normal">R·365 × V × rate (from day 0)</span></span><span class="num" id="bAged"></span></li>
             <li><span>PUT / transition requests</span><span class="num">$0.10</span></li>
             <li class="tot"><span>Total / month</span><span class="num" id="bTot"></span></li>
           </ul>
@@ -241,9 +239,30 @@
       </div>
 
       <div class="callout good" style="margin-top:20px">
-        <b>Key takeaway.</b> Even at 7 years with GLACIER_IR, the app-log archive is only <b>tens of dollars a month</b> per environment (≈ $54/mo at 3.8 GB/day, ≈ $71/mo at 5 GB/day). Against a total infra bill in the <b>thousands/mo</b> (EKS + Aurora + Redshift + NAT), it is a <b>rounding error — well under 1–3%</b>. Storage class is the lever that keeps it there: GLACIER_IR is ~78% cheaper than STANDARD across a 7-year horizon.
+        <b>Key takeaway.</b> Using the <b>measured</b> volume of the single archived group, even at 7 years with immediate GLACIER_IR the app-log archive is only <b>tens of dollars a month</b> per environment — ≈ <b>$36/mo</b> at the dev-ex volume (2.6 GB/day compressed), ≈ <b>$66/mo</b> at the stg-ex volume (4.8 GB/day). Against a total infra bill in the <b>thousands/mo</b> (EKS + Aurora + Redshift + NAT), it is a <b>rounding error — well under 1–3%</b>. Storage class is the lever that keeps it there: GLACIER_IR is ~79% cheaper than STANDARD across a 7-year horizon.
       </div>
-      <p class="disc">Reference measured volumes (app ≈ 96% of total): dev-ex 3.8 · stg-ex 6.85 · point-dev 2.28 · point-stg 1.92 GB/day. prd not yet measured. Model is steady-state storage + ingest; excludes the tiny retrieval cost, which applies only when logs are read back.</p>
+      <p class="disc"><b>V</b> is the daily <b>compressed</b> archived volume of the single group <span class="k">/aws/containerinsights/point/application</span> — S3 stores the gzipped payload, and both Firehose ingest and storage bill on it. Measured 2026-07-14 from CloudWatch <span class="k">IncomingBytes</span> (8-day average, raw/uncompressed) divided by this group's empirical gzip ratio (~19× on a recent sample): dev-ex 49.7 GB/day raw → ~2.6 compressed · stg-ex 91.7 → ~4.8 · point-dev 66.9 → ~3.5 · point-stg 23.0 → ~1.2. prd not yet measured. The ~19× ratio reflects the highly repetitive Container Insights JSON; verify against real delivered objects after apply. Model is steady-state storage + ingest with immediate GLACIER_IR; excludes the tiny retrieval cost.</p>
+    </div>
+
+    <div class="card">
+      <p class="slabel" style="margin-bottom:8px"><span class="dot" style="background:var(--teal)"></span>Second cost, separate path — audit logs</p>
+      <p>CloudTrail and SSM Session Manager write <b>natively</b> to the existing <span class="k">audit-logs.bs-point-&lt;env&gt;</span> bucket — <b>no Firehose, so no ingest fee</b>. This work only <b>raises that bucket's lifecycle expiration</b> to the retention tier (dev 365&nbsp;d · stg 730&nbsp;d · prd 2557&nbsp;d). The bucket stays on <b>STANDARD</b> ($0.025/GB-mo): the module defines no transition rule and its objects are tiny native records, so GLACIER_IR's 128&nbsp;KB-per-object minimum would <em>raise</em> cost. Storage cost is therefore just <b>steady-state size × $0.025</b> — no ingest term.</p>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Environment</th><th>Current size</th><th>Est. daily ingest</th><th>Class</th><th>Retention now → target</th><th>Projected $/mo at target</th></tr></thead>
+          <tbody>
+            <tr><td>verup dev-ex</td><td class="num">5.4 GB</td><td class="num">~0.09 GB/day</td><td>STANDARD</td><td class="num">30 → 365 d</td><td class="num">≈ $1.6</td></tr>
+            <tr><td>verup stg-ex</td><td class="num">0.17 GB</td><td class="num">~0.003 GB/day</td><td>STANDARD</td><td class="num">30 → 730 d</td><td class="num">≈ $0.10</td></tr>
+            <tr><td>point dev</td><td class="num">3.2 GB</td><td class="num">~0.08 GB/day</td><td>STANDARD</td><td class="num">180 → 365 d</td><td class="num">≈ $1.4</td></tr>
+            <tr><td>point stg</td><td class="num">6.0 GB</td><td class="num">~0.08 GB/day</td><td>STANDARD</td><td class="num">731 d (already)</td><td class="num">≈ $3.0</td></tr>
+            <tr><td>point prd <span style="color:var(--rust)">*</span></td><td class="num">—</td><td class="num">~0.08 GB/day*</td><td>STANDARD</td><td class="num">→ 2557 d</td><td class="num">≈ $10.5*</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout good">
+        <b>Takeaway — audit ≪ app-log.</b> On STANDARD, projected audit-log storage is only <b>cents to a few dollars</b> per environment per month; the largest single line is <b>prd at ~$10.5/mo</b> (7-year tier, projected), and the projected steady-state total across <b>every</b> environment is <b>≈ $17/mo</b>. That is still below the app-log archive's <b>$36–$66 for a single environment</b> above. (point stg is already at its 731-day target, so its retention change adds ~$0.) Audit stays cheap because it is low-volume, tiny native objects kept on STANDARD — no Firehose ingest, no Glacier small-object penalty.
+      </div>
+      <p class="disc">Sizes &amp; growth measured 2026-07-14 from CloudWatch <span class="k">AWS/S3 · BucketSizeBytes</span> (StandardStorage, 13-day window; every bucket is STANDARD-only). Versioning is <b>enabled</b> on all buckets and <span class="k">NoncurrentVersionExpiration</span> equals the retention, so a never-overwritten CloudTrail/SSM object persists ~2× the window before deletion — steady-state size ≈ <b>2 × daily ingest × retention</b>, which the measured size already reflects. Ingest method: point dev/stg buckets are still filling below their retention age (Δsize ≈ gross ingest); verup dev-ex/stg-ex sit at their current 30-day plateau (ingest inferred as size ÷ 2×30&nbsp;d). <span style="color:var(--rust)">*</span> prd (account 211…) has no read profile and was <b>not measured</b> — assumed ≈ point stg ingest at the 2557-day (7-year) retention. All figures are order-of-magnitude estimates.</p>
     </div>
   </section>
 
@@ -265,16 +284,16 @@
   var rate=0.005;
   var fmt=function(n){ return '$'+ (n>=100? n.toFixed(0) : n.toFixed(2)); };
 
+  // Immediate GLACIER_IR (day 0): no STANDARD window, whole archive is in the aged tier.
   function calcMonthly(V,R,rt){
     var ingest=30.4*V*0.029;
-    var std30=30*V*0.025;
-    var aged=(R*365-30)*V*rt;
-    return {ingest:ingest,std30:std30,aged:aged,fixed:0.10,total:ingest+std30+aged+0.10};
+    var aged=(R*365)*V*rt;
+    return {ingest:ingest,aged:aged,fixed:0.10,total:ingest+aged+0.10};
   }
-  // monthly cost at end of year y (aged tier still accumulating, nothing expired yet)
+  // monthly cost at end of year y (archive still accumulating, nothing expired yet)
   function costAtYear(V,y,rt){
-    var ingest=30.4*V*0.029, std30=30*V*0.025, aged=(y*365-30)*V*rt;
-    return ingest+std30+aged+0.10;
+    var ingest=30.4*V*0.029, aged=(y*365)*V*rt;
+    return ingest+aged+0.10;
   }
 
   function render(){
@@ -284,7 +303,6 @@
     var c=calcMonthly(V,R,rate);
     document.getElementById('total').textContent='$'+ (c.total>=100?c.total.toFixed(0):c.total.toFixed(0));
     document.getElementById('bIngest').textContent=fmt(c.ingest);
-    document.getElementById('bStd').textContent=fmt(c.std30);
     document.getElementById('bAged').textContent=fmt(c.aged);
     document.getElementById('bTot').textContent=fmt(c.total);
 
