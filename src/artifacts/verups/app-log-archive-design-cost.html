@@ -1,0 +1,328 @@
+<title>Application Log Archive — Design &amp; Cost</title>
+<style>
+  :root{
+    --bg:#f6f3ec; --surface:#fffdf8; --surface-2:#f0ebe0; --border:rgba(28,40,58,0.12);
+    --ink:#1b2436; --ink-dim:#5a6478; --navy:#1e3a5f; --gold:#b5852a; --gold-soft:#e7d3a1;
+    --teal:#0f7d74; --rust:#b4451f; --grid:rgba(30,58,95,0.05);
+    --ok-bg:rgba(15,125,116,0.12); --ok:#0b6f66;
+    --warn-bg:rgba(180,69,31,0.12); --warn:#a83e1c;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#101725; --surface:#17202f; --surface-2:#1d2838; --border:rgba(180,197,224,0.14);
+      --ink:#e7ecf4; --ink-dim:#9aa6bc; --navy:#8fb4e0; --gold:#d9b45f; --gold-soft:#3a3320;
+      --teal:#4fc9bd; --rust:#e08a5f; --grid:rgba(143,180,224,0.06);
+      --ok-bg:rgba(79,201,189,0.14); --ok:#5fd0c4;
+      --warn-bg:rgba(224,138,95,0.15); --warn:#e8956a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#101725; --surface:#17202f; --surface-2:#1d2838; --border:rgba(180,197,224,0.14);
+    --ink:#e7ecf4; --ink-dim:#9aa6bc; --navy:#8fb4e0; --gold:#d9b45f; --gold-soft:#3a3320;
+    --teal:#4fc9bd; --rust:#e08a5f; --grid:rgba(143,180,224,0.06);
+    --ok-bg:rgba(79,201,189,0.14); --ok:#5fd0c4; --warn-bg:rgba(224,138,95,0.15); --warn:#e8956a;
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f3ec; --surface:#fffdf8; --surface-2:#f0ebe0; --border:rgba(28,40,58,0.12);
+    --ink:#1b2436; --ink-dim:#5a6478; --navy:#1e3a5f; --gold:#b5852a; --gold-soft:#e7d3a1;
+    --teal:#0f7d74; --rust:#b4451f; --grid:rgba(30,58,95,0.05);
+    --ok-bg:rgba(15,125,116,0.12); --ok:#0b6f66; --warn-bg:rgba(180,69,31,0.12); --warn:#a83e1c;
+  }
+  *{box-sizing:border-box;min-width:0}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--serif);line-height:1.6;
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:32px 32px;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  header.hero{border-bottom:2px solid var(--navy);padding-bottom:22px;margin-bottom:8px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin:0 0 8px}
+  h1{font-size:clamp(28px,5vw,42px);line-height:1.1;margin:0 0 10px;font-weight:600;letter-spacing:-.01em}
+  .sub{font-size:16px;color:var(--ink-dim);max-width:60ch;margin:0}
+  .pricenote{font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);margin-top:14px;display:inline-block;background:var(--surface-2);padding:5px 10px;border-radius:5px;border:1px solid var(--border)}
+  section{margin-top:44px}
+  .slabel{font-family:var(--mono);font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);display:flex;align-items:center;gap:10px;margin:0 0 4px}
+  .slabel .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);flex:none}
+  h2{font-size:clamp(21px,3.4vw,27px);margin:2px 0 16px;font-weight:600;letter-spacing:-.01em}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 22px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card+.card{margin-top:16px}
+  .hero-card{border-left:4px solid var(--gold)}
+  p{margin:0 0 12px}
+  code,.k{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:1.5px 6px;border-radius:4px;border:1px solid var(--border);white-space:nowrap}
+  .confirm{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--ok);background:var(--ok-bg);padding:4px 11px;border-radius:20px;font-weight:600}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:620px){.grid2{grid-template-columns:1fr}}
+  .lg-list{list-style:none;margin:6px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  @media(max-width:620px){.lg-list{grid-template-columns:1fr}}
+  .lg-list li{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;overflow-x:auto;white-space:nowrap}
+  .flowline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:13px;margin-top:14px}
+  .pill{background:var(--surface-2);border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-weight:600}
+  .pill.new{border-color:var(--teal);color:var(--teal)}
+  .pill.bucket{border-color:var(--gold);color:var(--gold)}
+  .arrow{color:var(--ink-dim);font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+  .tscroll{overflow-x:auto}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);font-weight:600}
+  tbody tr:last-child td{border-bottom:none}
+  td .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .verdict-pick{color:var(--ok);font-weight:700}
+  .verdict-no{color:var(--warn)}
+  .callout{background:var(--warn-bg);border:1px solid var(--border);border-left:3px solid var(--rust);border-radius:8px;padding:13px 15px;font-size:14px;margin-top:14px}
+  .callout.good{background:var(--ok-bg);border-left-color:var(--teal)}
+  .metricrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px}
+  @media(max-width:620px){.metricrow{grid-template-columns:1fr}}
+  .metric{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:14px}
+  .metric .v{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+  .metric .l{font-size:12.5px;color:var(--ink-dim);margin-top:3px}
+  /* calculator */
+  .calc{display:grid;grid-template-columns:340px 1fr;gap:20px}
+  @media(max-width:760px){.calc{grid-template-columns:1fr}}
+  .controls .ctl{margin-bottom:20px}
+  .controls label{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px}
+  .controls label b{font-size:16px;color:var(--navy);text-transform:none;letter-spacing:0}
+  input[type=range]{width:100%;accent-color:var(--gold);height:4px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:96px;font-family:var(--mono);font-size:12px;padding:9px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-dim);cursor:pointer;transition:.15s}
+  .seg button[aria-pressed=true]{background:var(--navy);color:var(--surface);border-color:var(--navy);font-weight:700}
+  .seg small{display:block;font-size:10px;opacity:.75;margin-top:2px}
+  .presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .presets button{font-family:var(--mono);font-size:11px;padding:5px 9px;border-radius:14px;border:1px dashed var(--border);background:transparent;color:var(--ink-dim);cursor:pointer}
+  .presets button:hover{border-color:var(--gold);color:var(--gold)}
+  .result .big{font-family:var(--mono);font-size:clamp(34px,7vw,52px);font-weight:700;color:var(--gold);line-height:1;font-variant-numeric:tabular-nums}
+  .result .biglabel{font-size:13px;color:var(--ink-dim);margin-top:4px}
+  .breakdown{list-style:none;margin:16px 0 0;padding:0}
+  .breakdown li{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dotted var(--border);font-size:14px}
+  .breakdown li .num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+  .breakdown li.tot{font-weight:700;border-bottom:none;border-top:2px solid var(--border);margin-top:4px;padding-top:10px}
+  .savings{margin-top:14px;font-size:14px;background:var(--ok-bg);border:1px solid var(--border);border-radius:8px;padding:11px 13px}
+  .savings b{font-family:var(--mono);color:var(--ok)}
+  .ramp{margin-top:18px}
+  .ramp .rlabel{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:10px}
+  .bars{display:flex;align-items:flex-end;gap:8px;height:130px}
+  .bars .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;height:100%}
+  .bars .bar .fill{width:100%;background:linear-gradient(var(--gold),var(--gold-soft));border-radius:5px 5px 0 0;min-height:3px;transition:height .3s ease}
+  .bars .bar .cap{font-family:var(--mono);font-size:10.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .bars .bar .yr{font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)}
+  .themebtn{position:fixed;top:14px;right:14px;font-family:var(--mono);font-size:11px;padding:7px 11px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--ink-dim);cursor:pointer;z-index:10}
+  .foot{margin-top:50px;padding-top:18px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11.5px;color:var(--ink-dim)}
+  .disc{font-size:12px;color:var(--ink-dim);margin-top:10px;font-style:italic}
+</style>
+
+<button class="themebtn" id="themeBtn" type="button">◑ theme</button>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Infrastructure · CloudWatch → S3</p>
+    <h1>Application Log Archive — Design &amp; Cost</h1>
+    <p class="sub">Design answers to the four CloudWatch-to-S3 considerations, with a live cost model for the 7-year extension.</p>
+    <span class="pricenote">Prices: ap-northeast-1 (Tokyo) · AWS Price List API, 2026-07-13</span>
+  </header>
+
+  <!-- 1 -->
+  <section>
+    <p class="slabel"><span class="dot"></span>Consideration 1</p>
+    <h2>Target log groups &amp; destination bucket <span class="confirm">✓ confirmed</span></h2>
+    <div class="card hero-card">
+      <p>Six <b>application</b> log groups archive to one <b>new</b> bucket. Audit sources are handled separately, and RDS log archival was dropped.</p>
+      <ul class="lg-list">
+        <li>/aws/containerinsights/point/application</li>
+        <li>/aws/containerinsights/point/dataplane</li>
+        <li>/aws/containerinsights/point/host</li>
+        <li>/aws/containerinsights/point/performance</li>
+        <li>/aws/eks/point/cluster</li>
+        <li>/aws/lambda/sns-to-slack</li>
+      </ul>
+      <div class="flowline">
+        <span class="pill">6 log groups</span>
+        <span class="arrow">→</span>
+        <span class="pill">Firehose app-log</span>
+        <span class="arrow">→</span>
+        <span class="pill bucket new">app-logs.bs-point-&lt;env&gt;</span>
+        <span class="pill" style="border-style:dashed">NEW bucket</span>
+      </div>
+      <div class="callout good">
+        <b>Audit is separate.</b> CloudTrail and SSM Session Manager deliver <b>natively</b> to the existing <span class="k">audit-logs.bs-point-&lt;env&gt;</span> bucket (no Firehose). This pipeline only raises that bucket's lifecycle expiration. <b>RDS log archival was dropped</b> — it duplicated data already covered natively.
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <p class="slabel"><span class="dot"></span>Consideration 2</p>
+    <h2>S3 storage class (cost-saving)</h2>
+    <div class="card">
+      <p>The app-logs lifecycle is <span class="k">STANDARD → 30d → GLACIER_IR → expire</span>. Firehose writes large objects (~40&nbsp;MB per flush), far above the GLACIER_IR 128&nbsp;KB minimum, so Instant Retrieval is the sweet spot: ~5× cheaper than STANDARD, still instant reads for incident debugging.</p>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Class</th><th>$/GB-mo</th><th>Retrieval</th><th>Min duration</th><th>App-logs verdict</th></tr></thead>
+          <tbody>
+            <tr><td>S3 STANDARD</td><td class="num">0.025</td><td>instant</td><td>—</td><td>first 30 days only</td></tr>
+            <tr><td>GLACIER Instant Retrieval</td><td class="num">0.005</td><td>instant (ms)</td><td>90 days</td><td class="verdict-pick">✓ aged tier</td></tr>
+            <tr><td>GLACIER Deep Archive</td><td class="num">0.00099</td><td>~12 hours</td><td>180 days</td><td class="verdict-no">too slow for debug</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <b>Why audit-logs stays STANDARD:</b> that bucket is dominated by tiny native objects (CloudTrail / SSM, mostly &lt;128&nbsp;KB). GLACIER_IR bills a 128&nbsp;KB minimum <em>per object</em> plus a transition request — for small objects it <b>raises</b> cost. STANDARD wins there.
+      </div>
+      <p class="disc">GLACIER_IR minimum storage duration is 90 days — safe here since retention ≥ 365 days.</p>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <p class="slabel"><span class="dot"></span>Consideration 3</p>
+    <h2>Firehose — frequency, volume &amp; monitoring</h2>
+    <div class="card">
+      <div class="metricrow">
+        <div class="metric"><div class="v">128 MB / 900 s</div><div class="l">buffer: flush on size <b>or</b> time, whichever first</div></div>
+        <div class="metric"><div class="v">~96 / day</div><div class="l">objects at measured volume (time-triggered, ~40 MB each)</div></div>
+        <div class="metric"><div class="v">UNCOMPRESSED</div><div class="l">payload is already gzip L6 from CloudWatch</div></div>
+      </div>
+      <p style="margin-top:16px">At the measured volumes, the buffer is <b>time-triggered every 15 minutes</b> (daily volume &lt; 128&nbsp;MB per 15&nbsp;min), producing ~40&nbsp;MB objects — comfortably above the GLACIER_IR minimum. Compression stays <b>UNCOMPRESSED</b> at Firehose because the CloudWatch→Firehose payload is already gzip level 6; setting GZIP would double-compress for no gain.</p>
+      <div class="callout good">
+        <b>Monitoring:</b> a delivery-error log group <span class="k">/aws/kinesisfirehose/app-log</span> captures failures, plus Firehose CloudWatch metrics <span class="k">DeliveryToS3.Success</span> and <span class="k">DeliveryToS3.DataFreshness</span> (alarm-able for staleness).
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <p class="slabel"><span class="dot"></span>Consideration 4</p>
+    <h2>Cost planning &amp; the 7-year extension</h2>
+    <div class="card hero-card">
+      <div class="calc">
+        <div class="controls">
+          <div class="ctl">
+            <label>Ingest volume <b><span id="vVal">3.8</span> GB/day</b></label>
+            <input type="range" id="v" min="0.5" max="15" step="0.1" value="3.8">
+            <div class="presets" id="presets">
+              <button data-v="3.8">dev-ex 3.8</button>
+              <button data-v="6.85">stg-ex 6.85</button>
+              <button data-v="2.28">point-dev 2.28</button>
+              <button data-v="1.92">point-stg 1.92</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label>Retention <b><span id="rVal">7</span> years</b></label>
+            <input type="range" id="r" min="1" max="7" step="1" value="7">
+          </div>
+          <div class="ctl">
+            <label style="margin-bottom:10px">Aged-tier storage class</label>
+            <div class="seg" id="seg">
+              <button data-rate="0.005" aria-pressed="true">GLACIER_IR<small>$0.005 · instant</small></button>
+              <button data-rate="0.025" aria-pressed="false">STANDARD<small>$0.025 · instant</small></button>
+              <button data-rate="0.00099" aria-pressed="false">DEEP_ARCHIVE<small>$0.00099 · 12h</small></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="result">
+          <div class="big"><span id="total">$54</span><span style="font-size:.4em;color:var(--ink-dim)">/mo</span></div>
+          <div class="biglabel">steady-state monthly cost, one environment</div>
+          <ul class="breakdown">
+            <li><span>Firehose ingest <span class="disc" style="font-style:normal">30.4 × V × $0.029</span></span><span class="num" id="bIngest"></span></li>
+            <li><span>STANDARD, first 30 days</span><span class="num" id="bStd"></span></li>
+            <li><span>Aged tier <span class="disc" style="font-style:normal">(R·365−30) × V × rate</span></span><span class="num" id="bAged"></span></li>
+            <li><span>PUT / transition requests</span><span class="num">$0.10</span></li>
+            <li class="tot"><span>Total / month</span><span class="num" id="bTot"></span></li>
+          </ul>
+          <div class="savings" id="savings"></div>
+        </div>
+      </div>
+
+      <div class="ramp">
+        <div class="rlabel">Monthly cost ramp — accumulates until the retention plateau</div>
+        <div class="bars" id="bars"></div>
+      </div>
+
+      <div class="callout good" style="margin-top:20px">
+        <b>Key takeaway.</b> Even at 7 years with GLACIER_IR, the app-log archive is only <b>tens of dollars a month</b> per environment (≈ $54/mo at 3.8 GB/day, ≈ $71/mo at 5 GB/day). Against a total infra bill in the <b>thousands/mo</b> (EKS + Aurora + Redshift + NAT), it is a <b>rounding error — well under 1–3%</b>. Storage class is the lever that keeps it there: GLACIER_IR is ~78% cheaper than STANDARD across a 7-year horizon.
+      </div>
+      <p class="disc">Reference measured volumes (app ≈ 96% of total): dev-ex 3.8 · stg-ex 6.85 · point-dev 2.28 · point-stg 1.92 GB/day. prd not yet measured. Model is steady-state storage + ingest; excludes the tiny retrieval cost, which applies only when logs are read back.</p>
+    </div>
+  </section>
+
+  <div class="foot">Application log archive — CloudWatch subscription filters → Kinesis Data Firehose → S3, app-log path only. Cost figures are estimates from public AWS Tokyo list prices (2026-07-13).</div>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement;
+  var btn=document.getElementById('themeBtn');
+  btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme');
+    var next = cur==='dark' ? 'light' : cur==='light' ? 'dark' :
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light':'dark');
+    root.setAttribute('data-theme',next);
+  });
+
+  var v=document.getElementById('v'), r=document.getElementById('r'), seg=document.getElementById('seg');
+  var rate=0.005;
+  var fmt=function(n){ return '$'+ (n>=100? n.toFixed(0) : n.toFixed(2)); };
+
+  function calcMonthly(V,R,rt){
+    var ingest=30.4*V*0.029;
+    var std30=30*V*0.025;
+    var aged=(R*365-30)*V*rt;
+    return {ingest:ingest,std30:std30,aged:aged,fixed:0.10,total:ingest+std30+aged+0.10};
+  }
+  // monthly cost at end of year y (aged tier still accumulating, nothing expired yet)
+  function costAtYear(V,y,rt){
+    var ingest=30.4*V*0.029, std30=30*V*0.025, aged=(y*365-30)*V*rt;
+    return ingest+std30+aged+0.10;
+  }
+
+  function render(){
+    var V=parseFloat(v.value), R=parseInt(r.value,10);
+    document.getElementById('vVal').textContent=V.toFixed(V%1?1:0);
+    document.getElementById('rVal').textContent=R;
+    var c=calcMonthly(V,R,rate);
+    document.getElementById('total').textContent='$'+ (c.total>=100?c.total.toFixed(0):c.total.toFixed(0));
+    document.getElementById('bIngest').textContent=fmt(c.ingest);
+    document.getElementById('bStd').textContent=fmt(c.std30);
+    document.getElementById('bAged').textContent=fmt(c.aged);
+    document.getElementById('bTot').textContent=fmt(c.total);
+
+    // savings vs STANDARD
+    var std=calcMonthly(V,R,0.025).total;
+    var sv=document.getElementById('savings');
+    if(rate===0.025){
+      sv.innerHTML='Aged tier on <b>STANDARD</b>. Switch to <b>GLACIER_IR</b> to cut ~'+
+        Math.round((1-calcMonthly(V,R,0.005).total/std)*100)+'% (down to '+fmt(calcMonthly(V,R,0.005).total)+'/mo).';
+    } else {
+      var pct=Math.round((1-c.total/std)*100);
+      sv.innerHTML='vs STANDARD ('+fmt(std)+'/mo): saving <b>'+pct+'%</b> at this retention.';
+    }
+
+    // ramp bars 1..R
+    var bars=document.getElementById('bars'); bars.innerHTML='';
+    var vals=[]; for(var y=1;y<=R;y++) vals.push(costAtYear(V,y,rate));
+    var max=Math.max.apply(null,vals);
+    for(var i=0;i<vals.length;i++){
+      var pctH=Math.max(3,(vals[i]/max)*100);
+      var bar=document.createElement('div'); bar.className='bar';
+      bar.innerHTML='<div class="cap">'+fmt(vals[i])+'</div>'+
+        '<div class="fill" style="height:'+pctH+'%"></div>'+
+        '<div class="yr">y'+(i+1)+'</div>';
+      bars.appendChild(bar);
+    }
+  }
+
+  v.addEventListener('input',render);
+  r.addEventListener('input',render);
+  document.getElementById('presets').addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b)return; v.value=b.getAttribute('data-v'); render();
+  });
+  seg.addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b)return;
+    [].forEach.call(seg.children,function(x){x.setAttribute('aria-pressed', x===b?'true':'false');});
+    rate=parseFloat(b.getAttribute('data-rate')); render();
+  });
+  render();
+})();
+</script>
