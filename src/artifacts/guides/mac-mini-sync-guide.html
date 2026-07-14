@@ -447,7 +447,7 @@ msync audit                      <span class="cmt"># kỳ vọng: 34 pass / 0 fa
   <p>
     Không sửa dòng code nào. Thả 3 file vào <code>config/units/</code> rồi chạy 2 lệnh:
   </p>
-  <pre><code>cd ~/Work/solashi/machine-sync/config/units
+  <pre><code>cd ~/machine-sync/config/units
 cp _template.rsync.conf  myproject.rsync.conf     <span class="cmt"># seed đường dẫn nào, exclude gì</span>
 cp _template.mutagen.yml myproject.mutagen.yml    <span class="cmt"># chỉ khi cần sync liên tục</span>
 $EDITOR myproject.rsync.conf myproject.mutagen.yml
@@ -537,7 +537,7 @@ msync apply claude                      <span class="cmt"># terminate + recreate
 <hr>
 
 <footer>
-  Toolkit: <code>~/Work/solashi/machine-sync/</code> — nằm ngoài mọi project mà nó sync.
+  Toolkit: <code>~/machine-sync/</code> — nằm ngoài mọi project mà nó sync.
   <code>msync</code> (CLI) · <code>config/units/</code> (khai báo unit) ·
   <code>lib/seed.sh</code> (engine rsync) · <code>lib/audit.sh</code> (34 phép kiểm tra).
 </footer>
