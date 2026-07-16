@@ -78,6 +78,14 @@
   .metric{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:14px}
   .metric .v{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
   .metric .l{font-size:12.5px;color:var(--ink-dim);margin-top:3px}
+  /* architecture diagrams */
+  .diagram{margin-top:18px}
+  .diagram+.diagram{margin-top:24px}
+  .diagram .dlabel{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);font-weight:700;margin:0 0 9px;display:flex;align-items:center;gap:9px}
+  .mermaid-scroll{overflow-x:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:16px}
+  .mermaid{display:flex;justify-content:center;min-width:min-content;margin:0;font-family:var(--serif)}
+  .mermaid svg{max-width:100%;height:auto}
+  .dcap{font-size:13px;color:var(--ink-dim);font-style:italic;margin:9px 2px 0}
   /* calculator */
   .calc{display:grid;grid-template-columns:340px 1fr;gap:20px}
   @media(max-width:760px){.calc{grid-template-columns:1fr}}
@@ -121,6 +129,66 @@
     <p class="sub">Design answers to the four CloudWatch-to-S3 considerations, with a live cost model for the 7-year extension.</p>
     <span class="pricenote">Prices: ap-northeast-1 (Tokyo) · AWS Price List API, 2026-07-13</span>
   </header>
+
+  <!-- Architecture -->
+  <section>
+    <p class="slabel"><span class="dot"></span>Overview</p>
+    <h2>Architecture</h2>
+    <div class="card">
+      <p>Two independent delivery paths feed the retention design. The <b>app-log path</b> is the pipeline this component builds; the <b>audit path</b> already delivers natively and only has its retention raised.</p>
+
+      <div class="diagram">
+        <p class="dlabel"><span class="dot"></span>Diagram 1 · App-log archive path — this component</p>
+        <div class="mermaid-scroll">
+          <pre class="mermaid">
+flowchart LR
+    subgraph CW["CloudWatch Logs"]
+        APP["/aws/containerinsights/point/application"]
+        ARCH["archive filter · pattern = empty<br/>(full archive)"]
+        SLACK["2 existing Slack-alert filters"]
+    end
+    R1["cwl-to-firehose-role"]
+    FH["Kinesis Data Firehose · app-log<br/>UNCOMPRESSED · 128 MB / 900 s"]
+    R2["firehose-to-s3-role"]
+    subgraph S3A["S3 · app-logs.bs-point-&lt;env&gt; · NEW"]
+        OBJ["app/ — archived logs<br/>immediate GLACIER_IR (day 0)"]
+        ERR["app-error/ — failed delivery"]
+        LOCK["Versioned + Object Lock WORM<br/>expire 365 / 730 / 2557 d"]
+    end
+    ELG["/aws/kinesisfirehose/app-log<br/>delivery errors"]
+    APP --> SLACK
+    APP -->|subscription filter| ARCH
+    ARCH -. assumes .-> R1
+    ARCH --> FH
+    FH -. assumes .-> R2
+    FH -->|PutObject| OBJ
+    FH -->|failed records| ERR
+    FH -. delivery errors .-> ELG
+          </pre>
+        </div>
+        <p class="dcap">The pipeline this component builds: the application log group fans out to its existing Slack-alert filters and to a new full-archive subscription filter that streams through Kinesis Data Firehose into a new, Object-Lock-protected S3 bucket landing directly in GLACIER_IR.</p>
+      </div>
+
+      <div class="diagram">
+        <p class="dlabel"><span class="dot" style="background:var(--teal)"></span>Diagram 2 · Audit-log native path — out of scope</p>
+        <div class="mermaid-scroll">
+          <pre class="mermaid">
+flowchart LR
+    CT["CloudTrail (trail)"]
+    SSM["SSM Session Manager"]
+    subgraph S3B["S3 · audit-logs.bs-point-&lt;env&gt; · EXISTING"]
+        CTO["AWSLogs/&lt;acct&gt;/CloudTrail/"]
+        SSMO["aws/ssm/"]
+        META["STANDARD storage (no Glacier)<br/>raise expiration only · 365 / 730 / 2557 d<br/>Object Lock unchanged"]
+    end
+    CT -->|native S3 delivery| CTO
+    SSM -->|native S3 delivery| SSMO
+          </pre>
+        </div>
+        <p class="dcap">Out of scope for the Firehose pipeline: CloudTrail and SSM Session Manager deliver natively to a separate, existing bucket — no Firehose is involved, and this work only raises that bucket's retention expiration.</p>
+      </div>
+    </div>
+  </section>
 
   <!-- 1 -->
   <section>
@@ -343,4 +411,58 @@
   });
   render();
 })();
+</script>
+
+<!-- Mermaid renderer — dual-host.
+     claude.ai artifact: the mermaid pre blocks render NATIVELY; strict CSP blocks this
+       CDN import, so the import throws and we fall through silently (no double-render).
+     artifacts.hoangtrung.dev (static Astro): no native mermaid, but CDN is allowed,
+       so this import runs and renders the diagrams. -->
+<script type="module">
+  try {
+    const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+    // Reuse the page's navy+gold CSS custom properties so the diagram matches the
+    // theme active at load (light or dark). Fallbacks are the light-theme hexes.
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name, fallback) => (cs.getPropertyValue(name) || '').trim() || fallback;
+    const surface  = v('--surface',   '#fffdf8');
+    const surface2 = v('--surface-2', '#f0ebe0');
+    const navy     = v('--navy',      '#1e3a5f');
+    const gold     = v('--gold',      '#b5852a');
+    const goldSoft = v('--gold-soft', '#e7d3a1');
+    const ink      = v('--ink',       '#1b2436');
+    const inkDim   = v('--ink-dim',   '#5a6478');
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: 'Georgia, "Times New Roman", serif',
+        fontSize: '14px',
+        background: surface2,
+        primaryColor: surface,
+        primaryTextColor: ink,
+        primaryBorderColor: navy,
+        secondaryColor: surface2,
+        secondaryTextColor: ink,
+        secondaryBorderColor: gold,
+        tertiaryColor: goldSoft,
+        tertiaryTextColor: ink,
+        tertiaryBorderColor: gold,
+        lineColor: inkDim,
+        textColor: ink,
+        mainBkg: surface,
+        nodeBorder: navy,
+        nodeTextColor: ink,
+        clusterBkg: surface2,
+        clusterBorder: gold,
+        titleColor: navy,
+        edgeLabelBackground: surface
+      }
+    });
+    // Explicit run() is idempotent (skips data-processed nodes), covering the case
+    // where DOMContentLoaded already fired before this module executed.
+    await mermaid.run();
+  } catch (e) {
+    // CSP blocked the CDN import (claude.ai) — native rendering handles the diagrams.
+  }
 </script>
