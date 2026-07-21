@@ -2,23 +2,22 @@
 //
 // Two auth layers, checked in order:
 //
-// 1. GHOST LAYER — hidden projects (ghost.list → ghost-folders.js).
+// 1. GHOST LAYER — hidden projects (meta/ghost.json on R2, cached ~45s).
 //    A ghost project requires a valid cf_ghost cookie (HMAC-signed, master password unlock
 //    via /ghost). Fail-closed: a ghost project with no GHOST_MASTER_PW or no COOKIE_SECRET
 //    is never served. ?ghost=true / ?ghost=1 on ANY page → 302 to /ghost.
 //
-// 2. PER-PROJECT LAYER — password-protected projects (protected.list → protected-folders.js
+// 2. PER-PROJECT LAYER — password-protected projects (meta/protected.json on R2
 //    or PW_<SNAKE(X)> env secret). A project "X" requires a valid cf_auth_<SNAKE(X)> cookie.
 //    Fail-closed: listed-protected but missing PW_<X> or COOKIE_SECRET → 403.
 //
 // A project can be BOTH ghost AND protected — the user must clear both layers.
 //
-// /ghost, /login, /logout, /pagefind/*, /_astro/*, favicon, sitemap, robots all have a
+// /ghost, /login, /logout, /api/*, /assets/*, /_astro/*, favicon, sitemap, robots all have a
 // non-project first segment, so they pass through next() without auth (no explicit allowlist
-// needed — just don't name a project "ghost", "login", or "pagefind").
+// needed — just don't name a project "ghost", "login", or "api").
 
-import PROTECTED from './protected-folders.js';
-import GHOST from './ghost-folders.js';
+import { loadRegistry, SHELL_SEGMENTS } from './_store.js';
 import {
   pwKey,
   cookieName,
@@ -27,9 +26,6 @@ import {
   GHOST_COOKIE_NAME,
   GHOST_PROJECT,
 } from './_auth.js';
-
-const protectedFolders = new Set(PROTECTED);
-const ghostFolders = new Set(GHOST);
 
 const baseHeaders = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' };
 
@@ -61,8 +57,12 @@ export const onRequest = async ({ request, env, next }) => {
 
   const seg = url.pathname.split('/').filter(Boolean)[0];
   if (!seg) return next(); // home page: public
+  if (SHELL_SEGMENTS.has(seg) || SHELL_SEGMENTS.has(decodeURIComponent(seg))) {
+    return next(); // shell / API / static first segments — no project auth
+  }
 
   const project = decodeURIComponent(seg);
+  const { protected: protectedFolders, ghost: ghostFolders } = await loadRegistry(env);
 
   // --- Layer 1: Ghost gate ---
   if (ghostFolders.has(project)) {

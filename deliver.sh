@@ -1,95 +1,99 @@
 #!/usr/bin/env bash
-# Deliver MỘT artifact (HTML hoặc Markdown) lên artifacts.hoangtrung.dev chỉ bằng 1 lệnh.
-# Dùng được từ BẤT KỲ thư mục nào (gọi bằng đường dẫn tuyệt đối tới script này).
+# Deliver ONE artifact (HTML or Markdown) to artifacts.hoangtrung.dev via R2.
+# No Astro rebuild, no Pages deploy of content, no git commit of artifacts.
 #
 #   deliver.sh <file.html|file.md> [project] [--name <newname>.(html|md)] [--protect [password]] [--ghost] [--open]
 #
-#   <file>             file nguồn (bắt buộc): HTML self-contained, hoặc Markdown (.md)
-#   [project]          tên project/thư mục đích (mặc định: "shared")
-#   --name <x>         đổi tên file khi publish (phải giữ đuôi .html hoặc .md)
-#   --protect [pw]     bảo vệ project bằng login + signed cookie (nếu không kèm pw, wrangler sẽ hỏi)
-#   --ghost            ẩn project khỏi trang chủ, chỉ hiện qua /ghost sau khi nhập master password
-#   --open             mở URL bằng trình duyệt sau khi xong
+#   <file>             source file (required): self-contained HTML, or Markdown (.md)
+#   [project]          project folder name (default: "shared")
+#   --name <x>         rename on publish (must keep .html or .md)
+#   --protect [pw]     password-protect the project (sets CF secret + R2 registry)
+#   --ghost            hide project from home; unlock via /ghost master password
+#   --open             open viewer URL after success
 #
-# Ví dụ:
-#   ~/Local/Work/solashi/share-artifacts/deliver.sh ./report.html cost-review
+# Example:
+#   ./deliver.sh ./report.html cost-review
 #   → viewer: https://artifacts.hoangtrung.dev/cost-review/report
 #   → raw:    https://artifacts.hoangtrung.dev/cost-review/report.html
-#
-#   ~/Local/Work/solashi/share-artifacts/deliver.sh ./secret.html ops --ghost --protect
-#   → viewer: https://artifacts.hoangtrung.dev/ops/secret (ẩn khỏi home, cần /ghost + password project)
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+SITE="https://artifacts.hoangtrung.dev"
+BUCKET="artifacts-content"
+
 SRC="${1:-}"
-[ -n "$SRC" ] || { sed -n '2,16p' "$0"; exit 1; }
+[ -n "$SRC" ] || { sed -n '2,18p' "$0"; exit 1; }
 shift
 
 PROJECT="shared"; NAME=""; PROTECT=0; PROTECT_PW=""; GHOST=0; OPEN=0
-# project = đối số positional đầu tiên không bắt đầu bằng "--"
 if [ "${1:-}" ] && [ "${1#--}" = "${1:-}" ]; then PROJECT="$1"; shift; fi
 while [ "${1:-}" ]; do
   case "$1" in
-    --name)    NAME="${2:?--name cần giá trị}"; shift 2;;
+    --name)    NAME="${2:?--name needs a value}"; shift 2;;
     --protect) PROTECT=1; shift; if [ "${1:-}" ] && [ "${1#--}" = "${1:-}" ]; then PROTECT_PW="$1"; shift; fi;;
     --ghost)   GHOST=1; shift;;
     --open)    OPEN=1; shift;;
-    *) echo "❌ Tham số lạ: $1" >&2; exit 1;;
+    *) echo "❌ Unknown arg: $1" >&2; exit 1;;
   esac
 done
 
-[ -f "$SRC" ] || { echo "❌ Không thấy file: $SRC" >&2; exit 1; }
+[ -f "$SRC" ] || { echo "❌ File not found: $SRC" >&2; exit 1; }
+
+# Resolve to absolute for wrangler --file=
+SRC_ABS="$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")"
 
 BASENAME="${NAME:-$(basename "$SRC")}"
-# prepare-static.mjs chỉ copy .html và .md sang public/. File đuôi khác (vd .htm) sẽ KHÔNG
-# được phục vụ verbatim → 404. Validate đuôi của TÊN CUỐI (sau --name), không phải file nguồn.
 case "$BASENAME" in
   *.html|*.md) ;;
-  *) echo "❌ Chỉ hỗ trợ .html hoặc .md (nhận: $BASENAME). Lưu ý: .htm không được hỗ trợ." >&2; exit 1;;
+  *) echo "❌ Only .html or .md supported (got: $BASENAME)." >&2; exit 1;;
 esac
 
-# Pull code mới nhất để src/artifacts/ không lệch khi deploy từ nhiều máy.
-# Chỉ pull khi working tree sạch — tránh rebase conflict/ghi đè thay đổi local chưa commit.
-if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
-  echo "⬇️  git pull --rebase…"
-  git pull --rebase --quiet || echo "⚠️ git pull thất bại — tiếp tục với state local." >&2
-else
-  echo "⚠️ Working tree không sạch — bỏ qua git pull (commit/stash thủ công để tránh lệch)." >&2
-fi
+# Optional subpath not supported here — file lands at project root.
+# For nested paths, pass --name "folder/file.html".
+FILE_REL="$BASENAME"
+KEY="content/${PROJECT}/${FILE_REL}"
 
-mkdir -p "src/artifacts/$PROJECT"
-cp "$SRC" "src/artifacts/$PROJECT/$BASENAME"
-echo "📥 $SRC  ->  src/artifacts/$PROJECT/$BASENAME"
+case "$BASENAME" in
+  *.html) CT="text/html; charset=utf-8";;
+  *.md)   CT="text/markdown; charset=utf-8";;
+esac
+
+echo "📤 Uploading to R2: ${BUCKET}/${KEY}"
+npx wrangler r2 object put "${BUCKET}/${KEY}" --file="$SRC_ABS" --content-type="$CT" --remote
+
+# Extract metadata + upsert catalog
+META_TMP="$(mktemp)"
+node --input-type=module -e "
+import fs from 'node:fs';
+import { extractMeta } from './scripts/lib/meta.mjs';
+const raw = fs.readFileSync(process.argv[1], 'utf8');
+const meta = extractMeta(raw, process.argv[2], process.argv[3]);
+fs.writeFileSync(process.argv[4], JSON.stringify(meta));
+" "$SRC_ABS" "$PROJECT" "$FILE_REL" "$META_TMP"
+
+node scripts/catalog-upsert.mjs --project "$PROJECT" --file "$FILE_REL" --meta-file "$META_TMP"
+rm -f "$META_TMP"
 
 if [ "$PROTECT" = 1 ]; then
   if [ -n "$PROTECT_PW" ]; then ./protect.sh "$PROJECT" "$PROTECT_PW"; else ./protect.sh "$PROJECT"; fi
 fi
 
 if [ "$GHOST" = 1 ]; then
-  # --ensure-master đảm bảo GHOST_MASTER_PW tồn tại trên Cloudflare.
   ./ghost.sh "$PROJECT" --ensure-master
 fi
 
-./deploy.sh
+CLEAN="${BASENAME##*/}"
+CLEAN="${CLEAN%.*}"
+# If --name had a folder prefix, keep it in the viewer path
+VIEW_REL="${FILE_REL%.*}"
+RAW_URL="${SITE}/${PROJECT}/${FILE_REL}"
+VIEW_URL="${SITE}/${PROJECT}/${VIEW_REL}"
 
-CLEAN="${BASENAME%.*}"   # bỏ đuôi cuối (an toàn cho tên nhiều dấu chấm: a.b.v2.md -> a.b.v2)
-RAW_URL="https://artifacts.hoangtrung.dev/$PROJECT/$BASENAME"
-VIEW_URL="https://artifacts.hoangtrung.dev/$PROJECT/$CLEAN"
 echo
-echo "✅ Delivered:"
-echo "   $VIEW_URL        (viewer — toolbar + nội dung)"
-echo "   $RAW_URL         (raw — file gốc)"
+echo "✅ Delivered (R2 — live without rebuild):"
+echo "   $VIEW_URL        (viewer)"
+echo "   $RAW_URL         (raw)"
 [ "$OPEN" = 1 ] && command -v open >/dev/null && open "$VIEW_URL" || true
-
-# Commit + push artifact vào git để các máy khác sync (share-artifacts là repo sync giữa các máy).
-# Chỉ stage những gì deliver.sh touch — không quét thay đổi unrelated đang dở dang của user.
-git add "src/artifacts/$PROJECT/$BASENAME" protected.list ghost.list functions/protected-folders.js functions/ghost-folders.js 2>/dev/null || true
-if ! git diff --cached --quiet 2>/dev/null; then
-  echo "📤 git commit + push…"
-  git commit -m "feat(artifacts): publish $PROJECT/$BASENAME" --quiet \
-    && git push --quiet \
-    || echo "⚠️ git commit/push thất bại — web đã deploy, nhưng cần commit/push thủ công." >&2
-fi

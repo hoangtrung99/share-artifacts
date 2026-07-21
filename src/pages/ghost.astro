@@ -1,29 +1,7 @@
 ---
-// Ghost gallery — hidden projects, only reachable after master password unlock at /ghost.
-// This page is PRE-RENDERED at build time (same as the home gallery) but never served without
-// a valid cf_ghost cookie: functions/ghost.js calls next() to fall through here ONLY when
-// authenticated, otherwise it returns the login form. The middleware also gates direct
-// /<ghost-project>/ URLs (redirects to /ghost if no cf_ghost cookie).
-//
-// Privacy: ghost project names/file counts appear here, but this page is behind the ghost auth
-// gate. No data-pagefind-body → ghost content never enters the public search index.
+// Ghost gallery — static shell. Only served after functions/ghost.js verifies cf_ghost
+// (next() fall-through). Lists ghost projects from /api/catalog (included when cookie present).
 import Base from '../layouts/Base.astro';
-import { loadArtifacts, protectedProjects, ghostProjects } from '../lib/artifacts.mjs';
-
-const mdModules = import.meta.glob('../artifacts/**/*.md', { eager: true });
-const artifacts = await loadArtifacts(mdModules);
-const locked = protectedProjects();
-const ghosts = ghostProjects();
-
-const counts = new Map();
-for (const a of artifacts) {
-  if (!ghosts.has(a.project)) continue;
-  counts.set(a.project, (counts.get(a.project) ?? 0) + 1);
-}
-
-const projects = [...counts.entries()]
-  .map(([project, count]) => ({ project, count, locked: locked.has(project) }))
-  .sort((a, b) => a.project.localeCompare(b.project));
 ---
 
 <Base title="👻 Ghost — Artifacts" description="Hidden projects.">
@@ -31,27 +9,51 @@ const projects = [...counts.entries()]
   <header class="gallery-head">
     <h1>👻 Ghost projects</h1>
     <p class="lede">Hidden from the public gallery.</p>
-    <p class="count">{projects.length} project{projects.length === 1 ? '' : 's'}</p>
+    <p class="count" id="ghost-count">Loading…</p>
   </header>
 
-  <ul class="cards">
-    {projects.map((p) => (
-      <li class="card">
-        <a class="card-link" href={`/${encodeURIComponent(p.project)}`} aria-label={`Open project ${p.project}`}>
-          <div class="card-top">
-            <span class="proj-icon" aria-hidden="true">{p.locked ? '🔒' : '📁'}</span>
-            {!p.locked && <span class="card-date">{p.count} file{p.count === 1 ? '' : 's'}</span>}
-          </div>
-          <h3 class="card-title proj-name">{p.project}</h3>
-          <p class="card-desc">{p.locked ? 'Protected — password required to view files.' : 'Open — click to view files.'}</p>
-        </a>
-      </li>
-    ))}
-  </ul>
-
-  {projects.length === 0 && (
-    <p class="no-results">No ghost projects configured. Add project names to <code>ghost.list</code> and redeploy.</p>
-  )}
+  <ul class="cards" id="ghost-cards"></ul>
+  <p class="no-results" id="ghost-empty" hidden>No ghost projects configured.</p>
 
   <p class="count" style="margin-top: 2.5rem"><a href="/ghost?logout=1">Sign out of ghost mode</a></p>
 </Base>
+
+<script is:inline>
+  (async function () {
+    const cards = document.getElementById('ghost-cards');
+    const countEl = document.getElementById('ghost-count');
+    const emptyEl = document.getElementById('ghost-empty');
+    try {
+      const resp = await fetch('/api/catalog', { headers: { accept: 'application/json' } });
+      if (!resp.ok) throw new Error('status ' + resp.status);
+      const data = await resp.json();
+      const projects = (data.projects || []).filter((p) => p.ghost);
+      projects.sort((a, b) => a.name.localeCompare(b.name));
+      cards.innerHTML = '';
+      for (const p of projects) {
+        const li = document.createElement('li');
+        li.className = 'card';
+        const meta =
+          !p.protected && p.count != null
+            ? `<span class="card-date">${p.count} file${p.count === 1 ? '' : 's'}</span>`
+            : '';
+        li.innerHTML =
+          `<a class="card-link" href="/${encodeURIComponent(p.name)}" aria-label="Open project ${p.name}">` +
+          `<div class="card-top">` +
+          `<span class="proj-icon" aria-hidden="true">${p.protected ? '🔒' : '📁'}</span>` +
+          meta +
+          `</div>` +
+          `<h3 class="card-title proj-name">${p.name}</h3>` +
+          `<p class="card-desc">${p.protected ? 'Protected — password required to view files.' : 'Open — click to view files.'}</p>` +
+          `</a>`;
+        cards.appendChild(li);
+      }
+      countEl.textContent = `${projects.length} project${projects.length === 1 ? '' : 's'}`;
+      emptyEl.hidden = projects.length !== 0;
+    } catch (err) {
+      countEl.textContent = 'Could not load ghost projects';
+      emptyEl.hidden = false;
+      emptyEl.textContent = String(err.message || err);
+    }
+  })();
+</script>

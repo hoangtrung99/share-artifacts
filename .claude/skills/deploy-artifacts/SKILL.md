@@ -1,77 +1,73 @@
 ---
 name: deploy-artifacts
-description: Use when the user wants to publish/deploy an HTML or Markdown artifact to artifacts.hoangtrung.dev and get a shareable link. Classifies the artifact into the right project folder (asks if unclear), deploys via the share-artifacts repo, optionally password-protects it, optionally marks it as a hidden (ghost) project, and returns the URL. Triggers - "deploy this artifact", "publish to my site", "share this report/page", "deploy-artifacts", "đẩy artifact này lên web".
+description: Use when the user wants to publish/deploy an HTML or Markdown artifact to artifacts.hoangtrung.dev and get a shareable link. Classifies the artifact into the right project folder (asks if unclear), uploads via R2 deliver (no full rebuild), optionally password-protects it, optionally marks it as a hidden (ghost) project, and returns the URL. Triggers - "deploy this artifact", "publish to my site", "share this report/page", "deploy-artifacts", "đẩy artifact này lên web".
 ---
 
 # Deploy Artifacts to artifacts.hoangtrung.dev
 
-Goal: take an HTML or Markdown artifact, put it under the right project folder, deploy it, and hand the
-user a shareable link — auto-classifying the project, or asking when unclear.
+Goal: take an HTML or Markdown artifact, upload it to R2 under the right project, update the catalog,
+and hand the user a shareable link — auto-classifying the project, or asking when unclear.
 
-- **Repo:** `~/Local/Work/solashi/share-artifacts` (run all scripts from here).
-- **Site:** a static Astro app (gallery + viewer) on Cloudflare Pages. `src/artifacts/` is the source of truth.
-- **Mechanism:** `deliver.sh` → copies the file into `src/artifacts/<project>/`, runs `npm run build`
-  (prepare-static + astro build + pagefind), deploys to Cloudflare Pages, and prints two URLs:
-  the viewer `https://artifacts.hoangtrung.dev/<project>/<file>` and the raw
-  `https://artifacts.hoangtrung.dev/<project>/<file>.(html|md)`.
-- **Tooling is `wrangler` (Pages), NOT `cloudflared`.**
-- **Git sync (automatic):** `deliver.sh` runs `git pull --rebase` before copying the artifact (skipped with
-  a warning if the working tree is dirty) and `git commit + push` after a successful deploy, so
-  `src/artifacts/` stays consistent across machines. Only the artifact + `protected.list` +
-  `ghost.list` + `functions/protected-folders.js` + `functions/ghost-folders.js` are staged — unrelated
-  changes are left alone.
+- **Repo:** `share-artifacts` (run all scripts from repo root).
+- **Site:** thin Astro shell (gallery + login + ghost) on Cloudflare Pages. **Content lives on R2**
+  (`artifacts-content` bucket). Pages Functions serve content and edge-render Markdown.
+- **Mechanism:** `deliver.sh` → `wrangler r2 object put` + catalog upsert. **No** `pnpm build`, **no**
+  full Pages content rebuild, **no** git commit of artifacts for a normal deliver.
+- **Tooling is `wrangler` (Pages + R2), NOT `cloudflared`.**
+- **Shell deploy (rare):** `./deploy.sh` only when functions/shell/CSS change — not for new content.
+
+## Prerequisites (once)
+
+1. Enable **R2** in the Cloudflare dashboard (account-level).
+2. Create bucket: `npx wrangler r2 bucket create artifacts-content`
+3. Migrate existing content (if any): `node scripts/migrate-to-r2.mjs`
+4. Deploy shell: `./deploy.sh`
 
 ## Steps
 
 ### 1. Locate the artifact
 - It's the `.html` or `.md` file just created in this session, or a path the user gives. Only `.html`
-  and `.md` are supported (`.htm` is not — it would 404).
-- An `.html` artifact must be **self-contained** (inline CSS/JS, images as `data:` URIs — no refs to local
-  sibling files). If it references local assets, warn the user (they won't load on the site).
-- A `.md` artifact may carry frontmatter (`title`, `description`, `tags`, `date`) — used for gallery metadata.
+  and `.md` are supported (`.htm` is not).
+- An `.html` artifact must be **self-contained** (inline CSS/JS, images as `data:` URIs).
+- A `.md` artifact may carry frontmatter (`title`, `description`, `tags`, `date`).
 
 ### 2. Choose the project folder — classify, or ask
-1. List existing projects: `ls ~/Local/Work/solashi/share-artifacts/src/artifacts/`
-2. Read the artifact's `<title>` and top headings to understand its topic.
-3. Decide the destination project:
-   - If it clearly belongs to an **existing** project → use that.
-   - Otherwise derive a short **kebab-case** slug from the topic (e.g. `cost-review`, `ses-research`,
-     `eks-incident`).
-4. **If the classification is ambiguous or you are not confident, ASK** (AskUserQuestion): present the
-   best-matching existing project(s) + your suggested new slug, and let the user pick. Never silently guess.
+1. Prefer existing project names from the live site / known folders (e.g. `verups`, `guides`, `read`).
+2. Read the artifact's `<title>` / headings to understand its topic.
+3. Decide destination:
+   - Clear match to an **existing** project → use that.
+   - Else derive a short **kebab-case** slug (e.g. `cost-review`, `eks-incident`).
+4. **If ambiguous, ASK** (AskUserQuestion). Never silently guess.
+
 ### 3. Decide password protection
-- If the artifact has internal / work / sensitive content, recommend protecting the project.
-- To protect: pass `--protect`. If that project has no password yet, **ask the user for the password** —
-  NEVER invent one, NEVER print it to the output/logs.
-- Skip if the project is already protected (the existing password persists) or the content is clearly public.
+- Internal / work / sensitive content → recommend `--protect`.
+- If the project has no password yet, **ask the user for the password** — NEVER invent one, NEVER print it.
+- Skip if already protected or clearly public.
 
-### 4. Decide ghost mode (hide from home gallery)
-- If the project should be **hidden from the public home page** and only reachable via `/ghost` after the
-  master password, pass `--ghost`.
-- A project can be **both** `--ghost` and `--protect` — it needs the master password to appear in the
-  ghost gallery, then the project password to open its files.
-- Do NOT invent the master password; `--ghost` will ensure `GHOST_MASTER_PW` exists on Cloudflare. If the
-  user wants to set/change it, run `./ghost.sh --set-master` separately.
+### 4. Decide ghost mode
+- Hidden from public home → `--ghost` (unlock via `/ghost` master password).
+- Can combine `--ghost` and `--protect`.
+- Do NOT invent the master password; `--ghost` ensures `GHOST_MASTER_PW` exists.
 
-### 5. Deploy
+### 5. Deliver (R2 path)
 ```bash
-cd ~/Local/Work/solashi/share-artifacts
+cd <share-artifacts-repo>
 ./deliver.sh <artifact.(html|md)> <project> [--name <newname>.(html|md)] [--protect 'password'] [--ghost]
 ```
-- Prerequisite: `wrangler` authenticated (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` env var). If the
-  deploy fails on auth, tell the user how to authenticate and stop.
+- Prerequisite: `wrangler` authenticated. If auth fails, tell the user how to login and stop.
+- If R2 is not enabled (error 10042), tell the user to enable R2 in the dashboard and create
+  bucket `artifacts-content`, then retry.
 
 ### 6. Return the shareable link
-- Report the URL(s) `deliver.sh` printed: the viewer `https://artifacts.hoangtrung.dev/<project>/<file>`
-  and the raw `https://artifacts.hoangtrung.dev/<project>/<file>.(html|md)`.
-- If the project is protected, tell the user: visiting it opens a **styled login page** (project name + a
-  password field) — enter the password there. There is no browser popup; a signed cookie keeps them in for 12h.
-- If the project is ghost, tell the user: it is hidden from the home gallery and reachable via
-  `https://artifacts.hoangtrung.dev/ghost` after the master password.
+- Viewer: `https://artifacts.hoangtrung.dev/<project>/<file>`
+- Raw: `https://artifacts.hoangtrung.dev/<project>/<file>.(html|md)`
+- Protected → styled `/login` page; signed cookie (long-lived).
+- Ghost → hidden from home; `https://artifacts.hoangtrung.dev/ghost` after master password.
 
 ## Notes
-- One artifact per run. To put many files into one project, copy them into `src/artifacts/<project>/` then run
-  `./deploy.sh` once.
-- Remove later: `./unpublish.sh <project>/<file>` (or `./unpublish.sh <project>` for the whole project).
-- Never commit passwords to git; they live only as Cloudflare secrets (`./protect.sh` handles this, and
-  auto-creates the `COOKIE_SECRET` signing key if it's missing).
+- One artifact per `deliver.sh` run. Nested path: `--name folder/file.html`.
+- Remove: `./unpublish.sh <project>/<file>` or `./unpublish.sh <project>`.
+- Never commit passwords; secrets stay on Cloudflare. Registries live on R2 (`meta/protected.json`,
+  `meta/ghost.json`); local `protected.list` / `ghost.list` are optional caches.
+- Redeploy the **shell** only when changing functions, Astro pages, or `public/assets/*`:
+  `./deploy.sh`.

@@ -258,41 +258,105 @@ h1, h2, h3, h4 { line-height: 1.25; }
 .toc a { color: var(--text-muted); }
 .toc a:hover { color: var(--accent); }
 
-/* ---- Markdown body ---- */
-.md-body { min-width: 0; }
+/* ---- Markdown body (comfortable reading measure) ---- */
+.md-view { max-width: 100%; }
+.md-body {
+  min-width: 0;
+  max-width: 48rem; /* ~768px reading column when no TOC grid stretch */
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+.md-layout[data-has-toc='true'] .md-body { max-width: none; }
 .md-body > :first-child { margin-top: 0; }
-.md-body h1, .md-body h2, .md-body h3, .md-body h4 { margin: 1.8rem 0 0.6rem; }
-.md-body h2 { padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
-.md-body p, .md-body ul, .md-body ol { margin: 0.7rem 0; }
-.md-body li { margin: 0.25rem 0; }
+.md-body h1 {
+  font-size: 1.85rem;
+  letter-spacing: -0.02em;
+  margin: 2rem 0 0.75rem;
+  font-weight: 700;
+}
+.md-body h2 {
+  font-size: 1.4rem;
+  letter-spacing: -0.015em;
+  margin: 2.1rem 0 0.65rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 650;
+}
+.md-body h3 {
+  font-size: 1.15rem;
+  margin: 1.7rem 0 0.5rem;
+  font-weight: 650;
+}
+.md-body h4 {
+  font-size: 1.02rem;
+  margin: 1.4rem 0 0.45rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text) 92%, var(--text-muted));
+}
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 { line-height: 1.3; scroll-margin-top: 4rem; }
+.md-body p { margin: 0.85rem 0; }
+.md-body ul, .md-body ol { margin: 0.85rem 0; padding-left: 1.4rem; }
+.md-body li { margin: 0.35rem 0; }
+.md-body li > ul, .md-body li > ol { margin: 0.25rem 0; }
+.md-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  text-underline-offset: 0.15em;
+}
+.md-body a:hover { text-decoration-color: var(--accent); }
+.md-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.75rem 0;
+}
 .md-body code {
   font-family: var(--mono);
-  font-size: 0.88em;
-  background: var(--bg-subtle);
+  font-size: 0.875em;
+  background: color-mix(in srgb, var(--bg-subtle) 85%, var(--accent) 4%);
   border: 1px solid var(--border);
   border-radius: 5px;
-  padding: 0.08em 0.35em;
+  padding: 0.12em 0.38em;
 }
 .md-body pre {
+  position: relative;
   overflow-x: auto;
-  padding: 0.9rem 1rem;
+  padding: 1rem 1.1rem;
+  margin: 1.15rem 0;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  font-size: 0.85rem;
-  line-height: 1.5;
+  background: var(--bg-subtle);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  -webkit-overflow-scrolling: touch;
+}
+@media (prefers-color-scheme: dark) {
+  .md-body pre {
+    background: #0d1117;
+    border-color: #30363d;
+  }
 }
 .md-body pre code {
   background: none;
   border: none;
   padding: 0;
   font-size: inherit;
+  color: inherit;
+  border-radius: 0;
 }
+/* highlight.js inherits shell tokens better when we don't force colors on pre alone */
+.md-body pre code.hljs { background: transparent; padding: 0; }
 .md-body blockquote {
-  margin: 1rem 0;
-  padding: 0.2rem 1rem;
+  margin: 1.15rem 0;
+  padding: 0.35rem 1rem 0.35rem 1.1rem;
   border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-subtle));
+  border-radius: 0 8px 8px 0;
   color: var(--text-muted);
 }
+.md-body blockquote p { margin: 0.4rem 0; }
 .md-body table {
   width: 100%;
   border-collapse: collapse;
@@ -302,17 +366,86 @@ h1, h2, h3, h4 { line-height: 1.25; }
 }
 .md-body th, .md-body td {
   border: 1px solid var(--border);
-  padding: 0.5rem 0.7rem;
+  padding: 0.55rem 0.75rem;
   text-align: left;
+  vertical-align: top;
 }
-.md-body th { background: var(--bg-subtle); font-weight: 600; }
-.md-body hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+.md-body th {
+  background: var(--bg-subtle);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md-body tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--bg-subtle) 55%, transparent);
+}
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.25rem 0;
+}
+/* GFM task lists */
+.md-body ul.task-list { list-style: none; padding-left: 0.25rem; }
+.md-body li.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  list-style: none;
+}
+.md-body li.task-list-item input[type='checkbox'] {
+  margin: 0.35rem 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+/* Copy button on fenced code */
+.md-body pre.has-copy { padding-top: 2.2rem; }
+.md-body .code-copy {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.32rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.85;
+}
+.md-body .code-copy:hover {
+  opacity: 1;
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.md-body .code-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Wide-doc handling: full-width reading shell + tables scroll inside their own box
    (so they never overflow the page or slide under the sticky TOC). */
-.md-shell { max-width: min(1320px, 94vw); margin: 0 auto; padding: calc(3rem + 1.25rem) 1.25rem 5rem; }
-.md-body .x-scroll { overflow-x: auto; max-width: 100%; margin: 1rem 0; border: 1px solid var(--border); border-radius: 8px; }
-.md-body .x-scroll table { width: max-content; min-width: 100%; margin: 0; border: 0; }
+.md-shell {
+  max-width: min(1320px, 94vw);
+  margin: 0 auto;
+  padding: calc(3rem + 1.25rem) 1.25rem 5rem;
+}
+.md-body .x-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 1.15rem 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.md-body .x-scroll table {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  border: 0;
+}
+.md-body .x-scroll th:first-child,
+.md-body .x-scroll td:first-child { border-left: 0; }
+.md-body .x-scroll th:last-child,
+.md-body .x-scroll td:last-child { border-right: 0; }
 
 /* ---- HTML iframe ---- */
 .html-wrap { margin-top: 0.5rem; }

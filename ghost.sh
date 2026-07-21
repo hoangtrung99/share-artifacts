@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# Quản lý ghost projects — các project ẩn khỏi trang chủ, chỉ hiện qua /ghost sau khi nhập master password.
+# Manage ghost (hidden) projects — master password + R2 registry.
 #
-# Auth tương tự protect.sh: trang /ghost (form) + signed cookie cf_ghost (HMAC-SHA256 trên COOKIE_SECRET).
-# Master password lưu dạng SECRET trên Cloudflare (GHOST_MASTER_PW) — KHÔNG bao giờ nằm trong git.
-# Tên ghost project thêm vào ghost.list (chỉ TÊN, không phải mật khẩu) → prepare-static.mjs sinh
-# functions/ghost-folders.js để middleware fail-closed. Chạy ./deploy.sh để build + đẩy.
+#   ./ghost.sh <folder>                      # mark as ghost
+#   ./ghost.sh --list
+#   ./ghost.sh --unghost <folder>
+#   ./ghost.sh --set-master [password]
+#   ./ghost.sh --ensure-master               # used by deliver.sh
 #
-#   ./ghost.sh <folder>                      # đánh dấu folder là ghost project
-#   ./ghost.sh --list                        # liệt kê ghost projects
-#   ./ghost.sh --unghost <folder>            # gỡ ghost
-#   ./ghost.sh --set-master [password]       # đặt master password cho /ghost
-#   ./ghost.sh --ensure-master               # đảm bảo GHOST_MASTER_PW tồn tại (dùng bởi deliver.sh)
-#
-# Yêu cầu: đã `npx wrangler login` (hoặc đặt CLOUDFLARE_API_TOKEN) và Pages project tồn tại.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,55 +20,58 @@ del_list() { grep -vxF "$1" "$LIST" > "$LIST.tmp" 2>/dev/null || true; mv "$LIST
 
 secret_exists() { npx wrangler pages secret list --project-name="$PROJECT" 2>/dev/null | grep -qw "$1"; }
 
-# Đảm bảo COOKIE_SECRET tồn tại — middleware/ghost fail-closed nếu thiếu.
 ensure_cookie_secret() {
   if secret_exists "COOKIE_SECRET"; then return 0; fi
-  echo "🔑 Chưa có COOKIE_SECRET (khoá ký cookie) — sinh ngẫu nhiên và đặt lên project…"
+  echo "🔑 No COOKIE_SECRET yet — generating…"
   if ! command -v openssl >/dev/null 2>&1; then
-    echo "❌ Cần 'openssl' để sinh COOKIE_SECRET. Cài openssl hoặc đặt thủ công:" >&2
-    echo "   openssl rand -base64 32 | npx wrangler pages secret put COOKIE_SECRET --project-name=$PROJECT" >&2
+    echo "❌ Need openssl to generate COOKIE_SECRET." >&2
     exit 1
   fi
   openssl rand -base64 32 | npx wrangler pages secret put COOKIE_SECRET --project-name="$PROJECT"
   if secret_exists "COOKIE_SECRET"; then
-    echo "✅ COOKIE_SECRET đã được tạo."
+    echo "✅ COOKIE_SECRET created."
   else
-    echo "❌ Không xác nhận được COOKIE_SECRET sau khi tạo — kiểm tra lại quyền wrangler." >&2
+    echo "❌ Could not confirm COOKIE_SECRET." >&2
     exit 1
   fi
 }
 
-# Đảm bảo GHOST_MASTER_PW tồn tại. Nếu chưa có, tự sinh một password dài (không in ra) HOẶC
-# dùng password truyền vào.
 ensure_master_password() {
   local pw="${1:-}"
   if secret_exists "GHOST_MASTER_PW"; then
-    echo "✅ GHOST_MASTER_PW đã tồn tại."
+    echo "✅ GHOST_MASTER_PW already set."
     return 0
   fi
-  echo "👻 Chưa có GHOST_MASTER_PW — đặt master password cho /ghost…"
+  echo "👻 No GHOST_MASTER_PW yet — set master password for /ghost…"
   if [ -n "$pw" ]; then
     printf '%s' "$pw" | npx wrangler pages secret put GHOST_MASTER_PW --project-name="$PROJECT"
   else
     npx wrangler pages secret put GHOST_MASTER_PW --project-name="$PROJECT"
   fi
   if secret_exists "GHOST_MASTER_PW"; then
-    echo "✅ GHOST_MASTER_PW đã được tạo."
+    echo "✅ GHOST_MASTER_PW created."
   else
-    echo "❌ Không xác nhận được GHOST_MASTER_PW sau khi tạo." >&2
+    echo "❌ Could not confirm GHOST_MASTER_PW." >&2
     exit 1
   fi
 }
 
+sync_registry() {
+  node scripts/registry-write.mjs --ghost || {
+    echo "⚠️  Failed to write meta/ghost.json to R2 — retry: node scripts/registry-write.mjs --ghost" >&2
+  }
+}
+
 case "${1:-}" in
   --list)
-    echo "Ghost projects (theo ghost.list):"
-    if [ -s "$LIST" ]; then sort -u "$LIST" | sed 's/^/  👻 /'; else echo "  (chưa có)"; fi
+    echo "Ghost projects (ghost.list):"
+    if [ -s "$LIST" ]; then sort -u "$LIST" | sed 's/^/  👻 /'; else echo "  (none)"; fi
     ;;
   --unghost)
-    folder="${2:?Thiếu tên folder}"
+    folder="${2:?Missing folder name}"
     del_list "$folder"
-    echo "✅ Đã gỡ '$folder' khỏi ghost mode. Chạy ./deploy.sh để cập nhật ghost-folders.js."
+    sync_registry
+    echo "✅ Unghosted '$folder' (R2 registry updated). No shell redeploy needed."
     ;;
   --set-master)
     ensure_cookie_secret
@@ -84,25 +81,31 @@ case "${1:-}" in
     else
       ensure_master_password
     fi
-    echo "   → Chạy ./deploy.sh để áp dụng master password."
     ;;
   --ensure-master)
     ensure_cookie_secret
     ensure_master_password "${2:-}"
+    # When called as: ghost.sh <folder> --ensure-master from deliver? deliver uses:
+    #   ./ghost.sh "$PROJECT" --ensure-master
+    # which falls into default branch. Keep this for explicit use.
     ;;
   ""|-h|--help)
-    sed -n '2,18p' "$0"
+    sed -n '2,12p' "$0"
     ;;
   *)
     folder="$1"
-    [ -d "$ROOT/src/artifacts/$folder" ] || echo "⚠  Chưa thấy src/artifacts/$folder — vẫn đánh dấu ghost được, nhưng hãy kiểm tra lại tên." >&2
-
+    # Support: ghost.sh <folder> --ensure-master [pw]
+    extra="${2:-}"
     ensure_cookie_secret
-    ensure_master_password "${2:-}"
+    if [ "$extra" = "--ensure-master" ]; then
+      ensure_master_password "${3:-}"
+    else
+      ensure_master_password "${2:-}"
+    fi
 
     add_list "$folder"
-    echo "✅ Đã đánh dấu '$folder' là ghost project (master password + COOKIE_SECRET xác nhận tồn tại)."
-    echo "   → Chạy ./deploy.sh để cập nhật ghost-folders.js và đẩy middleware."
-    echo "   → Sau deploy, kiểm chứng: mở https://artifacts.hoangtrung.dev/ghost hoặc https://artifacts.hoangtrung.dev/?ghost=true"
+    sync_registry
+    echo "✅ Marked '$folder' as ghost (GHOST_MASTER_PW + COOKIE_SECRET + R2 registry)."
+    echo "   → https://artifacts.hoangtrung.dev/ghost"
     ;;
 esac

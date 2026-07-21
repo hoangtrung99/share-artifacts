@@ -6,15 +6,15 @@
   "packageManager": "pnpm@10.8.0",
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/prepare-static.mjs && astro build && pagefind --site dist",
+    "build": "node scripts/prepare-static.mjs && astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "migrate": "node scripts/migrate-to-r2.mjs",
+    "catalog:upsert": "node scripts/catalog-upsert.mjs",
+    "registry:write": "node scripts/registry-write.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",
     "astro": "^6.4.8"
-  },
-  "devDependencies": {
-    "pagefind": "^1.5.2"
   }
 }

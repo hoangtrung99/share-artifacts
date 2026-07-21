@@ -1,58 +1,76 @@
 #!/usr/bin/env bash
-# Gỡ artifact khỏi artifacts.hoangtrung.dev (xoá khỏi src/artifacts rồi build + deploy lại).
+# Remove an artifact (or whole project) from R2 + catalog.
 #
-#   unpublish.sh <project>/<file>        # xoá 1 page; <file> có thể kèm .html/.md hoặc bỏ đuôi
-#   unpublish.sh <project>/<file>.html   # xoá đúng 1 đuôi
-#   unpublish.sh <project>               # xoá cả project (tự gỡ mật khẩu nếu có)
+#   unpublish.sh <project>/<file>        # one page; with or without .html/.md
+#   unpublish.sh <project>/<file>.html
+#   unpublish.sh <project>               # entire project (all catalog files)
 #
-# Build wipe lại public/ và dist/ từ src/artifacts (source of truth), deploy upload atomic,
-# nên xoá khỏi src/artifacts + deploy = page biến mất khỏi web.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
+BUCKET="artifacts-content"
 
 TARGET="${1:-}"
-[ -n "$TARGET" ] || { sed -n '2,9p' "$0"; exit 1; }
-TARGET="${TARGET#/}"; TARGET="${TARGET%/}"   # bỏ slash thừa
-BASE="src/artifacts/$TARGET"
+[ -n "$TARGET" ] || { sed -n '2,8p' "$0"; exit 1; }
+TARGET="${TARGET#/}"; TARGET="${TARGET%/}"
 
-removed=0
+PROJECT="${TARGET%%/*}"
+REST="${TARGET#*/}"
 
-# 1) Trùng đúng file (caller gõ kèm đuôi).
-if [ -f "$BASE" ]; then
-  rm -f "$BASE"
-  echo "🗑  Đã xoá page: $TARGET"
-  removed=1
+remove_one() {
+  local project="$1" file="$2"
+  local key="content/${project}/${file}"
+  echo "🗑  R2 delete ${BUCKET}/${key}"
+  npx wrangler r2 object delete "${BUCKET}/${key}" --remote 2>/dev/null || true
+  node scripts/catalog-upsert.mjs --project "$project" --file "$file" --remove || true
+}
+
+if [ "$PROJECT" = "$TARGET" ]; then
+  # Whole project — list files from catalog via a small node helper
+  echo "🗑  Removing entire project: $PROJECT"
+  node --input-type=module -e "
+import { r2GetText, r2Delete } from './scripts/lib/r2-cli.mjs';
+const project = process.argv[1];
+const raw = r2GetText('meta/catalog.json');
+if (!raw) { console.log('catalog empty'); process.exit(0); }
+const catalog = JSON.parse(raw);
+const files = catalog.projects?.[project]?.files || [];
+for (const f of files) {
+  const key = 'content/' + project + '/' + f.file;
+  console.log('  delete', key);
+  try { r2Delete(key); } catch (e) { console.warn(e.message); }
+}
+delete catalog.projects[project];
+catalog.updatedAt = new Date().toISOString();
+const { r2PutText } = await import('./scripts/lib/r2-cli.mjs');
+r2PutText('meta/catalog.json', JSON.stringify(catalog, null, 2) + '\n');
+console.log('catalog updated');
+" "$PROJECT"
+
+  if grep -qxF "$PROJECT" protected.list 2>/dev/null; then
+    echo "↳ project '$PROJECT' is protected — unprotecting…"
+    ./protect.sh --unprotect "$PROJECT" || true
+  fi
+  if grep -qxF "$PROJECT" ghost.list 2>/dev/null; then
+    echo "↳ project '$PROJECT' is ghost — unghosting…"
+    ./ghost.sh --unghost "$PROJECT" || true
+  fi
+  echo "✅ Removed project '$PROJECT' from R2."
+  exit 0
 fi
 
-# 2) Tên "sạch" (không đuôi): xoá cả .html và .md nếu có (cùng map về 1 viewer URL).
-if [ "$removed" = 0 ]; then
+# Single file
+removed=0
+if [[ "$REST" == *.html || "$REST" == *.md ]]; then
+  remove_one "$PROJECT" "$REST"
+  removed=1
+else
   for ext in html md; do
-    if [ -f "$BASE.$ext" ]; then
-      rm -f "$BASE.$ext"
-      echo "🗑  Đã xoá page: $TARGET.$ext"
-      removed=1
-    fi
+    # Probe via delete (idempotent)
+    remove_one "$PROJECT" "${REST}.${ext}"
+    removed=1
   done
 fi
 
-# 3) Cả project (thư mục cấp 1).
-if [ "$removed" = 0 ] && [ -d "$BASE" ]; then
-  PROJECT="${TARGET%%/*}"
-  rm -rf "$BASE"
-  echo "🗑  Đã xoá project: $TARGET"
-  removed=1
-  if grep -qxF "$PROJECT" protected.list 2>/dev/null; then
-    echo "↳ project '$PROJECT' đang có mật khẩu — gỡ bảo vệ (xoá secret)…"
-    ./protect.sh --unprotect "$PROJECT" || true
-  fi
-fi
-
-if [ "$removed" = 0 ]; then
-  echo "❌ Không thấy: $BASE (đã thử .html, .md và thư mục project)" >&2
-  exit 1
-fi
-
-./deploy.sh
-echo "✅ Đã gỡ '$TARGET' khỏi artifacts.hoangtrung.dev."
+echo "✅ Unpublished '$TARGET' from R2."

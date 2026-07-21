@@ -9,6 +9,8 @@ dist/
 # public/ is build output (prepare-static regenerates it each build). Keep only the source favicon.
 public/*
 !public/favicon.svg
+!public/assets/
+!public/assets/**
 
 # local preview config (Claude Preview MCP)
 .claude/launch.json

@@ -2,5 +2,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "artifacts",
   "pages_build_output_dir": "./dist",
-  "compatibility_date": "2026-06-01"
+  "compatibility_date": "2026-06-01",
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "artifacts-content"
+    }
+  ]
 }

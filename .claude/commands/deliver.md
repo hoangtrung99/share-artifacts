@@ -16,11 +16,12 @@ Run from the share-artifacts repo root:
 Notes:
 - Only `.html` and `.md` are supported (`.htm` is rejected — it would 404).
 - Default project folder is `shared` if none is given.
-- `deliver.sh` runs `git pull --rebase` first (sync source across machines), then copies into
-  `src/artifacts/<project>/`, runs `npm run build`, deploys, runs `git commit + push` (publish artifact to
-  git so other machines sync), then prints both the viewer URL (`/<project>/<file>`) and the raw URL
-  (`/<project>/<file>.(html|md)`).
-- `--protect [password]` protects the project via the styled login page + signed cookie. If no password is
-  given, `protect.sh` prompts for it — do NOT invent a password and do NOT print any password to logs.
+- Content is uploaded to **Cloudflare R2** (bucket `artifacts-content`) and the catalog is upserted.
+  There is **no** full Astro rebuild and **no** git commit of artifact content for a normal deliver.
+- Prints viewer URL (`/<project>/<file>`) and raw URL (`/<project>/<file>.(html|md)`).
+- `--protect [password]` protects the project via styled login + signed cookie + R2 registry. If no
+  password is given, `protect.sh` prompts — do NOT invent a password and do NOT print passwords.
+- `--ghost` hides the project from the home gallery (master password at `/ghost`).
 - After it finishes, report the shareable URL(s) the script printed.
-- Prerequisite: wrangler is authenticated (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` env var set).
+- Prerequisite: wrangler authenticated; R2 enabled on the account; bucket `artifacts-content` exists.
+  If error 10042, tell the user to enable R2 in the Cloudflare dashboard first.
