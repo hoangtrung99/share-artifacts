@@ -186,7 +186,3 @@ pnpm run build   # prepare-static + astro build (no artifact enumeration)
 | Ghost cookie TTL | 7 days |
 | Share TTLs | 24h / 7d / 30d / 180d |
 | Registry edge cache | ~45s |
-
-## Plan / design notes
-
-See [`docs/plans/r2-content-storage.md`](docs/plans/r2-content-storage.md) (status: **Implemented**).
