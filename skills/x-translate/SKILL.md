@@ -12,7 +12,7 @@ artifacts.hoangtrung.dev with a prominent link to the original.
 1. Fetch the source text (X blocks bots — see Workflow).
 2. Translate to Vietnamese — faithful, natural (see [REFERENCE.md](REFERENCE.md)).
 3. Fill `templates/article.html` (config JSON + static `<title>` + `<article>` body of `<h2>`s).
-4. Deliver via `~/Local/Work/solashi/share-artifacts/deliver.sh`.
+4. Deliver via `deliver.sh` from the **share-artifacts** repo root (R2 upload; instant; no rebuild).
 
 Read-aloud is **built in and free**: the template's "Đọc bài" player uses the device's own
 voice (Web Speech API). No audio files are generated or deployed — the artifact stays light
@@ -55,13 +55,15 @@ voice (Web Speech API). No audio files are generated or deployed — the artifac
   `alt` text (translate the alt/caption if there is one).
 - Must stay **self-contained**: inline CSS/JS, images as `data:` URIs only.
 
-### 4. Deliver
+### 4. Deliver (R2 — instant, no rebuild)
 ```bash
-cd ~/Local/Work/solashi/share-artifacts
+cd <share-artifacts-repo-root>   # e.g. ~/Work/solashi/share-artifacts
 ./deliver.sh /tmp/<slug>.html read      # default project: read
 ```
-Return both URLs `deliver.sh` prints: viewer + raw. The artifact is self-contained and light
-(~tens of KB) — read-aloud is the device's own voice at runtime, nothing to bundle.
+- Uploads to R2 + upserts catalog. **No** Astro rebuild, **no** `./deploy.sh`, **no** git commit of content.
+- Default project is **`read`**.
+- Return both URLs `deliver.sh` prints: viewer + raw. The artifact is self-contained and light
+  (~tens of KB) — read-aloud is the device's own voice at runtime, nothing to bundle.
 
 ## Rules
 - **Always** include a prominent link to the original post (source banner is built-in; also keep

@@ -1,6 +1,9 @@
 # Plan: R2 content storage (tool-only repo)
 
-**Status:** code complete (2026-07-21). Blocked on Cloudflare account: enable R2 (error 10042), create bucket, migrate, deploy shell.
+**Status: Implemented** (2026-07-21).
+
+Content lives on private R2. `src/artifacts/` has been **removed**. One-shot migrate
+(`scripts/migrate-to-r2.mjs`) already ran. New content is delivered only via `deliver.sh`.
 
 ## Goal
 
@@ -23,42 +26,42 @@ meta/ghost.json
 
 | Piece | Role |
 |-------|------|
-| `deliver.sh` | Validate, extract meta, `wrangler r2 object put`, catalog upsert, optional protect/ghost |
-| `deploy.sh` | Build thin Astro shell + `wrangler pages deploy` (functions + dist) |
-| `protect.sh` / `ghost.sh` | CF secrets + write R2 registries (local `.list` as cache) |
-| `unpublish.sh` | Delete R2 objects + catalog entries |
+| `deliver.sh` | Validate, extract meta, `wrangler r2 object put --remote`, catalog upsert, optional protect/ghost |
+| `deploy.sh` | Build thin Astro shell + `wrangler pages deploy` (functions + dist) — shell only |
+| `protect.sh` / `ghost.sh` | CF secrets + write R2 registries (local `.list` as optional cache); **no** shell redeploy |
+| `unpublish.sh` | Delete R2 objects `--remote` + catalog entries |
 | `functions/_store.js` | R2 helpers, registry cache TTL 45s |
-| `functions/_markdown.js` | Pure JS markdown → HTML |
-| `functions/_render.js` | Project listing / HTML viewer / MD viewer shells |
+| `functions/_markdown.js` | Pure JS markdown → HTML (TOC, task lists, …) |
+| `functions/_render.js` | Project listing (folder tree) / HTML iframe viewer / MD viewer (highlight.js CDN) |
 | `functions/_middleware.js` | Auth from R2 registries (fail-closed) |
 | `functions/api/catalog.js` | `GET /api/catalog` |
 | `functions/[[path]].js` | Catch-all content routes |
-| `scripts/migrate-to-r2.mjs` | One-shot walk of `src/artifacts` → R2 |
+| `scripts/migrate-to-r2.mjs` | One-shot walk of former `src/artifacts` → R2 (**done**; historical) |
 | `public/assets/site.css` + `viewer.js` | Non-hashed assets for Function HTML |
 
-## URL contract (unchanged)
+## URL contract
 
 - Viewer: `/<project>/<file>`
 - Raw: `/<project>/<file>.html` or `.md`
-- Project listing: `/<project>/`
+- Project listing: `/<project>/` (folder tree + client filters)
 - Gallery: `/` (client fetch `/api/catalog`)
+- Share: `POST /share`, `GET /s/<token>` (TTL 24h / 7d / 30d / 180d)
 
-## Enablement steps (operator)
+## Operator notes (post-implementation)
 
-1. Cloudflare dashboard → enable R2 (error 10042 if skipped)
-2. `npx wrangler r2 bucket create artifacts-content`
-3. `node scripts/migrate-to-r2.mjs`
-4. `./deploy.sh` (shell + functions with R2 binding)
-5. Smoke: public project, protected login, ghost unlock, deliver new file without rebuild
+1. R2 enabled on account; bucket `artifacts-content` exists.
+2. Shell + functions deployed with R2 binding (`./deploy.sh` when shell changes).
+3. Daily content path: `./deliver.sh` / `./unpublish.sh` only — no rebuild.
+4. Protect/ghost: secrets + R2 registry; badge lag ≤ edge cache (~45s).
 
-## Dual mode / leftovers
+## Leftovers / conventions
 
-- `src/artifacts/` is **not** deleted until migrate is proven — still the source for migration.
-- After thin shell deploy, static artifact pages are gone from `dist`; content is R2-only.
+- **No** `src/artifacts/` in the repo. Content is R2-only.
 - Local `protected.list` / `ghost.list` remain optional caches; runtime auth uses R2.
+- Wrangler R2 CLI uses `--remote` in all scripts (wrangler 4 defaults to local).
 
 ## Auth
 
-- Ghost + per-project password layers preserved (fail-closed).
-- Share links (`/share`, `/s/:token`) unchanged.
+- Ghost (cookie TTL 7d) + per-project password (cookie TTL **180d**), fail-closed.
+- Share links (`/share`, `/s/:token`) preserved.
 - Passwords never in git.

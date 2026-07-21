@@ -91,8 +91,8 @@ Free, nothing to generate, **zero added file weight** — the read button just s
 **Deliberate decision: no AI/inline audio.** Pre-generated edge-tts neural audio was tried and
 removed — inlining a long essay's MP3 as base64 bloats the HTML to ~5 MB, which is not worth it
 for a reading artifact. Keep artifacts light (tens of KB). Do not re-introduce an `audio` field,
-base64 data-URIs, or a sibling `.mp3` (and `scripts/prepare-static.mjs` only serves `.html`/`.md`
-anyway, so a sibling asset would 404).
+base64 data-URIs, or a sibling `.mp3`. Content is served from **R2** as self-contained HTML/MD
+objects only — sibling binary assets are not part of the deliver pipeline and would not be uploaded.
 
 ### How it works
 - `analyze(#xlate-body)` builds the whitespace-normalized `textContent` plus a char→text-node map.
@@ -120,8 +120,10 @@ The delivered artifact is a **shared/external** deliverable. Before shipping, ve
 
 ## Delivering
 
+Content is published to **Cloudflare R2** via `deliver.sh` (instant; no rebuild, no pages deploy).
+
 ```bash
-cd ~/Local/Work/solashi/share-artifacts
+cd <share-artifacts-repo-root>   # e.g. ~/Work/solashi/share-artifacts
 ./deliver.sh /tmp/<slug>.html read        # viewer: https://artifacts.hoangtrung.dev/read/<slug>
 ```
 - Prerequisite: `wrangler` authenticated (`npx wrangler login` or `CLOUDFLARE_API_TOKEN`).
@@ -129,3 +131,4 @@ cd ~/Local/Work/solashi/share-artifacts
 - Return both URLs `deliver.sh` prints (viewer + raw).
 - Self-contained only: the template already is. Don't introduce external `<link>`/`<script>` to
   local files (Google Fonts CDN is fine — it resolves on the deployed site).
+- Do not commit the HTML into git; R2 is the content store.
