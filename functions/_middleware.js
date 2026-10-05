@@ -17,7 +17,7 @@
 // non-project first segment, so they pass through next() without auth (no explicit allowlist
 // needed — just don't name a project "ghost", "login", or "api").
 
-import { loadRegistry, SHELL_SEGMENTS } from './_store.js';
+import { loadRegistry, getText, SHELL_SEGMENTS } from './_store.js';
 import {
   pwKey,
   cookieName,
@@ -26,6 +26,44 @@ import {
   GHOST_COOKIE_NAME,
   GHOST_PROJECT,
 } from './_auth.js';
+
+// ---- Redirect layer (reorg support) -----------------------------------------
+// meta/redirect-map.json on R2 maps an extensionless path ("project/a/b") to its
+// new extensionless location. Checked BEFORE auth so old public links get a
+// stable 301 and reach the new URL (which then enforces whatever gates apply).
+const REDIRECT_KEY = 'meta/redirect-map.json';
+const REDIRECT_TTL_MS = 60_000;
+let redirectCache = null;
+
+async function loadRedirectMap(env) {
+  const now = Date.now();
+  if (redirectCache && now - redirectCache.at < REDIRECT_TTL_MS) return redirectCache.map;
+  let map = {};
+  try {
+    const raw = await getText(env.ARTIFACTS, REDIRECT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed;
+    }
+  } catch {
+    map = {}; // fail-open: a broken map must never block content
+  }
+  redirectCache = { at: now, map };
+  return map;
+}
+
+/** Resolve a request path against the redirect map. Returns the target path (+suffix +search) or null. */
+export async function resolveRedirect(env, url) {
+  const map = await loadRedirectMap(env);
+  if (!Object.keys(map).length) return null;
+  let p = url.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
+  const extMatch = p.match(/^(.*)\.(html|md)$/i);
+  const base = extMatch ? extMatch[1] : p;
+  const suffix = extMatch ? `.${extMatch[2].toLowerCase()}` : '';
+  const target = map[decodeURIComponent(base)];
+  if (!target || target === base) return null;
+  return `/${target}${suffix}${url.search || ''}`;
+}
 
 const baseHeaders = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' };
 
@@ -62,6 +100,13 @@ export const onRequest = async ({ request, env, next }) => {
   }
 
   const project = decodeURIComponent(seg);
+
+  // --- Redirect layer (before auth: old links 301 to their new home) ---
+  const redirectTarget = await resolveRedirect(env, url);
+  if (redirectTarget) {
+    return Response.redirect(new URL(redirectTarget, url).href, 301);
+  }
+
   const { protected: protectedFolders, ghost: ghostFolders } = await loadRegistry(env);
 
   // --- Layer 1: Ghost gate ---
