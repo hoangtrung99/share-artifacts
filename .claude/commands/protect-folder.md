@@ -17,9 +17,16 @@ Cơ chế:
 
 Tham số nhận được: `$ARGUMENTS`
 
-Quy trình:
-1. Nếu là `--list`: chạy `./protect.sh --list` và báo kết quả.
-2. Nếu là `--unprotect <project>`: chạy `./protect.sh --unprotect <project>`. **Không** chạy
+`protect.sh` tự `cd` về thư mục của nó nên gọi bằng absolute path chạy được từ **bất kỳ** thư mục nào.
+Vị trí repo khác nhau tùy máy — tìm một lần rồi dùng lại:
+
+```bash
+REPO=$(find ~/Work ~ -maxdepth 4 -type d -name share-artifacts -not -path '*/node_modules/*' 2>/dev/null | head -1)
+```
+
+Quy trình (thay `./protect.sh` bằng `"$REPO"/protect.sh`):
+1. Nếu là `--list`: chạy `"$REPO"/protect.sh --list` và báo kết quả.
+2. Nếu là `--unprotect <project>`: chạy `"$REPO"/protect.sh --unprotect <project>`. **Không** chạy
    `./deploy.sh` (registry R2 cập nhật ngay; badge có thể trễ tối đa ~45s do edge cache).
 3. Ngược lại (đặt/đổi mật khẩu):
    - Đối số 1 = **tên project** = segment đầu của URL / tên project trên R2 (ví dụ `cost-review`

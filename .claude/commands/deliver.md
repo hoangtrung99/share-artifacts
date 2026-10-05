@@ -7,13 +7,17 @@ The user wants to publish/deliver an HTML or Markdown artifact to artifacts.hoan
 
 Arguments received: `$ARGUMENTS`
 
-Run from the **share-artifacts repo root**:
+`deliver.sh` `cd`s to its own directory first, so an absolute path works from **any** working
+directory. The repo location varies by machine — find it, then call it:
 
 ```
-./deliver.sh $ARGUMENTS
+REPO=$(find ~/Work ~ -maxdepth 4 -type d -name share-artifacts -not -path '*/node_modules/*' 2>/dev/null | head -1)
+"$REPO"/deliver.sh $ARGUMENTS
 ```
 
 Notes:
+- Pass the artifact by absolute path; the script's own `cd` does not change how its arguments resolve,
+  but a relative path breaks if the shell is not where the file was produced.
 - Only `.html` and `.md` are supported (`.htm` is rejected — it would 404).
 - Default project is `shared` if none is given.
 - Content is uploaded to **Cloudflare R2** (bucket `artifacts-content`) via `wrangler r2 object put --remote`,

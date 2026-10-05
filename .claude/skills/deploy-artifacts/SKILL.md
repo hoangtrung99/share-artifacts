@@ -32,9 +32,13 @@ and hand the user a shareable link — auto-classifying the project, or asking w
 - A `.md` artifact may carry frontmatter (`title`, `description`, `tags`, `date`).
 
 ### 2. Choose the project — classify, or ask
-1. Prefer **existing project names** from the live site (`https://artifacts.hoangtrung.dev/` / known
-   names such as `verups`, `guides`, `read`) — **not** by listing a local content directory (content
-   is not in git / not under `src/artifacts`).
+1. List the existing projects from the live catalog. Content is not in git, so there is no local
+   directory to `ls`:
+   ```bash
+   curl -s https://artifacts.hoangtrung.dev/api/catalog | jq '.projects'
+   # [{"name":"verups","protected":true,"ghost":false,"count":null}, …]
+   ```
+   `count` is `null` for a protected project — the catalog does not expose its file list.
 2. Read the artifact's `<title>` / headings to understand its topic.
 3. Decide destination:
    - Clear match to an **existing** project → use that.
@@ -54,9 +58,12 @@ and hand the user a shareable link — auto-classifying the project, or asking w
 - Ghost updates secrets + R2 registry only — **no** shell redeploy required.
 
 ### 5. Deliver (R2 path)
+Every script `cd`s to its own directory first, so calling one by absolute path works from **any**
+working directory — no need to `cd` into the repo. The repo location varies by machine; find it once
+rather than guessing:
 ```bash
-cd <share-artifacts-repo-root>
-./deliver.sh <artifact.(html|md)> <project> [--name <path/under/project>.(html|md)] [--protect 'password'] [--ghost]
+REPO=$(find ~/Work ~ -maxdepth 4 -type d -name share-artifacts -not -path '*/node_modules/*' 2>/dev/null | head -1)
+"$REPO"/deliver.sh <artifact.(html|md)> <project> [--name <path/under/project>.(html|md)] [--protect 'password'] [--ghost]
 ```
 - Prerequisite: `wrangler` authenticated. If auth fails, tell the user how to login and stop.
 - If R2 is not enabled (error 10042), tell the user to enable R2 in the dashboard and create
