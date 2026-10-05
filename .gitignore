@@ -15,3 +15,8 @@ public/*
 # local preview config (Claude Preview MCP)
 .claude/launch.json
 .gstack/
+
+# Local R2 mirrors / reorg scratch: content lives on R2, and the catalog lists protected files (repo is public)
+/content/
+/meta/
+/r2-reorg/
