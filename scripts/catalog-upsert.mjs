@@ -14,10 +14,6 @@ import { r2GetText, r2PutText } from './lib/r2-cli.mjs';
 const CATALOG_KEY = 'meta/catalog.json';
 const MAX_RETRIES = 5;
 
-function emptyCatalog() {
-  return { version: 1, updatedAt: null, projects: {} };
-}
-
 function parseArgs(argv) {
   const out = { remove: false, seed: null, project: null, file: null, meta: null, metaFile: null };
   for (let i = 2; i < argv.length; i++) {
@@ -34,14 +30,33 @@ function parseArgs(argv) {
 }
 
 function loadCatalogText(raw) {
-  if (!raw) return emptyCatalog();
-  try {
-    const data = JSON.parse(raw);
-    if (!data.projects || typeof data.projects !== 'object') data.projects = {};
-    return data;
-  } catch {
-    return emptyCatalog();
+  if (raw === null) {
+    throw new Error(`catalog is missing at ${CATALOG_KEY}; use --seed to create or replace it`);
   }
+
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`catalog contains invalid JSON at ${CATALOG_KEY}: ${error.message}`);
+  }
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error(`catalog is invalid at ${CATALOG_KEY}: expected a JSON object`);
+  }
+  if (!data.projects || typeof data.projects !== 'object' || Array.isArray(data.projects)) {
+    throw new Error(`catalog is invalid at ${CATALOG_KEY}: projects must be an object`);
+  }
+  for (const [projectName, project] of Object.entries(data.projects)) {
+    if (!project || typeof project !== 'object' || Array.isArray(project)) {
+      throw new Error(`catalog is invalid at ${CATALOG_KEY}: project ${projectName} must be an object`);
+    }
+    if (!Array.isArray(project.files)) {
+      throw new Error(`catalog is invalid at ${CATALOG_KEY}: project ${projectName}.files must be an array`);
+    }
+  }
+
+  return data;
 }
 
 async function main() {

@@ -91,30 +91,18 @@ export function r2GetText(key) {
   );
   const res = wrangler(['r2', 'object', 'get', `${BUCKET}/${key}`, `--file=${tmp}`, '--remote']);
   if (!res.ok) {
-    const msg = (res.stderr || res.stdout || '').toLowerCase();
-    if (
-      msg.includes('not found') ||
-      msg.includes('404') ||
-      msg.includes('no such') ||
-      msg.includes('does not exist') ||
-      res.status === 1
-    ) {
-      // Ambiguous: could be missing object OR missing bucket. Callers treat null as empty.
-      try {
-        fs.unlinkSync(tmp);
-      } catch {
-        /* ignore */
-      }
-      // If error clearly is about R2 not enabled / bucket missing, rethrow
-      const full = res.stderr || res.stdout || '';
-      if (/10042|enable r2|bucket.*not found|does not exist/i.test(full) && /bucket/i.test(full)) {
-        throw new Error(full);
-      }
-      // For simple missing object, wrangler usually says "The specified key does not exist"
-      if (/10042|enable r2/i.test(full)) throw new Error(full);
-      return null;
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore */
     }
-    throw new Error(`r2 get ${key} failed:\n${res.stderr || res.stdout}`);
+
+    const message = res.stderr || res.stdout || `wrangler exit ${res.status}`;
+    const objectMissing =
+      /the specified key does not exist|no such key|nosuchkey/i.test(message);
+    if (objectMissing) return null;
+
+    throw new Error(`r2 get ${key} failed:\n${message}`);
   }
   try {
     const text = fs.readFileSync(tmp, 'utf8');
