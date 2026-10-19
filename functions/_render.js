@@ -21,7 +21,7 @@ import {
   categoryLabel,
 } from './_store.js';
 
-export const ASSET_V = '6405525b';
+export const ASSET_V = '2823f164';
 
 const SITE_HOST = 'artifacts.hoangtrung.dev';
 

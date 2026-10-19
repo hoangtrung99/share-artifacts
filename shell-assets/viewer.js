@@ -2972,6 +2972,11 @@
 
   function reviewStartComposer(kind, anchorInfo) {
     if (!review || review.available === false) return;
+    if (reviewInlineOpen()) {
+      showToast('Finish or cancel the current note first.', 'error');
+      review.refs.inlineBody.focus();
+      return;
+    }
     if (review.readonly) {
       showToast('Old revisions are read-only.', 'error');
       return;
@@ -3109,9 +3114,11 @@
     reviewPostThread(payload)
       .then(function () {
         review.pendingThread = null;
-        review.composer = null;
-        refs.input.value = '';
-        refs.replacement.value = '';
+        if (review.composer === composer) {
+          review.composer = null;
+          refs.input.value = '';
+          refs.replacement.value = '';
+        }
         showToast('Feedback added');
         reviewAnnounce('Feedback added');
         reviewLoadThreads({ quiet: true });
@@ -3119,10 +3126,11 @@
       .catch(function (error) {
         review.pendingThread = null;
         reviewRenderThreads();
-        refs.composer.hidden = false;
-        review.composer = composer;
+        if (review.composer === composer) {
+          refs.composer.hidden = false;
+          reviewShowFormError((error && error.message) || 'Feedback could not be added.');
+        }
         reviewShowApiError(error, 'Feedback could not be added.');
-        reviewShowFormError((error && error.message) || 'Feedback could not be added.');
       })
       .finally(function () {
         review.submitting = false;
@@ -3182,7 +3190,15 @@
     const frame = document.querySelector('iframe.viewer-frame');
     if (!frame) return true;
     try {
-      const current = new URL(frame.contentWindow.location.href);
+      const doc = frame.contentDocument;
+      const href = frame.contentWindow && frame.contentWindow.location ? frame.contentWindow.location.href : '';
+      if (!doc || !doc.body || !href || href === 'about:blank' || href === 'about:srcdoc') {
+        // Still loading: not a mismatch, just not ready to arm selection yet.
+        review.framePending = true;
+        return false;
+      }
+      review.framePending = false;
+      const current = new URL(href);
       if (current.pathname !== review.frameExpected.pathname) return false;
       if (review.frameExpected.revision) {
         return current.searchParams.get('rev') === review.frameExpected.revision;
@@ -3190,6 +3206,7 @@
       return true;
     } catch (error) {
       // same-origin viewer: a SecurityError means navigation left our origin
+      review.framePending = false;
       return false;
     }
   }
@@ -3197,6 +3214,14 @@
   function reviewUpdateFrameGuard() {
     if (!review) return false;
     const matches = reviewFrameMatches();
+    if (review.framePending) {
+      // Slow artifact loads: disable arming but do not show the "navigated away" hint and do
+      // not touch an in-progress draft. The frame-load handler re-arms once it is ready.
+      review.frameReady = false;
+      reviewHidePopover();
+      if (review.refs && review.refs.frameNote) review.refs.frameNote.hidden = true;
+      return false;
+    }
     const changed = review.frameReady !== matches;
     review.frameReady = matches;
     if (review.refs && review.refs.frameNote) {
@@ -3209,7 +3234,10 @@
       if (reviewComposerOpen()) reviewCancelComposer();
       reviewAnnounce('The embedded page navigated away from the artifact. Reload to add feedback.');
     }
-    if (changed) reviewRenderThreads();
+    if (changed) {
+      reviewRenderThreads();
+      reviewSyncArmed();
+    }
     return matches;
   }
 
@@ -3291,10 +3319,40 @@
       reviewScheduleSelectionCheck(180);
     });
     doc.addEventListener('keydown', reviewAnnotationKeydown, true);
-    doc.addEventListener('scroll', function () {
+    if (doc !== document) {
+      // Events inside the artifact iframe do not bubble to the parent document: mirror the
+      // click-outside/Escape routing there so the composer dismisses from either document.
+      doc.addEventListener('pointerdown', function (event) {
+        if (!review) return;
+        if (reviewInlineOpen() && !review.refs.inline.contains(event.target)) {
+          reviewHideInline();
+          return;
+        }
+        if (review.refs.popover && !review.refs.popover.hidden) reviewHidePopover();
+      }, true);
+      doc.addEventListener('keydown', function (event) {
+        if (!review || event.key !== 'Escape') return;
+        if (reviewInlineOpen()) {
+          event.preventDefault();
+          reviewHideInline();
+          return;
+        }
+        if (review.refs.popover && !review.refs.popover.hidden) {
+          event.preventDefault();
+          reviewHidePopover();
+          return;
+        }
+        if (review.open) {
+          event.preventDefault();
+          reviewClosePanel({ restoreFocus: true });
+        }
+      }, true);
+    }
+    doc.addEventListener('scroll', function (event) {
       if (!review) return;
+      // A scrolling composer (long draft) must never dismiss itself or lose the draft.
+      if (review.refs.inline && review.refs.inline.contains(event.target)) return;
       reviewHidePopover();
-      reviewHideInline();
     }, true);
     reviewWatchTarget(target);
   }
@@ -3465,6 +3523,12 @@
       (event.altKey && event.key === 'Enter') ||
       ((event.metaKey || event.ctrlKey) && event.key === 'Enter');
     if (!combo) return;
+    // One draft at a time: with the inline composer open, the shortcut simply re-focuses it.
+    if (reviewInlineOpen()) {
+      event.preventDefault();
+      review.refs.inlineBody.focus();
+      return;
+    }
     const active = event.target;
     const tag = active && active.tagName ? active.tagName.toLowerCase() : '';
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -3490,6 +3554,15 @@
 
   function reviewOpenPanel(options) {
     if (!review || review.available === false) return;
+    if (reviewInlineOpen()) {
+      const draft = review.refs.inlineBody;
+      if (draft && draft.value.trim()) {
+        showToast('Finish or cancel the current note first.', 'error');
+        draft.focus();
+        return;
+      }
+      reviewHideInline();
+    }
     const opts = options || {};
     const wasOpen = review.open;
     review.open = true;
@@ -4094,6 +4167,11 @@
 
   function reviewStartInlineComposer(kind, anchorInfo) {
     if (!review || review.available === false) return;
+    if (reviewInlineOpen()) {
+      // Never replace an existing draft with a second composer.
+      review.refs.inlineBody.focus();
+      return;
+    }
     if (!reviewCanSelectToComment()) {
       showToast(reviewInlinePermissionText(), 'error');
       return;
@@ -4202,7 +4280,8 @@
         review.submitting = false;
         refs.inlineSubmit.disabled = false;
         refs.inlineSubmit.removeAttribute('aria-busy');
-        reviewHideInline();
+        // Only the composer instance that submitted may be closed/cleared.
+        if (review.inline === inline) reviewHideInline();
         showToast('Feedback added');
         reviewAnnounce('Feedback added');
         reviewLoadThreads({ quiet: true });
@@ -4211,6 +4290,7 @@
         review.submitting = false;
         refs.inlineSubmit.disabled = false;
         refs.inlineSubmit.removeAttribute('aria-busy');
+        if (review.inline !== inline) return;
         reviewShowApiError(error, 'Feedback could not be added.');
         reviewShowInlineError((error && error.message) || 'Feedback could not be added.');
       });
@@ -4453,6 +4533,9 @@
         review.targets.forEach(reviewAttachTarget);
         reviewInvalidateIndexes();
         reviewUpdateFrameGuard();
+        // Permissions may have resolved before the artifact document finished loading:
+        // re-arm selection now that the iframe identity can be verified.
+        reviewSyncArmed();
         reviewPaintHighlights();
       });
     }
@@ -4631,6 +4714,7 @@
       composedAnchor: null,
       frameExpected: null,
       frameReady: true,
+      framePending: !!document.querySelector('iframe.viewer-frame'),
       mutationTimer: 0,
       inline: null,
       pillDismissed: false,
