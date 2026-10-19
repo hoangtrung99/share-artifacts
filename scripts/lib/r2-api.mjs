@@ -124,14 +124,16 @@ export async function listR2Objects(options = {}) {
 // expose them. Credentials are the same as the rest of this module (API token or wrangler login).
 // ---------------------------------------------------------------------------
 
-/** True when the Cloudflare REST API credentials needed for CAS writes are available. */
+/**
+ * True when the Cloudflare REST API credentials needed for CAS writes are available.
+ *
+ * Only an explicit CLOUDFLARE_API_TOKEN counts: wrangler's stored OAuth token is refreshed by the
+ * CLI and is not guaranteed to be accepted by the R2 REST object endpoint (it returned 401s and
+ * eventually tripped Cloudflare auth-failure throttling during a bulk bootstrap). Without the env
+ * token the revision CLI falls back to CLI writes + read-back verification and says so.
+ */
 export function hasConditionalCredentials() {
-  try {
-    getApiToken();
-    return true;
-  } catch {
-    return false;
-  }
+  return Boolean(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_API_TOKEN.trim());
 }
 
 /**
