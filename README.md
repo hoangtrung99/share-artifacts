@@ -255,7 +255,9 @@ exactly as before.
   viewer/MD reader; unknown revisions are a `404` (never a silent fallback). The default URL
   stays canonical but the iframe/download are pinned to the latest revision so feedback and
   content can never disagree. The viewer's More menu → **Versions** lists history, and an
-  old-revision banner offers "Back to latest" (read-only review).
+  old-revision banner offers "Back to latest" (read-only review). Version-history metadata
+  (`GET /api/revisions`) is anonymous for public artifacts; protected/ghost projects still
+  require their project/ghost cookie. History contains revision metadata only — no feedback data.
 - **Reviewing.** A reviewer opens an artifact with a review grant and selects text; the
   Comment/Replace/Remove popover appears immediately and a compact inline composer sends the
   feedback **without opening the side panel** (the panel remains available for threads, replies,
@@ -266,7 +268,9 @@ exactly as before.
 - **Access.** `/r/<token>` redeems a grant into a HttpOnly, artifact-scoped cookie and
   redirects without the token. Project/share cookies are read-only; only
   `FEEDBACK_ADMIN_TOKEN` can mark `addressed`, manage grants or read/export without a grant.
-  Public artifacts do not expose their review threads unless a grant is presented.
+  Public artifacts do not expose their review threads unless a grant is presented. Version-history
+  metadata is the exception: it is public for public artifacts (old snapshots already are), while
+  protected/ghost projects keep their project/ghost cookie gate.
 - **D1 setup (owner).** `npx wrangler d1 create artifacts-feedback` ->
   `npx wrangler d1 migrations apply artifacts-feedback --remote` -> uncomment the
   `d1_databases` block in `wrangler.jsonc` and set the `FEEDBACK_ADMIN_TOKEN` secret. The

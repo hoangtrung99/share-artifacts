@@ -1,16 +1,24 @@
 // GET /api/revisions — version history for one artifact.
 //
 // Query: ?artifact=<artifactId> or ?project=<p>&file=<f> (both forms accepted; cross-checked).
-// Auth: feedback read gate (_feedback-access.js) — site owner (FEEDBACK_ADMIN_TOKEN), a valid
-// review-grant cookie, or a project/ghost cookie for protected/ghost projects. Version history for
-// a public artifact is not public discussion data: it needs the same review access as the threads.
+// Auth: version metadata is public for public artifacts (old snapshots are already public through
+// `?rev=` on public content), so anonymous viewers can browse history. Protected/ghost projects
+// still require their project/ghost cookie (fail-closed registries), and the site-owner admin token
+// is accepted. This exposes ONLY revision metadata (ids/numbers/sizes/dates/createdBy/isLatest) —
+// review threads, counts and exports remain behind the /api/feedback gate.
 //
 // Unpublished artifacts (tombstoned manifest) return 404. Legacy artifacts published before
 // revisioning return an empty history plus `current` (hash of the mutable content bytes) so the UI
 // can explain that version history starts with the next publish; feedback writes stay rejected.
 
-import { ApiError, errorResponse, json, resolveArtifact } from '../_feedback.js';
-import { resolveFeedbackAccess } from '../_feedback-access.js';
+import {
+  ApiError,
+  adminAuthorized,
+  errorResponse,
+  json,
+  resolveArtifact,
+  resolveProjectAccess,
+} from '../_feedback.js';
 import { jsonResponse } from '../_http.js';
 import { currentContentRevision } from '../_feedback-revisions.js';
 
@@ -39,7 +47,12 @@ export const onRequest = async ({ request, env }) => {
     });
     if (!artifact) throw new ApiError(404, 'artifact_unknown', 'Unknown or unpublished artifact.');
 
-    await resolveFeedbackAccess(env, request, artifact);
+    // Revision metadata has no discussion data: public artifacts are readable anonymously, while
+    // protected/ghost projects keep exactly the project/ghost gate the content route uses.
+    if (!(await adminAuthorized(env, request))) {
+      const access = await resolveProjectAccess(env, request, artifact.project);
+      if (!access.ok) throw new ApiError(access.status, access.code, access.message);
+    }
 
     const registry = artifact.registry;
     const revisions = registry

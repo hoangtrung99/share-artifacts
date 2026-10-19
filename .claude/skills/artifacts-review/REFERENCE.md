@@ -10,12 +10,14 @@
 | POST | `/api/feedback/<threadId>/replies` | reply |
 | PATCH | `/api/feedback/<threadId>` | status transition (`expectedVersion` CAS) |
 | GET | `/api/feedback/export?artifact=<id>&format=json\|md` | export for agents |
-| GET | `/api/revisions?artifact=<id>` or `?project=&file=` | version history |
+| GET | `/api/revisions?artifact=<id>` or `?project=&file=` | version history (public metadata for public artifacts; project/ghost cookie for protected/ghost) |
 | POST/GET/DELETE | `/api/feedback/grants[/<grantId>]` | owner grant management |
 | GET | `/r/<token>` | redeem review grant → HttpOnly cookie → viewer |
 
 Auth headers: `X-Feedback-Admin: <FEEDBACK_ADMIN_TOKEN>` (owner CLI), or the review cookie; for
 protected/ghost artifacts the project/ghost cookie is still required (a grant never bypasses it).
+`GET /api/revisions` is the exception: revision metadata is readable anonymously for public
+artifacts (no feedback data); protected/ghost history keeps the project/ghost cookie gate.
 `Origin` must be same-origin for mutations; bodies are JSON.
 
 ## Thread shape (abridged)

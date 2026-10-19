@@ -340,11 +340,15 @@ test('protected snapshots are never publicly cacheable', async () => {
   assert.match(raw.response.headers.get('cache-control'), /private, no-store/);
 });
 
-test('revisions API requires review access and exposes history', async () => {
+test('revisions API is anonymous for public artifacts and exposes metadata only', async () => {
   const { html, env } = await versionEnv();
   const anonymous = await fetchRevisions({ project: 'demo', file: 'sample.html' }, { env });
-  assert.equal(anonymous.response.status, 403);
-  assert.equal(anonymous.payload.code, 'forbidden');
+  assert.equal(anonymous.response.status, 200);
+  assert.equal(anonymous.payload.total, 2);
+  assert.equal(anonymous.payload.latest.revisionId, html.latest.revisionId);
+  // Metadata only: no thread/feedback fields in the response envelope.
+  assert.equal(anonymous.payload.threads, undefined);
+  assert.equal(anonymous.payload.counts, undefined);
 
   const listed = await fetchRevisions({ project: 'demo', file: 'sample.html' }, { env, headers: ADMIN });
   assert.equal(listed.response.status, 200);
@@ -369,6 +373,24 @@ test('revisions API requires review access and exposes history', async () => {
 
   const mismatched = await fetchRevisions({ artifact: 'f'.repeat(32), project: 'demo', file: 'sample.html' }, { env, headers: ADMIN });
   assert.equal(mismatched.response.status, 404);
+});
+
+test('revisions API: ghost projects require the ghost cookie', async () => {
+  const { html, env } = await versionEnv({ GHOST_MASTER_PW: 'ghost-master' });
+  env.ARTIFACTS.putRaw('meta/ghost.json', ['demo']);
+
+  const anonymous = await fetchRevisions({ project: 'demo', file: 'sample.html' }, { env });
+  assert.equal(anonymous.response.status, 401);
+  assert.equal(anonymous.payload.code, 'auth_required');
+
+  const { ghostCookieToken } = await import('./feedback-sqlite-helper.mjs');
+  const authorized = await fetchRevisions(
+    { project: 'demo', file: 'sample.html' },
+    { env, headers: { cookie: await ghostCookieToken('ghost-master') } },
+  );
+  assert.equal(authorized.response.status, 200);
+  assert.equal(authorized.payload.total, 2);
+  assert.equal(authorized.payload.artifactId, html.artifactId);
 });
 
 test('revisions API: protected gate, project cookie read, legacy empty history', async () => {
