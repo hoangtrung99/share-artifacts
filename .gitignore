@@ -20,3 +20,8 @@ public/*
 /content/
 /meta/
 /r2-reorg/
+
+# Local registries are optional caches — the runtime registry lives on R2. Committing these
+# would publish hidden (ghost) project names in a public repository.
+/protected.list
+/ghost.list

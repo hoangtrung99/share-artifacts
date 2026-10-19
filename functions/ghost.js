@@ -4,30 +4,34 @@
 // POST /ghost      — verify master password, issue cf_ghost signed cookie, 302 to /ghost.
 //
 // The cookie cf_ghost is HMAC-signed with COOKIE_SECRET (same crypto path as per-project auth),
-// using GHOST_PROJECT ('__ghost__') as the payload's project binding. verifyToken's project-match
-// check is reused — a token forged for a real project won't pass the __ghost__ binding.
+// using GHOST_PROJECT ('__ghost__') as the payload's project binding. Tokens also embed a
+// fingerprint of the current master password, so changing GHOST_MASTER_PW revokes old cookies.
 //
 // Master password lives ONLY as the env secret GHOST_MASTER_PW (never in client code, never in
-// git). Verified constant-time via safeEqual. Fail-closed: no GHOST_MASTER_PW or no COOKIE_SECRET
-// → the POST returns 503 (cannot authenticate) and GET returns the form with a config error note.
+// git). Fail-closed: no GHOST_MASTER_PW or no COOKIE_SECRET → the POST returns 503-like redirect
+// and GET returns the form with a config error note.
 
 import {
   signToken,
   verifyToken,
   readCookie,
-  safeEqual,
+  passwordMatches,
   safeNext,
+  pwVersion,
+  authCookie,
+  clearAuthCookie,
   GHOST_COOKIE_NAME,
   GHOST_PROJECT,
   GHOST_TOKEN_TTL,
 } from './_auth.js';
+import { htmlResponse, redirectResponse } from './_http.js';
 
 // --- HTML: login form (inline CSS matching site design tokens) ---
-function loginPage(origin, hasError) {
+function loginPage(hasError) {
   const errHtml = hasError
     ? `<p class="error show">Incorrect password. Please try again.</p>`
     : `<p class="error"></p>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Ghost mode — Artifacts</title><style>
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Ghost mode — Artifacts</title><style>
 :root{--bg:#fff;--surface:#fff;--border:#e4e7ec;--text:#1a1d23;--muted:#5b6472;--accent:#2563eb;--radius:10px}
 @media(prefers-color-scheme:dark){:root{--bg:#0e1116;--surface:#161b22;--border:#2a313c;--text:#e6e9ee;--muted:#9aa4b2;--accent:#6ea8fe}}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:2rem}
@@ -44,11 +48,12 @@ button{padding:.65rem 1rem;font-size:.95rem;font-weight:600;background:var(--acc
 .note{color:var(--muted);font-size:.82rem;margin:1rem 0 0}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 </style></head><body><div class="card"><span class="kicker">👻 Ghost mode</span><h1>Hidden projects</h1><p class="lede">Enter the master password to reveal hidden projects.</p>${errHtml}<form method="POST" action="/ghost" autocomplete="off"><label for="pw">Master password</label><input id="pw" name="password" type="password" required autofocus autocomplete="current-password"><button type="submit">Unlock</button></form><p class="note"><a href="/">← Back to gallery</a></p></div></body></html>`;
+  return html;
 }
 
 // --- HTML: config error (GHOST_MASTER_PW or COOKIE_SECRET missing) ---
 function configErrorPage() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ghost — Not configured</title><style>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>Ghost — Not configured</title><style>
 body{margin:0;font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:2rem;color:#1a1d23}
 @media(prefers-color-scheme:dark){body{background:#0e1116;color:#e6e9ee}}
 .card{max-width:400px;text-align:center}.card h1{font-size:1.3rem}
@@ -65,16 +70,18 @@ export const onRequestGet = async ({ request, env, next }) => {
       status: 302,
       headers: {
         Location: '/',
-        'Set-Cookie': `${GHOST_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`,
+        'Set-Cookie': clearAuthCookie(GHOST_COOKIE_NAME),
         'Cache-Control': 'no-store',
+        'x-content-type-options': 'nosniff',
       },
     });
   }
 
   // Already authenticated?
   if (env.COOKIE_SECRET && env.GHOST_MASTER_PW) {
+    const version = await pwVersion(env.COOKIE_SECRET, env.GHOST_MASTER_PW);
     const token = readCookie(request.headers.get('Cookie'), GHOST_COOKIE_NAME);
-    if (await verifyToken(env.COOKIE_SECRET, token, GHOST_PROJECT)) {
+    if (await verifyToken(env.COOKIE_SECRET, token, GHOST_PROJECT, version)) {
       // Avoid the Pages static-asset 308 redirect from /ghost → /ghost/ by canonicalizing
       // the URL ourselves when the request comes in without a trailing slash.
       if (url.pathname === '/ghost') {
@@ -88,16 +95,17 @@ export const onRequestGet = async ({ request, env, next }) => {
   if (!env.GHOST_MASTER_PW || !env.COOKIE_SECRET) {
     return new Response(configErrorPage(), {
       status: 503,
-      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      },
     });
   }
 
   // Not authenticated → render login form.
   const hasError = url.searchParams.get('error') === '1';
-  return new Response(loginPage(url.origin, hasError), {
-    status: 200,
-    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-  });
+  return htmlResponse(loginPage(hasError), { cache: 'no-store' });
 };
 
 export const onRequestPost = async ({ request, env }) => {
@@ -105,30 +113,27 @@ export const onRequestPost = async ({ request, env }) => {
 
   // Fail-closed: cannot authenticate without signing key or master password.
   if (!env.COOKIE_SECRET || !env.GHOST_MASTER_PW) {
-    return Response.redirect(new URL('/ghost/', url).href, 302);
+    return redirectResponse(new URL('/ghost/', url).href, 302);
   }
 
   let form;
   try {
     form = await request.formData();
   } catch {
-    return Response.redirect(new URL('/ghost/?error=1', url).href, 302);
+    return redirectResponse(new URL('/ghost/?error=1', url).href, 302);
   }
 
-  const password = String(form.get('password') || '');
+  const password = String(form.get('password') || '').slice(0, 4096);
   const nextPath = safeNext(String(form.get('next') || ''), '/ghost/');
 
-  if (!safeEqual(password, env.GHOST_MASTER_PW)) {
-    return Response.redirect(new URL('/ghost/?error=1', url).href, 302);
+  if (!(await passwordMatches(env.COOKIE_SECRET, password, env.GHOST_MASTER_PW))) {
+    return redirectResponse(new URL('/ghost/?error=1', url).href, 302);
   }
 
-  const token = await signToken(env.COOKIE_SECRET, GHOST_PROJECT, GHOST_TOKEN_TTL);
-  const cookie =
-    `${GHOST_COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${GHOST_TOKEN_TTL}`;
-
+  const version = await pwVersion(env.COOKIE_SECRET, env.GHOST_MASTER_PW);
+  const token = await signToken(env.COOKIE_SECRET, GHOST_PROJECT, GHOST_TOKEN_TTL, version);
   const dest = new URL(nextPath, url).href;
-  return new Response(null, {
-    status: 302,
-    headers: { Location: dest, 'Set-Cookie': cookie, 'Cache-Control': 'no-store' },
+  return redirectResponse(dest, 302, {
+    'set-cookie': authCookie(GHOST_COOKIE_NAME, token, GHOST_TOKEN_TTL),
   });
 };

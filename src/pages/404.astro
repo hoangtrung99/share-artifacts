@@ -1,0 +1,13 @@
+---
+// Static 404 page. Cloudflare Pages serves dist/404.html for unmatched routes.
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="404 — Artifacts" description="Page not found.">
+  <meta slot="head" name="robots" content="noindex" />
+  <header class="gallery-head">
+    <h1>404</h1>
+    <p class="lede">This page does not exist.</p>
+  </header>
+  <p><a href="/">Back to the gallery</a></p>
+</Base>

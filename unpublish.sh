@@ -30,20 +30,20 @@ if [ "$PROJECT" = "$TARGET" ]; then
   # Whole project — list files from catalog via a small node helper
   echo "🗑  Removing entire project: $PROJECT"
   node --input-type=module -e "
-import { r2GetText, r2Delete } from './scripts/lib/r2-cli.mjs';
+import { r2GetText, r2PutText, r2BackupText, r2DeleteMany } from './scripts/lib/r2-cli.mjs';
 const project = process.argv[1];
 const raw = r2GetText('meta/catalog.json');
 if (!raw) { console.log('catalog empty'); process.exit(0); }
 const catalog = JSON.parse(raw);
 const files = catalog.projects?.[project]?.files || [];
-for (const f of files) {
-  const key = 'content/' + project + '/' + f.file;
-  console.log('  delete', key);
-  try { r2Delete(key); } catch (e) { console.warn(e.message); }
-}
+const keys = files.map(f => 'content/' + project + '/' + f.file);
+// Back up the catalog BEFORE deleting anything; a failed backup aborts the removal.
+r2BackupText('meta/catalog.json', raw);
+console.log('  deleting', keys.length, 'object(s) with concurrency 8…');
+const errors = await r2DeleteMany(keys, 8);
+for (const e of errors) console.warn('  delete failed:', e);
 delete catalog.projects[project];
 catalog.updatedAt = new Date().toISOString();
-const { r2PutText } = await import('./scripts/lib/r2-cli.mjs');
 r2PutText('meta/catalog.json', JSON.stringify(catalog, null, 2) + '\n');
 console.log('catalog updated');
 " "$PROJECT"

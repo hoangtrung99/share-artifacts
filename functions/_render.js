@@ -3,7 +3,7 @@
 // and edge-rendered pages share one stylesheet.
 // ASSET_V busts CDN/browser cache when shell assets change (max-age on /assets/*).
 
-const ASSET_V = '20260721c';
+export const ASSET_V = '40e0f111';
 
 /**
  * @param {object} opts
@@ -40,6 +40,7 @@ export function shellLayout({
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/assets/site.css?v=${ASSET_V}">
   ${headExtra}
@@ -94,12 +95,44 @@ function buildTree(items) {
   return finalize(root);
 }
 
+/** Tooltip explaining where a timestamp came from (upload vs artifact date). */
+function timeTitle(time) {
+  if (!time) return '';
+  if (time.displaySource === 'missing') return 'Object missing from R2 (stale catalog entry)';
+  const parts = [];
+  if (time.displaySource === 'upload') {
+    parts.push(`Uploaded ${time.uploadedAt}`);
+  } else if (time.displaySource === 'artifact') {
+    parts.push(`Artifact date ${time.artifactDate}`);
+    if (time.uploadedAt) parts.push(`uploaded ${time.uploadedAt}`);
+  } else if (time.displaySource === 'legacy-upload') {
+    parts.push(`Legacy bulk upload ${time.uploadedAt}`);
+    parts.push(time.artifactDate ? `artifact date ${time.artifactDate}` : 'artifact date unknown');
+  }
+  return parts.join(' · ');
+}
+
+function timeBadge(time, className = 'date') {
+  if (!time || !time.displayDate) return '';
+  const arrow = time.displaySource === 'artifact' ? '◆' : '↑';
+  return `<span class="${className}" title="${escAttr(timeTitle(time))}">${arrow} ${esc(time.displayDate)}</span>`;
+}
+
 function fileLi(f) {
   const type = f.type || 'html';
-  const date = f.date ? `<span class="file-date">${esc(f.date)}</span>` : '';
+  // Every row shows the best-known time: real upload time for fresh deliveries, artifact date
+  // for legacy/bulk imports where the R2 timestamp only reflects a migration or move.
+  const displayDate = f.displayDate || '';
+  const dateTitle = timeTitle(f) ? ` title="${escAttr(timeTitle(f))}"` : '';
+  const date =
+    f.displaySource === 'missing'
+      ? `<span class="file-date"${dateTitle}>—</span>`
+      : displayDate
+        ? `<span class="file-date"${dateTitle}>${esc(displayDate)}</span>`
+        : '';
   const folder = f.folder || '';
   const search = `${f.title || ''} ${f.routePath || ''}`.toLowerCase();
-  return `<li data-search="${esc(search)}" data-type="${esc(type)}" data-folder="${esc(folder)}" data-date="${esc(f.sortDate || '')}" data-title="${esc((f.title || '').toLowerCase())}">
+  return `<li data-search="${esc(search)}" data-type="${esc(type)}" data-folder="${esc(folder)}" data-date="${esc(f.sortDate || '')}" data-artifact-date="${esc(f.artifactDate || '')}" data-title="${esc((f.title || '').toLowerCase())}">
         <a class="file-link" href="/${escAttr(f.routePath)}">
           <span class="badge badge-${esc(type)}">${esc(type.toUpperCase())}</span>
           <span class="file-title">${esc(f.title || f.routePath)}</span>
@@ -193,7 +226,7 @@ export function projectListingPage({ project, files, locked, ghost }) {
           <button type="button" class="chip" data-type="html">HTML</button>
         </div>
         <div class="sort-chips" role="group" aria-label="Sort by" data-sort-filter>
-          <button type="button" class="chip is-active" data-sort="recent">Recent</button>
+          <button type="button" class="chip is-active" data-sort="recent" title="Most recently uploaded first">Recent</button>
           <button type="button" class="chip" data-sort="name">Name</button>
           <button type="button" class="chip" data-sort="type">Type</button>
         </div>
@@ -220,12 +253,12 @@ export function projectListingPage({ project, files, locked, ghost }) {
 }
 
 /** HTML artifact viewer — iframe of raw URL + toolbar. */
-export function htmlViewerPage({ title, description, project, routePath, rawUrl, downloadName, locked, ghost }) {
+export function htmlViewerPage({ title, description, project, routePath, rawUrl, downloadName, time = null, locked, ghost }) {
   const body = `
     <div class="viewer-bleed">
       <iframe class="bleed-frame" src="${escAttr(rawUrl)}" title="${escAttr(title)}"></iframe>
     </div>
-    ${viewerBar({ project, title, rawUrl, downloadName, type: 'html', locked, routePath })}
+    ${viewerBar({ project, title, rawUrl, downloadName, type: 'html', time, locked, routePath })}
     ${locked ? shareModalHtml() : ''}
   `;
   return shellLayout({
@@ -249,6 +282,7 @@ export function mdViewerPage({
   tags,
   htmlBody,
   headings = [],
+  time = null,
   locked,
   ghost,
 }) {
@@ -256,7 +290,9 @@ export function mdViewerPage({
     Array.isArray(tags) && tags.length
       ? `<p class="tags" aria-label="Tags">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</p>`
       : '';
-  const dateHtml = date ? `<span class="date">${esc(date)}</span>` : '';
+  const timeHtml = time
+    ? timeBadge(time)
+    : (date ? `<span class="date" title="Artifact date">${esc(date)}</span>` : '');
 
   // TOC from h2/h3 only (h1 is usually the page title).
   const tocHeadings = (Array.isArray(headings) ? headings : []).filter(
@@ -280,8 +316,7 @@ export function mdViewerPage({
   const headExtra = `
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" media="(prefers-color-scheme: light)">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" defer></script>
-  <script defer>document.addEventListener('DOMContentLoaded',function(){if(window.hljs)hljs.highlightAll();});</script>`;
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" defer></script>`;
 
   const body = `
     <div class="md-shell">
@@ -289,7 +324,7 @@ export function mdViewerPage({
         <header class="viewer-head">
           <p class="type-line">
             <span class="badge badge-md">MD</span>
-            ${dateHtml}
+            ${timeHtml}
           </p>
           <h1>${esc(title)}</h1>
           ${description ? `<p class="lede">${esc(description)}</p>` : ''}
@@ -301,7 +336,7 @@ export function mdViewerPage({
         </div>
       </article>
     </div>
-    ${viewerBar({ project, title, rawUrl, downloadName, type: 'md', locked, routePath })}
+    ${viewerBar({ project, title, rawUrl, downloadName, type: 'md', time, locked, routePath })}
     ${locked ? shareModalHtml() : ''}
   `;
   return shellLayout({
@@ -314,7 +349,7 @@ export function mdViewerPage({
   });
 }
 
-function viewerBar({ project, title, rawUrl, downloadName, type, locked, routePath }) {
+function viewerBar({ project, title, rawUrl, downloadName, type, time = null, locked, routePath }) {
   const proj = encodeURIComponent(project);
   const sharePath = routePath ? `/${routePath}` : `/${proj}`;
   const shareBtn = locked
@@ -328,6 +363,7 @@ function viewerBar({ project, title, rawUrl, downloadName, type, locked, routePa
     ? `<a class="vb-btn" href="/logout?project=${escAttr(proj)}" data-tip="Sign out of this project" aria-label="Sign out of this project"><span aria-hidden="true">⎋</span></a>`
     : '';
 
+  const uploadedBadge = timeBadge(time, 'vb-uploaded');
   return `<header class="viewer-bar">
   <div class="vb-left">
     <a class="vb-btn" href="/${escAttr(proj)}" data-tip="Back to project" aria-label="Back to project"><span aria-hidden="true">←</span></a>
@@ -335,6 +371,7 @@ function viewerBar({ project, title, rawUrl, downloadName, type, locked, routePa
       <span class="vb-proj">${esc(project)}</span>
       ${title ? `<span class="vb-sep" aria-hidden="true">/</span><span class="vb-title">${esc(title)}</span>` : ''}
     </span>
+    ${uploadedBadge}
   </div>
   <div class="vb-right">
     <a class="vb-btn vb-primary" href="${escAttr(rawUrl)}" download="${escAttr(downloadName)}" data-tip="Download ${escAttr(downloadName)}" aria-label="Download ${escAttr(downloadName)}">
@@ -377,7 +414,7 @@ function shareModalHtml() {
     </div>
     <p class="share-error" data-share-error hidden></p>
     <button class="btn btn-primary share-generate-btn" type="button" data-share-generate>Generate link</button>
-    <p class="share-note">The chosen duration controls both link validity and how long the recipient's access lasts. Links cannot be individually revoked — rotating the site secret revokes all links.</p>
+    <p class="share-note">The chosen duration controls both link validity and how long the recipient's access lasts. Changing the project password or rotating the site secret revokes outstanding links; individual revocation is not supported.</p>
   </div>
 </div>`;
 }

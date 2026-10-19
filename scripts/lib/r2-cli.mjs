@@ -1,7 +1,7 @@
 // Thin wrappers around `wrangler r2 object` for local tooling scripts.
 // Uses the logged-in wrangler identity (or CLOUDFLARE_API_TOKEN).
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -127,4 +127,69 @@ export function r2Delete(key) {
     if (/not found|does not exist|404/i.test(msg)) return;
     throw new Error(`r2 delete ${key} failed:\n${msg}`);
   }
+}
+
+/** Timestamp suitable for backup object keys (e.g. 20260824T090214Z). */
+function backupStamp() {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+/**
+ * Snapshot an object's current text under meta/backups/ before a destructive mutation.
+ * Required: if the backup cannot be written, the caller must abort instead of mutating.
+ * A null body means the object was confirmed missing, so there is nothing to back up.
+ * @param {string} key
+ * @param {string | null} body
+ * @returns {boolean}
+ */
+export function r2BackupText(key, body) {
+  if (body == null) return false;
+  const base = key.split('/').pop().replace(/\.json$/i, '');
+  const backupKey = `meta/backups/${base}-${backupStamp()}.json`;
+  try {
+    r2PutText(backupKey, body);
+    return true;
+  } catch (error) {
+    throw new Error(`r2 backup ${key} failed (refusing to mutate without a backup): ${error.message}`);
+  }
+}
+
+/** Promise wrapper around `npx wrangler` for batched operations. @param {string[]} args */
+export function wranglerAsync(args) {
+  return new Promise((resolve) => {
+    const child = spawn('npx', ['wrangler', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', (error) => resolve({ ok: false, status: 1, stdout, stderr: stderr + error.message }));
+    child.on('close', (status) => resolve({ ok: status === 0, status: status ?? 1, stdout, stderr }));
+  });
+}
+
+/**
+ * Delete many objects with bounded concurrency. Missing keys are ignored; returns errors.
+ * @param {string[]} keys object keys (without the bucket name)
+ * @param {number} [concurrency]
+ */
+export async function r2DeleteMany(keys, concurrency = 8) {
+  const queue = [...keys];
+  const errors = [];
+  async function worker() {
+    while (queue.length) {
+      const key = queue.shift();
+      const res = await wranglerAsync(['r2', 'object', 'delete', `${BUCKET}/${key}`, '--remote']);
+      if (!res.ok && !/not found|does not exist|404/i.test(res.stderr + res.stdout)) {
+        errors.push(`${key}: ${(res.stderr || res.stdout || 'unknown error').trim()}`);
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, keys.length) }, () => worker()),
+  );
+  return errors;
 }

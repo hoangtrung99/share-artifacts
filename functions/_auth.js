@@ -7,10 +7,12 @@
 //
 // Token format (cookie value cf_auth_<project>):
 //   base64url(payloadJson) "." base64url(hmacSha256(COOKIE_SECRET, payloadJson))
-// payload = { p: <project>, exp: <epoch-seconds> }
-// On verify: recompute HMAC over the payload segment, constant-time compare to the supplied
-// signature, then check exp > now AND payload.p === the path's project. Forged/expired/
-// mismatched -> reject. No COOKIE_SECRET -> cannot verify -> reject (fail-closed at call site).
+// payload = { p: <project>, exp: <epoch-seconds>, v: <password-version> }
+//
+// v binds the cookie to the CURRENT project password. Rotating PW_<PROJECT> changes its
+// fingerprint, so every previously issued cookie (and share link) stops verifying — a password
+// change now revokes old sessions instead of leaving them valid for the full 180-day TTL.
+// A token without v is rejected (fail-closed); the migration is a one-time re-login.
 
 export const COOKIE_PREFIX = 'cf_auth_';
 export const TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60; // 180 days
@@ -28,7 +30,7 @@ export const GHOST_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days — shorter than per-
 export const SHARE_TTL_OPTIONS = {
   '24h': 24 * 60 * 60,
   '7d': 7 * 24 * 60 * 60,
-  '30d': 30 * 24 * 60 * 60,   // default
+  '30d': 30 * 24 * 60 * 60, // default
   '180d': 180 * 24 * 60 * 60,
 };
 export const SHARE_TTL_DEFAULT = '30d';
@@ -52,15 +54,58 @@ export function cookieName(project) {
   return COOKIE_PREFIX + snake(project).toLowerCase();
 }
 
-// Constant-time string compare (used for the password). crypto.subtle.verify covers the
-// signature path; this covers the user-supplied password vs the env secret.
-export function safeEqual(a, b) {
-  const enc = new TextEncoder();
-  const ab = enc.encode(String(a));
-  const bb = enc.encode(String(b));
-  if (ab.length !== bb.length) return false;
+// --- password versions -------------------------------------------------------
+// Short, stable fingerprint of (COOKIE_SECRET, password). It is stored in signed tokens so a
+// password rotation invalidates every token bound to the previous password. Cached per isolate
+// because the same two or three secrets are read on every request.
+const VERSION_CACHE_LIMIT = 64;
+const versionCache = new Map();
+
+/**
+ * @param {string} secret
+ * @param {string} password
+ * @returns {Promise<string>} 22-char base64url fingerprint
+ */
+export async function pwVersion(secret, password) {
+  const key = secret + '\u0000' + String(password);
+  const cached = versionCache.get(key);
+  if (cached) return cached;
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    enc.encode('artifacts-auth-version-v1\u0000' + key),
+  );
+  const version = bytesToB64url(new Uint8Array(digest)).slice(0, 22);
+  versionCache.set(key, version);
+  if (versionCache.size > VERSION_CACHE_LIMIT) {
+    versionCache.delete(versionCache.keys().next().value);
+  }
+  return version;
+}
+
+/**
+ * Constant-time-ish password comparison. Both inputs are hashed first so the compare never
+ * short-circuits on length (which used to leak password length through timing).
+ * @param {string} secret
+ * @param {string} given
+ * @param {string | undefined} expected
+ */
+export async function passwordMatches(secret, given, expected) {
+  if (!expected) return false;
+  const [a, b] = await Promise.all([
+    pwVersion(secret, String(given).slice(0, 4096)),
+    pwVersion(secret, String(expected)),
+  ]);
+  return timingSafeEqual(a, b);
+}
+
+/**
+ * @param {string} a
+ * @param {string} b
+ */
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
   let r = 0;
-  for (let i = 0; i < ab.length; i++) r |= ab[i] ^ bb[i];
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return r === 0;
 }
 
@@ -89,28 +134,20 @@ async function importKey(secret) {
   );
 }
 
-/** Sign a token binding `project` for TTL seconds. Returns the cookie value string. */
-export async function signToken(secret, project, ttl = TOKEN_TTL_SECONDS) {
-  const payload = JSON.stringify({ p: project, exp: Math.floor(Date.now() / 1000) + ttl });
-  const payloadB64 = bytesToB64url(enc.encode(payload));
-  const key = await importKey(secret);
-  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(payloadB64)));
-  return payloadB64 + '.' + bytesToB64url(sig);
-}
-
 /**
- * Sign a share link token binding `project` → `next` path for `ttl` seconds.
- * Payload adds `n` (next redirect target) and `t` (session TTL to grant on redemption) so the
- * redeem endpoint can mint a session cookie whose duration matches the chosen share duration —
- * a 24h share link gives 24h of access, not the full login TTL.
- * Reuses the same HMAC-SHA256 + base64url format as signToken, so no new crypto path.
+ * Sign a token binding `project` (and the current password version) for TTL seconds.
+ * @param {string} secret
+ * @param {string} project
+ * @param {number} [ttl]
+ * @param {string} version - output of pwVersion(); required, fail-closed
+ * @returns {Promise<string>} cookie value
  */
-export async function signShareToken(secret, project, next, ttl) {
+export async function signToken(secret, project, ttl = TOKEN_TTL_SECONDS, version = '') {
+  if (!secret || !version) throw new Error('signToken requires a secret and password version');
   const payload = JSON.stringify({
     p: project,
     exp: Math.floor(Date.now() / 1000) + ttl,
-    n: next,
-    t: ttl,
+    v: version,
   });
   const payloadB64 = bytesToB64url(enc.encode(payload));
   const key = await importKey(secret);
@@ -119,9 +156,36 @@ export async function signShareToken(secret, project, next, ttl) {
 }
 
 /**
- * Verify a share link token. Returns { project, next, ttl } on success, null otherwise.
- * Checks: signature valid, not expired. Does NOT check project match (the redeem endpoint
- * doesn't have an "expected project" — it derives everything from the token).
+ * Sign a share link token binding `project` → `next` path for `ttl` seconds.
+ * Payload adds `n` (next redirect target), `t` (session TTL to grant on redemption) and
+ * `v` (password version at mint time; redemption rejects a link if the password has rotated).
+ * @param {string} secret
+ * @param {string} project
+ * @param {string} next
+ * @param {number} ttl
+ * @param {string} version
+ */
+export async function signShareToken(secret, project, next, ttl, version = '') {
+  if (!secret || !version) throw new Error('signShareToken requires a secret and password version');
+  const payload = JSON.stringify({
+    p: project,
+    exp: Math.floor(Date.now() / 1000) + ttl,
+    n: next,
+    t: ttl,
+    v: version,
+  });
+  const payloadB64 = bytesToB64url(enc.encode(payload));
+  const key = await importKey(secret);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(payloadB64)));
+  return payloadB64 + '.' + bytesToB64url(sig);
+}
+
+/**
+ * Verify a share link token. Returns { project, next, ttl, version } on success, null otherwise.
+ * Checks: signature valid, not expired, required fields present. Does NOT check the password
+ * version — the redeem endpoint compares it with the project's current password.
+ * @param {string} secret
+ * @param {string} token
  */
 export async function verifyShareToken(secret, token) {
   if (!secret || !token) return null;
@@ -147,19 +211,26 @@ export async function verifyShareToken(secret, token) {
   if (typeof payload?.exp !== 'number' || payload.exp <= Math.floor(Date.now() / 1000)) return null;
   if (typeof payload?.p !== 'string' || !payload.p) return null;
   if (typeof payload?.t !== 'number' || payload.t <= 0) return null;
+  if (typeof payload?.v !== 'string' || !payload.v) return null;
   return {
     project: payload.p,
     next: typeof payload.n === 'string' ? payload.n : '/' + payload.p + '/',
     ttl: payload.t,
+    version: payload.v,
   };
 }
 
 /**
  * Verify a cookie token. Returns true only if: signature valid (constant-time via
- * crypto.subtle.verify), not expired, and payload project === expected project.
+ * crypto.subtle.verify), not expired, payload project === expected project, and the password
+ * version matches the current password. Missing expected version → fail-closed.
+ * @param {string} secret
+ * @param {string} token
+ * @param {string} expectedProject
+ * @param {string} expectedVersion
  */
-export async function verifyToken(secret, token, expectedProject) {
-  if (!secret || !token) return false;
+export async function verifyToken(secret, token, expectedProject, expectedVersion) {
+  if (!secret || !token || !expectedVersion) return false;
   const dot = token.indexOf('.');
   if (dot <= 0) return false;
   const payloadB64 = token.slice(0, dot);
@@ -181,7 +252,7 @@ export async function verifyToken(secret, token, expectedProject) {
   }
   if (typeof payload?.exp !== 'number' || payload.exp <= Math.floor(Date.now() / 1000)) return false;
   if (payload.p !== expectedProject) return false;
-  return true;
+  return payload.v === expectedVersion;
 }
 
 /** Read a named cookie from a Cookie header. Returns '' if absent. */
@@ -193,6 +264,16 @@ export function readCookie(header, name) {
     if (part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
   }
   return '';
+}
+
+/** Serialize an HttpOnly session cookie. */
+export function authCookie(name, value, maxAgeSeconds) {
+  return `${name}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAgeSeconds}`;
+}
+
+/** Serialize a cookie-clearing header for the given cookie name. */
+export function clearAuthCookie(name) {
+  return `${name}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
 /**

@@ -33,49 +33,56 @@ function runGet(mode) {
   );
 }
 
-function createMetaFile(directory) {
+function createMetaFile(directory, meta = {}) {
   const metaPath = path.join(directory, 'meta.json');
   fs.writeFileSync(
     metaPath,
     JSON.stringify({
       project: 'guides',
       file: 'new.html',
-      routePath: '/guides/new',
+      routePath: 'guides/new',
       type: 'html',
       title: 'New',
       description: '',
       tags: [],
       date: null,
       sortDate: null,
+      ...meta,
     }),
   );
   return metaPath;
 }
 
+function callsFrom(callLog) {
+  if (!fs.existsSync(callLog)) return [];
+  return fs
+    .readFileSync(callLog, 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 test('r2GetText returns null only when Wrangler reports a missing object', () => {
   const result = runGet('missing');
-
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), 'null');
 });
 
 test('r2GetText throws when Wrangler reports 401 with exit status 1', () => {
   const result = runGet('unauthorized');
-
   assert.equal(result.status, 1);
   assert.match(result.stderr, /401: Unauthorized/);
 });
 
 test('r2GetText throws on an unclassified exit status 1 failure', () => {
   const result = runGet('generic-error');
-
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Unexpected Wrangler failure/);
 });
 
 test('r2GetText throws when a generic 404 is not a confirmed missing key', () => {
   const result = runGet('generic-404');
-
   assert.equal(result.status, 1);
   assert.match(result.stderr, /404 Object Not Found/);
 });
@@ -96,9 +103,9 @@ test('normal catalog upsert aborts when catalog object is missing', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /catalog.*missing/i);
   assert.equal(fs.existsSync(putCapture), false, 'normal upsert must not write a replacement catalog');
-  const calls = fs.readFileSync(callLog, 'utf8').trim().split('\n').filter(Boolean);
+  const calls = callsFrom(callLog);
   assert.equal(calls.length, 5, 'the existing retry policy should retry reads only');
-  assert.ok(calls.every((line) => JSON.parse(line)[3] === 'get'));
+  assert.ok(calls.every((call) => call[3] === 'get'));
 });
 
 test('normal catalog upsert aborts when catalog JSON is malformed', () => {
@@ -114,7 +121,7 @@ test('normal catalog upsert aborts when catalog JSON is malformed', () => {
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /catalog.*invalid json/i);
-  assert.equal(fs.existsSync(putCapture), false, 'normal upsert must not overwrite malformed catalog data');
+  assert.equal(fs.existsSync(putCapture), false);
 });
 
 for (const [name, catalog] of [
@@ -139,11 +146,11 @@ for (const [name, catalog] of [
 
     assert.equal(result.status, 1);
     assert.match(result.stderr, /catalog.*invalid/i);
-    assert.equal(fs.existsSync(putCapture), false, 'normal upsert must not normalize invalid catalog data');
+    assert.equal(fs.existsSync(putCapture), false);
   });
 }
 
-test('--seed can explicitly create or replace the whole catalog', () => {
+test('--seed can explicitly create the catalog without a prior object', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-upsert-seed-'));
   const seedPath = path.join(directory, 'seed.json');
   const putCapture = path.join(directory, 'put.json');
@@ -151,17 +158,191 @@ test('--seed can explicitly create or replace the whole catalog', () => {
   fs.writeFileSync(seedPath, JSON.stringify({ version: 1, updatedAt: null, projects: {} }));
 
   const result = runNode(['scripts/catalog-upsert.mjs', '--seed', seedPath], {
-    FAKE_WRANGLER_MODE: 'generic-error',
+    FAKE_WRANGLER_MODE: 'missing',
     FAKE_WRANGLER_CALL_LOG: callLog,
     FAKE_R2_PUT_CAPTURE: putCapture,
   });
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.existsSync(putCapture), true);
-  const calls = fs.readFileSync(callLog, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][3], 'put');
+  const calls = callsFrom(callLog);
+  assert.equal(calls.length, 2, 'seed reads for an optional backup, then writes the catalog');
+  assert.equal(calls[0][3], 'get');
+  assert.equal(calls[1][3], 'put');
   const written = JSON.parse(fs.readFileSync(putCapture, 'utf8'));
   assert.deepEqual(written.projects, {});
   assert.match(written.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('--seed aborts when the existing catalog cannot be read (no silent overwrite)', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-upsert-seed-unreadable-'));
+  const seedPath = path.join(directory, 'seed.json');
+  const putCapture = path.join(directory, 'put.json');
+  fs.writeFileSync(seedPath, JSON.stringify({ version: 1, updatedAt: null, projects: {} }));
+
+  const result = runNode(['scripts/catalog-upsert.mjs', '--seed', seedPath], {
+    FAKE_WRANGLER_MODE: 'unauthorized',
+    FAKE_R2_PUT_CAPTURE: putCapture,
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Unauthorized|catalog/i);
+  assert.equal(fs.existsSync(putCapture), false, 'seed must not overwrite a catalog it could not read');
+});
+
+test('registry-write rejects reserved project names before touching R2', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-registry-invalid-'));
+  const callLog = path.join(directory, 'calls.log');
+  const putCapture = path.join(directory, 'put.json');
+  const result = runNode(['scripts/registry-write.mjs', '--protected', '--names', 'api'], {
+    FAKE_WRANGLER_MODE: 'valid',
+    FAKE_R2_GET_SOURCE: path.join(directory, 'missing.json'),
+    FAKE_R2_PUT_CAPTURE: putCapture,
+    FAKE_WRANGLER_CALL_LOG: callLog,
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /reserved/i);
+  assert.equal(callsFrom(callLog).length, 0);
+  assert.equal(fs.existsSync(putCapture), false);
+});
+
+test('a normal upsert records uploadedAt/artifactDate flags, preserves createdAt and backs up', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-upsert-time-'));
+  const source = path.join(directory, 'catalog.json');
+  const putCapture = path.join(directory, 'put.json');
+  const callLog = path.join(directory, 'calls.log');
+  fs.writeFileSync(
+    source,
+    JSON.stringify({
+      version: 1,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      projects: {
+        guides: {
+          files: [
+            {
+              project: 'guides',
+              file: 'new.html',
+              routePath: 'guides/new',
+              type: 'html',
+              title: 'Old title',
+              description: '',
+              tags: [],
+              date: null,
+              sortDate: '2026-09-09',
+              createdAt: '2026-09-09T10:00:00.000Z',
+              uploadedAt: '2026-09-09T10:00:00.000Z',
+              uploadedAtReliable: true,
+              uploadSource: 'deliver',
+            },
+          ],
+        },
+      },
+    }),
+  );
+
+  const result = runNode(
+    ['scripts/catalog-upsert.mjs', '--project', 'guides', '--file', 'new.html', '--meta-file', createMetaFile(directory, { date: '2026-09-09', sortDate: '2026-09-09' })],
+    {
+      FAKE_WRANGLER_MODE: 'valid',
+      FAKE_R2_GET_SOURCE: source,
+      FAKE_R2_PUT_CAPTURE: putCapture,
+      FAKE_WRANGLER_CALL_LOG: callLog,
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const calls = callsFrom(callLog);
+  assert.deepEqual(calls.map((call) => call[3]), ['get', 'put', 'put']);
+  assert.match(calls[1][4], /meta\/backups\/catalog-/);
+
+  const written = JSON.parse(fs.readFileSync(putCapture, 'utf8'));
+  const entry = written.projects.guides.files[0];
+  assert.match(entry.uploadedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(entry.uploadedAtReliable, true);
+  assert.equal(entry.uploadSource, 'deliver');
+  assert.equal(entry.createdAt, '2026-09-09T10:00:00.000Z');
+  assert.equal(entry.artifactDate, '2026-09-09');
+});
+
+test('--source extracts metadata in-process and --date overrides the artifact date', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-upsert-source-'));
+  const sourceCatalog = path.join(directory, 'catalog.json');
+  const artifact = path.join(directory, 'artifact.html');
+  const putCapture = path.join(directory, 'put.json');
+  fs.writeFileSync(sourceCatalog, JSON.stringify({ version: 1, updatedAt: null, projects: {} }));
+  fs.writeFileSync(
+    artifact,
+    '<!doctype html><html><head><title>Source title</title><meta name="description" content="From source"><meta name="date" content="2026-03-04"></head><body>x</body></html>',
+  );
+
+  const result = runNode(
+    ['scripts/catalog-upsert.mjs', '--project', 'guides', '--file', 'from-source.html', '--source', artifact, '--date', '2026-03-05'],
+    {
+      FAKE_WRANGLER_MODE: 'valid',
+      FAKE_R2_GET_SOURCE: sourceCatalog,
+      FAKE_R2_PUT_CAPTURE: putCapture,
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const entry = JSON.parse(fs.readFileSync(putCapture, 'utf8')).projects.guides.files[0];
+  assert.equal(entry.title, 'Source title');
+  assert.equal(entry.description, 'From source');
+  assert.equal(entry.date, '2026-03-05');
+  assert.equal(entry.artifactDate, '2026-03-05');
+  assert.equal(entry.artifactDateSource, 'manual');
+  assert.equal(entry.routePath, 'guides/from-source');
+});
+
+test('invalid project names and file paths are rejected before touching R2', () => {
+  for (const args of [
+    ['--project', 'Bad Name', '--file', 'x.html'],
+    ['--project', 'api', '--file', 'x.html'],
+    ['--project', 'guides', '--file', '../x.html'],
+    ['--project', 'guides', '--file', 'x.txt'],
+  ]) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-upsert-name-'));
+    const callLog = path.join(directory, 'calls.log');
+    const putCapture = path.join(directory, 'put.json');
+    const result = runNode(
+      ['scripts/catalog-upsert.mjs', ...args, '--meta-file', createMetaFile(directory)],
+      {
+        FAKE_WRANGLER_MODE: 'valid',
+        FAKE_R2_GET_SOURCE: path.join(directory, 'missing.json'),
+        FAKE_R2_PUT_CAPTURE: putCapture,
+        FAKE_WRANGLER_CALL_LOG: callLog,
+      },
+    );
+    assert.equal(result.status, 1, args.join(' '));
+    assert.equal(fs.existsSync(putCapture), false, args.join(' '));
+    assert.equal(callsFrom(callLog).length, 0, args.join(' '));
+  }
+});
+
+test('--remove deletes the entry, drops empty projects and backs up first', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-upsert-remove-'));
+  const source = path.join(directory, 'catalog.json');
+  const putCapture = path.join(directory, 'put.json');
+  const callLog = path.join(directory, 'calls.log');
+  fs.writeFileSync(
+    source,
+    JSON.stringify({
+      version: 1,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      projects: { guides: { files: [{ project: 'guides', file: 'gone.html', routePath: 'guides/gone', type: 'html', title: 'Gone', tags: [] }] } },
+    }),
+  );
+
+  const result = runNode(['scripts/catalog-upsert.mjs', '--project', 'guides', '--file', 'gone.html', '--remove'], {
+    FAKE_WRANGLER_MODE: 'valid',
+    FAKE_R2_GET_SOURCE: source,
+    FAKE_R2_PUT_CAPTURE: putCapture,
+    FAKE_WRANGLER_CALL_LOG: callLog,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const calls = callsFrom(callLog);
+  assert.deepEqual(calls.map((call) => call[3]), ['get', 'put', 'put']);
+  const written = JSON.parse(fs.readFileSync(putCapture, 'utf8'));
+  assert.equal(written.projects.guides, undefined);
 });

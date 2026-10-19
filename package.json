@@ -4,17 +4,30 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@10.8.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "astro dev",
+    "dev:edge": "pnpm build && npx wrangler pages dev dist",
     "build": "node scripts/prepare-static.mjs && astro build",
     "preview": "astro preview",
     "astro": "astro",
+    "typecheck": "tsc -p jsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs tests/*.test.mjs",
     "migrate": "node scripts/migrate-to-r2.mjs",
     "catalog:upsert": "node scripts/catalog-upsert.mjs",
-    "registry:write": "node scripts/registry-write.mjs"
+    "registry:write": "node scripts/registry-write.mjs",
+    "r2:inventory": "node scripts/backfill-r2-times.mjs",
+    "r2:backfill": "node scripts/backfill-r2-times.mjs --apply"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",
     "astro": "^6.4.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "typescript": "^5",
+    "wrangler": "^4.151.1"
   }
 }

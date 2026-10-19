@@ -7,5 +7,10 @@ import sitemap from '@astrojs/sitemap';
 export default defineConfig({
   output: 'static',
   site: 'https://artifacts.hoangtrung.dev',
-  integrations: [sitemap()],
+  integrations: [
+    sitemap({
+      // Auth-only routes — never advertised to crawlers.
+      filter: (page) => !/^\/(?:login|ghost)(?:\/|$)/.test(new URL(page).pathname),
+    }),
+  ],
 });

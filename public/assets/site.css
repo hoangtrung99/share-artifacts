@@ -698,6 +698,7 @@ body.bleed { margin: 0; }
 .vb-proj { text-transform: capitalize; }
 .vb-title { color: var(--text); }
 .vb-sep { margin: 0 0.35rem; }
+.vb-uploaded { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; flex: none; }
 .vb-right { display: flex; align-items: center; gap: 0.25rem; flex: none; }
 .vb-btn {
   display: inline-flex; align-items: center; gap: 0.35rem;
@@ -709,7 +710,7 @@ body.bleed { margin: 0; }
 .vb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .vb-primary { background: var(--accent); color: var(--accent-contrast); padding: 0.42rem 0.75rem; }
 .vb-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
-@media (max-width: 600px) { .vb-crumb { display: none; } .vb-label { display: none; } }
+@media (max-width: 600px) { .vb-crumb { display: none; } .vb-label { display: none; } .vb-uploaded { display: none; } }
 
 /* ---- Custom instant tooltips (data-tip) ---- */
 .tip {

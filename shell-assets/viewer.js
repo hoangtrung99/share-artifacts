@@ -54,6 +54,15 @@
     console.error('[viewer] code copy failed:', err);
   }
 
+  // --- Syntax highlighting (highlight.js is loaded from the CDN on MD pages) ---
+  if (window.hljs) {
+    try {
+      window.hljs.highlightAll();
+    } catch (err) {
+      console.error('[viewer] highlight failed:', err);
+    }
+  }
+
   function initProjectControls() {
     const treeRoot =
       document.querySelector('[data-proj-tree]') || document.querySelector('[data-flat-list]');
@@ -111,10 +120,20 @@
       );
     };
 
-    const cmpRecent = (da, db) => {
+    // Recent = newest effective time first. data-date is the resolved sort time (real upload
+    // for fresh deliveries, artifact date for bulk imports/moves); data-artifact-date is the
+    // tie-break when several files share a bulk timestamp.
+    const cmpRecentEntries = (a, b) => {
+      const da = a.dataset.date || '';
+      const db = b.dataset.date || '';
       if (da && db && da !== db) return db.localeCompare(da);
       if (da && !db) return -1;
       if (db && !da) return 1;
+      const aa = a.dataset.artifactDate || '';
+      const ab = b.dataset.artifactDate || '';
+      if (aa && ab && aa !== ab) return ab.localeCompare(aa);
+      if (aa && !ab) return -1;
+      if (!aa && ab) return 1;
       return 0;
     };
 
@@ -122,7 +141,7 @@
       const lis = Array.from(ul.querySelectorAll(':scope > li[data-search]'));
       lis.sort((a, b) => {
         if (activeSort === 'recent') {
-          const r = cmpRecent(a.dataset.date || '', b.dataset.date || '');
+          const r = cmpRecentEntries(a, b);
           if (r) return r;
         } else if (activeSort === 'type') {
           if (a.dataset.type !== b.dataset.type) return a.dataset.type.localeCompare(b.dataset.type);

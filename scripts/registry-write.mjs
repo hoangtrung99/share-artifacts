@@ -10,7 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { r2PutText } from './lib/r2-cli.mjs';
+import { r2BackupText, r2GetText, r2PutText } from './lib/r2-cli.mjs';
+import { assertProjectName } from './lib/names.mjs';
 
 const ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..');
 
@@ -38,7 +39,21 @@ function parseArgs(argv) {
 }
 
 function uniqueSorted(arr) {
-  return [...new Set(arr.map((s) => String(s).trim()).filter(Boolean))].sort();
+  const names = [...new Set(arr.map((s) => String(s).trim()).filter(Boolean))].sort();
+  // Reserved names (api, assets, login, …) would be treated as shell routes and never gated.
+  for (const name of names) assertProjectName(name);
+  return names;
+}
+
+/** Snapshot the previous registry before overwriting it (best-effort). */
+function backupBeforeWrite(key) {
+  let previous = null;
+  try {
+    previous = r2GetText(key);
+  } catch {
+    previous = null;
+  }
+  r2BackupText(key, previous);
 }
 
 function main() {
@@ -57,6 +72,7 @@ function main() {
     else if (args.fromList && args.protected && !args.ghost) names = readList(args.fromList);
     else names = readList(path.join(ROOT, 'protected.list'));
     names = uniqueSorted(names);
+    backupBeforeWrite('meta/protected.json');
     r2PutText('meta/protected.json', JSON.stringify(names, null, 2) + '\n');
     console.log(`registry-write: protected -> [${names.join(', ')}]`);
   }
@@ -67,6 +83,7 @@ function main() {
     else if (args.fromList && args.ghost && !args.protected) names = readList(args.fromList);
     else names = readList(path.join(ROOT, 'ghost.list'));
     names = uniqueSorted(names);
+    backupBeforeWrite('meta/ghost.json');
     r2PutText('meta/ghost.json', JSON.stringify(names, null, 2) + '\n');
     console.log(`registry-write: ghost -> [${names.join(', ')}]`);
   }
