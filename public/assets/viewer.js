@@ -2861,6 +2861,9 @@
     const thread = reviewFindThread(threadId);
     if (!thread) return;
     review.postingReply = true;
+    input.disabled = true;
+    button.disabled = true;
+    if (form) form.setAttribute('aria-busy', 'true');
     const key = reviewIdempotencyKey();
     const optimistic = {
       messageId: 'pending-' + key,
@@ -2899,6 +2902,8 @@
       })
       .finally(function () {
         button.disabled = false;
+        input.disabled = false;
+        if (form) form.removeAttribute('aria-busy');
         review.postingReply = false;
         if (review && review.threadsDirty) {
           review.threadsDirty = false;
@@ -4818,6 +4823,9 @@
     const replyText = refs.threadPopInput.value;
     const replyTextarea = refs.threadPopInput;
     refs.threadPopSend.disabled = true;
+    refs.threadPopInput.disabled = true;
+    refs.threadPopForm.setAttribute('aria-busy', 'true');
+    refs.threadPop.setAttribute('aria-busy', 'true');
     refs.threadPopError.hidden = true;
     review.postingReply = true;
     review.popupReplySubmitting = true;
@@ -4861,6 +4869,9 @@
         review.postingReply = false;
         review.popupReplySubmitting = false;
         refs.threadPopSend.disabled = false;
+        refs.threadPopInput.disabled = false;
+        refs.threadPopForm.removeAttribute('aria-busy');
+        refs.threadPop.removeAttribute('aria-busy');
         if (review && review.threadsDirty) {
           review.threadsDirty = false;
           reviewLoadThreads({ quiet: true });
