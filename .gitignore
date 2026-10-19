@@ -25,3 +25,6 @@ public/*
 # would publish hidden (ghost) project names in a public repository.
 /protected.list
 /ghost.list
+# Local design/evidence workspace (prototypes, spike captures, screenshots). Some evidence
+# quotes protected artifacts, and the repo is public: never commit this folder by accident.
+/design/

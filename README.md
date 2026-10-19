@@ -12,8 +12,10 @@
 
 ```
 R2 bucket: artifacts-content  (private)
-  content/<project>/<path>.html|md   — artifact bytes
-  meta/catalog.json                  — project/file index + time metadata
+  content/<project>/<path>.html|md   — artifact bytes (mutable current)
+  revisions/<artifactId>/<revisionId>/source.html|md — immutable publish snapshots
+  meta/revisions/<artifactId>.json   — revision manifest + latest pointer + tombstone
+  meta/catalog.json                  — project/file index + time + revision metadata
   meta/protected.json                — protected project names
   meta/ghost.json                    — ghost project names
   meta/redirect-map.json             — 301 map for moved artifacts
@@ -22,8 +24,9 @@ R2 bucket: artifacts-content  (private)
 
 Cloudflare Pages (project: artifacts)
   dist/              thin Astro shell: /, /login, /ghost, /404
-  functions/         auth, catalog API, content catch-all, admin-less health
+  functions/         auth, catalog API, content catch-all, feedback API, admin-less health
   Binding ARTIFACTS → artifacts-content  (wrangler.jsonc)
+  Binding FEEDBACK_DB → D1 (optional; feedback API returns 503 when unbound)
 ```
 
 ```
@@ -39,7 +42,11 @@ Cloudflare Pages (project: artifacts)
 │   ├── _markdown.js           # MD → HTML (TOC, task lists, …)
 │   ├── _render.js             # listing / HTML iframe viewer / MD shell
 │   ├── api/catalog.js         # GET /api/catalog
-│   ├── api/reviews.js         # POST/GET /api/reviews (append-only feedback)
+│   ├── api/reviews.js         # POST/GET /api/reviews (one-off dashboard feedback)
+│   ├── api/revisions.js       # GET /api/revisions (version history)
+│   ├── api/feedback/[[path]].js # feedback threads / replies / export / grants
+│   ├── _feedback*.js          # D1 store, revision manifest, access gate, anchoring
+│   ├── r/[token].js           # review-grant redemption → HttpOnly cookie
 │   ├── api/health.js          # GET /api/health
 │   ├── api/[[path]].js        # JSON 404 for unknown /api/*
 │   ├── [[path]].js            # content catch-all from R2
@@ -50,12 +57,17 @@ Cloudflare Pages (project: artifacts)
 │   ├── registry-write.mjs     # protected/ghost registries (+ dated backup)
 │   ├── backfill-r2-times.mjs  # R2 inventory report / time-metadata backfill
 │   ├── lib/{meta,r2-cli,r2-api,names}.mjs
+│   ├── revisions.mjs          # revision register/status CLI (manifest CAS)
+│   ├── bootstrap-revisions.mjs# backfill revisions for existing artifacts
+│   ├── feedback.mjs           # read-only agent feedback CLI
+│   ├── review-grant.mjs       # owner CLI: create/list/revoke review grants
 │   ├── migrate-to-r2.mjs      # one-shot historical migration (already run)
 ├── deliver.sh                 # R2 put + catalog upsert (--remote)
 ├── deploy.sh                  # test + prepare-static + astro build + pages deploy
 ├── protect.sh / ghost.sh      # CF secrets + R2 registry (no shell redeploy)
 ├── unpublish.sh               # R2 delete (parallel) + catalog remove
-├── test/ + tests/             # node:test suites
+├── migrations/                # D1 schema (apply when the owner creates the DB)
+├── test/ + tests/             # node:test suites (feedback tests use a node:sqlite D1 shim)
 └── .github/workflows/ci.yml   # install → typecheck → test → build
 ```
 
@@ -225,6 +237,47 @@ dead-end at `/ghost`); `POST /share` rejects them explicitly.
 request must be same-origin. TTL options: **24h / 7d / 30d / 180d**. Stateless HMAC — rotating
 `COOKIE_SECRET` or changing the project password revokes outstanding links; individual revocation
 is not supported.
+
+## Review feedback and version history
+
+Every publish is kept as an immutable revision and artifacts can be reviewed in place.
+The feature is **opt-in per deployment**: with no D1 binding the feedback routes answer
+`503` and the viewer hides the Feedback/Versions actions, so the rest of the site behaves
+exactly as before.
+
+- **Publishing revisions.** `./deliver.sh` hashes the bytes, stores an immutable snapshot
+  (`revisions/<artifactId>/<revisionId>/source.html|md`), commits the per-artifact manifest
+  (`meta/revisions/<artifactId>.json`, conditional R2 write when REST credentials exist) and
+  only then updates `content/` + the catalog. Re-publishing identical bytes is a no-op.
+  Existing artifacts are bootstrapped with `pnpm run revisions:bootstrap` (dry-run by default,
+  `-- --apply` writes), or automatically the next time each file is delivered.
+- **Viewing revisions.** `?rev=<revisionId>` serves the snapshot for raw HTML/MD and the
+  viewer/MD reader; unknown revisions are a `404` (never a silent fallback). The default URL
+  stays canonical but the iframe/download are pinned to the latest revision so feedback and
+  content can never disagree. The viewer's More menu → **Versions** lists history, and an
+  old-revision banner offers "Back to latest" (read-only review).
+- **Reviewing.** A reviewer opens an artifact with a review grant and selects text; the
+  Comment/Replace/Remove popover appears immediately and a compact inline composer sends the
+  feedback **without opening the side panel** (the panel remains available for threads, replies,
+  filters, versions and export). Threads have replies and `open -> addressed -> resolved` status;
+  every thread stores the revision it was written against and reports `unanchored` instead of
+  attaching to the wrong passage. Comments are plain text; highlights use the CSS Custom Highlight
+  API and never mutate artifact DOM.
+- **Access.** `/r/<token>` redeems a grant into a HttpOnly, artifact-scoped cookie and
+  redirects without the token. Project/share cookies are read-only; only
+  `FEEDBACK_ADMIN_TOKEN` can mark `addressed`, manage grants or read/export without a grant.
+  Public artifacts do not expose their review threads unless a grant is presented.
+- **D1 setup (owner).** `npx wrangler d1 create artifacts-feedback` ->
+  `npx wrangler d1 migrations apply artifacts-feedback --remote` -> uncomment the
+  `d1_databases` block in `wrangler.jsonc` and set the `FEEDBACK_ADMIN_TOKEN` secret. The
+  migration lives in `migrations/0001_feedback.sql`.
+- **Agent CLI (read-only).** `pnpm run feedback -- list|export|revisions ...` reads the API with
+  `ARTIFACTS_COOKIE` or the admin token; `pnpm run feedback:grant -- create|list|revoke ...`
+  mints/revokes review links. See `design/feedback-versioning/backend-contract.md` for the
+  full API, anchor JSON and permission matrix, and `design/feedback-versioning/PLAN.md`
+  for the rollout plan. Agents working in this repo can load the committed skill
+  [`.claude/skills/artifacts-review/SKILL.md`](.claude/skills/artifacts-review/SKILL.md)
+  (read feedback, version ops, review links, owner workflow).
 
 ## Shell UI
 
