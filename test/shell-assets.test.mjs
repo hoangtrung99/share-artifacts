@@ -45,3 +45,15 @@ test('viewer.js contains the post-render helpers it advertises', () => {
 test('site.css styles the upload badge used by the viewer bar', () => {
   assert.match(read('shell-assets/site.css'), /\.vb-uploaded\s*\{/);
 });
+
+test('Astro shell versions viewer.js with the same ASSET_V as Functions', () => {
+  const render = read('functions/_render.js');
+  const match = render.match(/export const ASSET_V = '([^']+)'/);
+  assert.ok(match, 'ASSET_V must be exported from functions/_render.js');
+  const base = read('src/layouts/Base.astro');
+  assert.match(
+    base,
+    new RegExp('/assets/viewer\.js\?v=' + match[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    'Base.astro must load viewer.js with ?v=ASSET_V so browsers never mix shell versions',
+  );
+});
