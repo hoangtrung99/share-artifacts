@@ -178,7 +178,9 @@ CI also runs typecheck/test/build on push and PR.
 - **HTML:** `<title>`, `<meta name="description">`, optional `<meta name="date" content="YYYY-MM-DD">`,
   optional `<meta name="tags" content="infra, networking">`.
 - Listing dates come from the time model above, not from these tags. Tags also drive the category
-  filter; without tags the top-level folder is used, and root files count as `General`.
+  filter. Precedence: explicit tags → top-level folder → curated keyword fallback
+  (`networking`, `crypto`, `ai`, `dev-tools`, `infra`, `personal`, `translations`) → `General`.
+  Add tags when the automatic bucket is not precise enough.
 
 ## Password protection
 

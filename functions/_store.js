@@ -412,11 +412,36 @@ export function categoryLabel(slug) {
  * This keeps the folder-based behaviour the shell already had while letting authors opt into
  * real topic categories via artifact metadata.
  */
+const CATEGORY_KEYWORDS = [
+  ['networking', /tailscale|warp|clash|mihomo|proxy|squid|tunnel|funnel|cloudfront|dns|\bssh\b|\bvpn\b|exit node|serve|mạng|network/i],
+  ['crypto', /crypto|indicator|\bma\b|\bema\b|\brsi\b|\bmacd\b|bollinger|\blot\b|forex|trading|vàng|bạc|chỉ báo/i],
+  ['ai', /\bai\b|agent|claude|herdr|workflow|prompt|subagent|context|session|fable/i],
+  ['dev-tools', /vimium|\bgit\b|mac mini|macbook|mutagen|command|terminal|script|\bbse\b|code|config|yaml|android/i],
+  ['infra', /infra|terraform|aws|container|cloudfront|warp|proxy|server|deploy|\bdns\b/i],
+  ['personal', /da nang|đà nẵng|asia|living|relocation|travel|du lịch/i],
+  ['translations', /bản dịch|translation|dịch/i],
+];
+
+/** Curated keyword fallback so existing untagged artifacts still get useful categories. */
+function keywordCategories(entry) {
+  const haystack = [entry?.title, entry?.routePath, entry?.description, entry?.folder]
+    .filter(Boolean)
+    .join(' ');
+  const out = [];
+  for (const [slug, pattern] of CATEGORY_KEYWORDS) {
+    if (pattern.test(haystack)) out.push(slug);
+    if (out.length === 2) break;
+  }
+  return out;
+}
+
 export function entryCategories(entry) {
   const tags = Array.isArray(entry?.tags) ? entry.tags.map(categorySlug).filter(Boolean) : [];
   if (tags.length) return [...new Set(tags)];
   const folder = String(entry?.folder || '').split('/')[0];
-  return [folder ? categorySlug(folder) : 'general'];
+  if (folder) return [categorySlug(folder)];
+  const keywords = keywordCategories(entry);
+  return keywords.length ? keywords : ['general'];
 }
 
 /** Category chips for a project: [{ slug, label, count }], most used first. */

@@ -83,6 +83,7 @@ test('listing offers multi-select category chips from tags/folders', () => {
       listedFile({ title: 'Investigation', routePath: 'verups/investigations/d', folder: 'investigations' }),
       listedFile({ title: 'Root file', routePath: 'verups/root-file', folder: '' }),
       listedFile({ title: 'Tagged', routePath: 'verups/tagged', tags: ['infra'] }),
+      listedFile({ title: 'Tailscale: Exit Node, Serve và Funnel', routePath: 'verups/tailscale', folder: '' }),
     ],
     locked: true,
     ghost: false,
@@ -95,6 +96,8 @@ test('listing offers multi-select category chips from tags/folders', () => {
   assert.match(html, /data-cat="infra"[^>]*>Infra <span class="cat-count">1<\/span>/);
   assert.match(html, /data-cats="reports"/);
   assert.match(html, /data-cats="general"/);
+  // Untagged, folderless artifacts get a curated keyword fallback (explicit tags/folders win).
+  assert.match(html, /data-cats="networking[^"]*"/);
   assert.match(html, /aria-pressed="true"[^>]*>All/);
 
   // A project with a single category does not render the filter row.
