@@ -264,6 +264,9 @@ test('MD reader renders the same review contract and accepts artifact/revision c
   assert.match(html, /data-review-revision="b{64}"/);
   assert.match(html, /data-review-revision-number="3"/);
   assert.match(html, /data-review-is-latest="true"/);
+  // Revisioned artifacts render a visible History button in the bar.
+  assert.match(html, /data-versions-toggle[^>]*><svg class="icon"/);
+  assert.doesNotMatch(html, /data-versions-toggle[^>]*hidden/);
   // Latest view: no read-only banner.
   assert.doesNotMatch(html, /data-rev-banner/);
   assert.doesNotMatch(html, /class="bleed has-rev"/);
@@ -308,6 +311,8 @@ test('the empty feedback state offers a whole-document comment action', () => {
   assert.match(html, /Comment on whole document/);
   // Stale-index guard note ships in the panel (hidden until an in-iframe navigation).
   assert.match(html, /data-review-frame-note/);
+  // Version history is an explicit bar button; hidden for legacy (no revision context).
+  assert.match(html, /data-versions-toggle/);
   // Thread popup (highlight click with the panel closed) ships with the shell.
   assert.match(html, /data-review-thread-pop/);
   assert.match(html, /data-review-thread-pop-reply/);

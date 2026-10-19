@@ -2201,7 +2201,10 @@ body.review-open .reader {
   transition: background var(--d3) var(--ease-out), box-shadow var(--d3) var(--ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  .thread.is-flash { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .thread.is-flash {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    box-shadow: none;
+  }
 }
 
 /* ---------- Review scrollbars (panel, lists, floating editors) ---------- */

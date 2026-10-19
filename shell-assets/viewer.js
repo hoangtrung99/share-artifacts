@@ -1978,19 +1978,22 @@
       '::highlight(review-pending){background-color:color-mix(in srgb,' +
       accent +
       ' 14%,transparent);}' +
-      // Theme-aware artifact scrollbars (both axes; never touches layout).
-      'html{scrollbar-width:thin;scrollbar-color:' +
-      thumb +
-      ' transparent;}' +
-      '::-webkit-scrollbar{width:10px;height:10px;}' +
-      '::-webkit-scrollbar-track{background:transparent;}' +
-      '::-webkit-scrollbar-thumb{background:' +
-      thumb +
-      ';border-radius:999px;border:2px solid transparent;background-clip:content-box;}' +
-      '::-webkit-scrollbar-thumb:hover{background:' +
-      accent +
-      ';background-clip:content-box;}' +
-      '::-webkit-scrollbar-corner{background:transparent;}';
+      // Theme-aware scrollbars ONLY inside the artifact iframe. The parent document (Markdown
+      // reader) must keep its own scrollbar untouched.
+      (doc === document
+        ? ''
+        : 'html{scrollbar-width:thin;scrollbar-color:' +
+          thumb +
+          ' transparent;}' +
+          '::-webkit-scrollbar{width:10px;height:10px;}' +
+          '::-webkit-scrollbar-track{background:transparent;}' +
+          '::-webkit-scrollbar-thumb{background:' +
+          thumb +
+          ';border-radius:999px;border:2px solid transparent;background-clip:content-box;}' +
+          '::-webkit-scrollbar-thumb:hover{background:' +
+          accent +
+          ';background-clip:content-box;}' +
+          '::-webkit-scrollbar-corner{background:transparent;}');
   }
 
   function reviewSetHighlight(target, name, ranges) {
@@ -2171,6 +2174,10 @@
         if (!review.viewRevisionId && data.revision && data.revision.revisionId) {
           review.viewRevisionId = data.revision.revisionId;
         }
+        if (review.popupThread) {
+          const fresh = review.threadById.get(review.popupThread.threadId);
+          if (fresh) review.popupThread = fresh;
+        }
         review.lastLoadedAt = Date.now();
         reviewSyncArmed();
         // Refresh the normalized index on every load: artifacts can mutate between polls.
@@ -2342,11 +2349,12 @@
   }
 
   function reviewUpdateVersionsEntry() {
-    const item = document.querySelector('[data-action="versions"]');
-    if (!item) return;
     const show = !!(review && review.revisioningEnabled && review.revisions && review.revisions.length);
-    item.hidden = !show;
-    item.setAttribute('data-available', show ? 'true' : 'false');
+    // The bar icon is the primary entry; the More-menu item stays for keyboard/menu parity.
+    document.querySelectorAll('[data-versions-toggle], [data-action="versions"]').forEach(function (item) {
+      item.hidden = !show;
+      item.setAttribute('data-available', show ? 'true' : 'false');
+    });
   }
 
   function reviewUpdateBadge() {
@@ -3370,7 +3378,13 @@
       // click-outside/Escape routing there so the composer dismisses from either document.
       doc.addEventListener('pointerdown', function (event) {
         if (!review) return;
-        if (reviewInlineOpen() && !review.refs.inline.contains(event.target)) {
+        // An unsent draft is never discarded by interacting with the artifact; the artifact
+        // click handler routes highlight clicks and simply ignores them while a draft exists.
+        if (
+          reviewInlineOpen() &&
+          !review.refs.inline.contains(event.target) &&
+          !review.refs.inlineBody.value.trim()
+        ) {
           reviewHideInline();
           return;
         }
@@ -3378,6 +3392,11 @@
       }, true);
       doc.addEventListener('keydown', function (event) {
         if (!review || event.key !== 'Escape') return;
+        if (review.popupThread) {
+          event.preventDefault();
+          reviewHideThreadPopup();
+          return;
+        }
         if (reviewInlineOpen()) {
           event.preventDefault();
           reviewHideInline();
@@ -3398,6 +3417,7 @@
       if (!review) return;
       // A scrolling composer (long draft) must never dismiss itself or lose the draft.
       if (review.refs.inline && review.refs.inline.contains(event.target)) return;
+      if (review.refs.threadPop && review.refs.threadPop.contains(event.target)) return;
       reviewHidePopover();
       reviewHideThreadPopup();
     }, true);
@@ -3911,15 +3931,20 @@
     if (link) link.href = reviewLatestHref();
   }
 
-  function reviewOpenVersions() {
+  function reviewOpenVersions(trigger) {
     if (!review) return;
+    // Both the bar icon and the More-menu item can fire for one gesture; only the first opens.
+    if (!review.refs.versionsModal.hidden) return;
     closeMoreMenu(false);
     hideTip();
     review.refs.versionsModal.hidden = false;
-    // The Versions item lives in the More popover, which closes before the dialog opens, so
-    // restore focus to the visible More trigger instead of the now-hidden menu item.
+    // Restore to the actual opener (bar History icon or More trigger); the More-menu item is
+    // hidden once its popover closes, so fall back to the visible More button in that case.
+    const opener = trigger && trigger.getClientRects().length ? trigger : document.activeElement;
     review.versionsLastFocus =
-      document.querySelector('[data-more]') || document.activeElement;
+      opener && opener !== document.body && opener.getClientRects().length
+        ? opener
+        : document.querySelector('[data-more]') || document.querySelector('[data-review-toggle]');
     document.body.style.overflow = 'hidden';
     setReviewDialogInert(true);
     requestAnimationFrame(function () {
@@ -4389,7 +4414,13 @@
       const start = reviewBoundaryIndex(index, startBoundary.node, startBoundary.offset);
       const end = reviewBoundaryIndex(index, endBoundary.node, endBoundary.offset);
       if (start < 0 || end <= start) return;
-      map.set(thread.threadId, { start: start, end: end, thread: thread, target: target });
+      map.set(thread.threadId, {
+        start: start,
+        end: end,
+        thread: thread,
+        target: target,
+        range: range,
+      });
     });
     return map;
   }
@@ -4426,13 +4457,37 @@
     return point < 0 ? -1 : point;
   }
 
-  /** Nearest anchored thread for a click inside the artifact (small character tolerance). */
+  /** True when the click point lies on one of the range's client rects (±2px tolerance). */
+  function reviewPointInsideRange(range, x, y) {
+    try {
+      const rects = range.getClientRects();
+      for (let i = 0; i < rects.length; i++) {
+        const rect = rects[i];
+        if (
+          x >= rect.left - 2 &&
+          x <= rect.right + 2 &&
+          y >= rect.top - 2 &&
+          y <= rect.bottom + 2
+        ) {
+          return true;
+        }
+      }
+    } catch (error) {
+      return false;
+    }
+    return false;
+  }
+
+  /** Nearest anchored thread for a click inside the artifact (rect + character tolerance). */
   function reviewHitThread(target, x, y) {
     const point = reviewPointIndex(target, x, y);
     if (point < 0) return null;
     let best = null;
     reviewThreadBounds().forEach(function (bounds) {
       if (bounds.target !== target) return;
+      // caretRangeFromPoint can snap a blank-space click onto nearby text; require the click to
+      // actually sit on the highlighted range's line boxes before treating it as a hit.
+      if (!reviewPointInsideRange(bounds.range, x, y)) return;
       let distance = 0;
       if (point < bounds.start) distance = bounds.start - point;
       else if (point > bounds.end) distance = point - bounds.end;
@@ -4448,7 +4503,10 @@
     if (
       eventTarget &&
       eventTarget.closest &&
-      eventTarget.closest('a,button,input,textarea,select,label,[role="button"],[contenteditable="true"]')
+      eventTarget.closest(
+        'a,button,input,textarea,select,label,[role="button"],[contenteditable="true"],' +
+          '.review-thread-pop,.review-inline,.review-popover,#review-panel,#versions-modal',
+      )
     ) {
       return;
     }
@@ -4508,6 +4566,9 @@
   function reviewRenderThreadPopup(thread) {
     if (!review || !thread) return;
     const refs = review.refs;
+    // Re-rendering the same thread (reply/status/poll) must not clear an unsent reply draft.
+    const sameThread = !!(review.popupThread && review.popupThread.threadId === thread.threadId);
+    const previousReply = sameThread ? refs.threadPopInput.value : '';
     const anchor = thread.anchor || {};
     refs.threadPopChips.textContent = '';
     refs.threadPopChips.appendChild(
@@ -4557,7 +4618,7 @@
     const perms = thread.permissions || review.permissions || {};
     const canReply = reviewCanReply(perms) && !review.readonly;
     refs.threadPopForm.hidden = !canReply;
-    refs.threadPopInput.value = '';
+    refs.threadPopInput.value = previousReply;
     refs.threadPopError.hidden = true;
     refs.threadPopActions.textContent = '';
     reviewThreadPopupActions(thread).forEach(function (action) {
@@ -4572,8 +4633,10 @@
     if (reviewInlineOpen() || reviewComposerOpen()) return;
     clearTimeout(review.selectionTimer);
     reviewHidePopover();
-    review.popupThread = thread;
+    const previousThread = review.popupThread;
+    review.popupThread = null;
     reviewRenderThreadPopup(thread);
+    review.popupThread = thread;
     const refs = review.refs;
     const frame = target && target.frame;
     let x = event.clientX;
@@ -4820,7 +4883,8 @@
         refs.inline &&
         !refs.inline.hidden &&
         !refs.inline.contains(event.target) &&
-        !event.target.closest('[data-review-toggle]')
+        !event.target.closest('[data-review-toggle]') &&
+        !(refs.inlineBody && refs.inlineBody.value.trim())
       ) {
         reviewHideInline();
       }
@@ -4898,13 +4962,12 @@
         });
       });
     });
-    const versionsItem = document.querySelector('[data-action="versions"]');
-    if (versionsItem) {
-      versionsItem.addEventListener('click', function (event) {
+    document.querySelectorAll('[data-versions-toggle], [data-action="versions"]').forEach(function (item) {
+      item.addEventListener('click', function (event) {
         event.preventDefault();
-        reviewOpenVersions();
+        reviewOpenVersions(item);
       });
-    }
+    });
     if (refs.versionsModal) {
       refs.versionsModal.addEventListener('click', function (event) {
         if (event.target === refs.versionsModal) reviewCloseVersions();

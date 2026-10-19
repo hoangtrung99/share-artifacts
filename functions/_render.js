@@ -21,7 +21,7 @@ import {
   categoryLabel,
 } from './_store.js';
 
-export const ASSET_V = '5f37ba2c';
+export const ASSET_V = '2674d74f';
 
 const SITE_HOST = 'artifacts.hoangtrung.dev';
 
@@ -354,6 +354,7 @@ function viewerBar({
     <span class="topbar-spacer"></span>
     <div class="topbar-actions bar-actions">
       <a class="btn bar-download" href="${escAttr(rawUrl)}" download="${escAttr(downloadName)}" data-tip="Download the ${downloadLabel} file" aria-label="Download the ${downloadLabel} file">${icon('download')}<span>Download</span></a>
+      ${review ? versionsBarButton(review) : ''}
       ${review ? reviewBarButton() : ''}
       <button class="icon-btn bar-secondary" type="button" data-copy data-tip="Copy link" aria-label="Copy link">${icon('link')}</button>
       ${share}
@@ -543,6 +544,13 @@ function reviewContext({ project, routePath, rawUrl, title, type, artifact = nul
     hasRevision,
     isLatest: hasRevision ? revision.isLatest !== false : true,
   };
+}
+
+function versionsBarButton(review) {
+  const known = !!(review && review.hasRevision);
+  return `<button class="icon-btn bar-history" type="button" data-versions-toggle data-tip="Version history" aria-label="Version history" aria-haspopup="dialog" aria-controls="versions-modal"${
+    known ? '' : ' hidden'
+  }>${icon('history')}</button>`;
 }
 
 function reviewBarButton() {
