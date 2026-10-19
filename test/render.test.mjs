@@ -73,7 +73,7 @@ test('listing escapes titles/projects and renders a date for every row', () => {
   assert.match(html, /Recent/);
 });
 
-test('listing offers multi-select category chips from tags/folders', () => {
+test('listing offers a compact category dropdown with Root pinned first', () => {
   const html = projectListingPage({
     project: 'verups',
     files: [
@@ -83,31 +83,37 @@ test('listing offers multi-select category chips from tags/folders', () => {
       listedFile({ title: 'Investigation', routePath: 'verups/investigations/d', folder: 'investigations' }),
       listedFile({ title: 'Root file', routePath: 'verups/root-file', folder: '' }),
       listedFile({ title: 'Tagged', routePath: 'verups/tagged', tags: ['infra'] }),
-      listedFile({ title: 'Tailscale: Exit Node, Serve và Funnel', routePath: 'verups/tailscale', folder: '' }),
     ],
     locked: true,
     ghost: false,
   });
-  assert.match(html, /data-cat-chips/);
-  assert.match(html, /data-cat="all"/);
+  assert.match(html, /data-cat-filter/);
+  assert.match(html, /data-cat-trigger/);
+  assert.match(html, /data-cat-label>Category: All/);
+  assert.match(html, /data-cat-popover hidden/);
+  assert.match(html, /data-cat="all"[^>]*>All <span class="cat-count">6<\/span>/);
+  // Root is pinned directly after All and before the other categories.
+  const rootAt = html.indexOf('data-cat="root"');
+  const reportsAt = html.indexOf('data-cat="reports"');
+  assert.ok(rootAt > 0 && reportsAt > rootAt, 'Root must render before the other categories');
+  assert.match(html, /data-cat="root"[^>]*>Root <span class="cat-count">1<\/span>/);
   assert.match(html, /data-cat="reports"[^>]*>Reports <span class="cat-count">3<\/span>/);
   assert.match(html, /data-cat="investigations"[^>]*>Investigations <span class="cat-count">1<\/span>/);
-  assert.match(html, /data-cat="general"[^>]*>General <span class="cat-count">1<\/span>/);
-  assert.match(html, /data-cat="infra"[^>]*>Infra <span class="cat-count">1<\/span>/);
+  assert.match(html, /data-cats="root"/);
   assert.match(html, /data-cats="reports"/);
-  assert.match(html, /data-cats="general"/);
-  // Untagged, folderless artifacts get a curated keyword fallback (explicit tags/folders win).
-  assert.match(html, /data-cats="networking[^"]*"/);
-  assert.match(html, /aria-pressed="true"[^>]*>All/);
+  // Folder projects get expand/collapse-all controls.
+  assert.match(html, /data-expand-all/);
+  assert.match(html, /data-collapse-all/);
 
-  // A project with a single category does not render the filter row.
+  // A flat project with a single category does not render the filter or tree controls.
   const single = projectListingPage({
     project: 'guides',
     files: [listedFile({ title: 'Only', routePath: 'guides/only', folder: '' })],
     locked: false,
     ghost: false,
   });
-  assert.doesNotMatch(single, /data-cat-chips/);
+  assert.doesNotMatch(single, /data-cat-filter/);
+  assert.doesNotMatch(single, /data-tree-controls/);
 });
 
 test('ghost listings are noindex and public listings are indexable', () => {

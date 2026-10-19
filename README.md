@@ -243,10 +243,14 @@ content routes (`shell-assets/site.css`, `shell-assets/viewer.js`, `functions/_u
   More menu carries Open raw / Print / Theme / Sign out per context; MD pages get a 2px reading
   progress line. Mobile keeps the artifact title and 44px controls and folds secondary actions into
   More.
-- **Category filter:** multi-select chips on the project listing. A category is an artifact `tag`
-  when present; otherwise the top-level folder; root files fall back to `General`. Chips are hidden
-  when a project has fewer than two categories, counts are rendered server-side, state lives in
-  `?cat=slug,slug` (OR semantics) and combines with text/type/sort.
+- **Category filter:** a compact multi-select dropdown in the project toolbar (one trigger instead of
+  a wrapping chip wall). A category is an artifact `tag` when present; otherwise the top-level folder
+  (root-level files are the **Root** bucket, pinned directly after All); flat projects fall back to
+  curated keywords, then `General`. Counts are rendered server-side, state lives in
+  `?cat=slug,slug` (OR semantics) and combines with text/type/sort. The control is hidden when a
+  project has fewer than two categories.
+- **Folder tree controls:** Expand all / Collapse all icon buttons appear whenever a project has
+  folders, alongside the native `<details>` groups.
 - **Gallery:** project index (activity-sorted, protected last) plus a "Recently added" feed from
   `/api/catalog` (`updatedAt`, `categories`, `recent[]`; protected projects leak none of them).
 - **States:** skeleton loading, empty vs filtered-empty, retryable error, designed 404 shell for

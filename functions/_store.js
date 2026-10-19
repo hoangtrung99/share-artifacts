@@ -387,6 +387,7 @@ const CATEGORY_LABELS = {
   crypto: 'Crypto',
   personal: 'Personal',
   general: 'General',
+  root: 'Root',
 };
 
 /** Normalise a tag/folder into a stable category slug. */
@@ -407,10 +408,34 @@ export function categoryLabel(slug) {
 }
 
 /**
- * Categories for one artifact row.
- * Explicit tags win; otherwise the top-level folder is the category; root files are "general".
- * This keeps the folder-based behaviour the shell already had while letting authors opt into
- * real topic categories via artifact metadata.
+ * Category model for a project's file list:
+ *  - 'folder'   — at least one artifact lives in a folder, so folders are the categories
+ *                 (root-level files become the "root" category);
+ *  - 'keywords' — flat project, so curated keyword matching + tags label the artifacts.
+ * @param {Array} files
+ * @returns {'folder'|'keywords'}
+ */
+export function categoryMode(files) {
+  return (files || []).some((file) => entryFolder(file)) ? 'folder' : 'keywords';
+}
+
+/**
+ * Project-relative folder path for an entry ("reports/sub" or "" for root).
+ * listProjectFiles already sets `folder`; raw catalog entries only have routePath (which starts
+ * with the project name), so derive it there. Keeping the derivation here makes the category
+ * model identical for edge listings and the catalog API.
+ */
+function entryFolder(entry) {
+  if (typeof entry?.folder === 'string' && entry.folder) return entry.folder;
+  const parts = String(entry?.routePath || '')
+    .split('/')
+    .filter(Boolean);
+  return parts.length > 2 ? parts.slice(1, -1).join('/') : '';
+}
+
+/**
+ * Curated keyword fallback for flat projects so existing untagged artifacts still get useful
+ * categories. Only used in keyword mode.
  */
 const CATEGORY_KEYWORDS = [
   ['networking', /tailscale|warp|clash|mihomo|proxy|squid|tunnel|funnel|cloudfront|dns|\bssh\b|\bvpn\b|exit node|serve|mạng|network/i],
@@ -424,7 +449,7 @@ const CATEGORY_KEYWORDS = [
 
 /** Curated keyword fallback so existing untagged artifacts still get useful categories. */
 function keywordCategories(entry) {
-  const haystack = [entry?.title, entry?.routePath, entry?.description, entry?.folder]
+  const haystack = [entry?.title, entry?.routePath, entry?.description, entryFolder(entry)]
     .filter(Boolean)
     .join(' ');
   const out = [];
@@ -435,20 +460,31 @@ function keywordCategories(entry) {
   return out;
 }
 
-export function entryCategories(entry) {
+/**
+ * Categories for one artifact row.
+ * Explicit tags always win, in both modes. In folder mode an untagged file is categorised by
+ * its top-level folder, and root-level files are "root". In keyword mode untagged files fall
+ * back to curated keywords, then "general".
+ * @param {object} entry
+ * @param {'folder'|'keywords'} [mode]
+ */
+export function entryCategories(entry, mode = 'keywords') {
   const tags = Array.isArray(entry?.tags) ? entry.tags.map(categorySlug).filter(Boolean) : [];
   if (tags.length) return [...new Set(tags)];
-  const folder = String(entry?.folder || '').split('/')[0];
-  if (folder) return [categorySlug(folder)];
+  if (mode === 'folder') {
+    const folder = entryFolder(entry).split('/')[0];
+    return [folder ? categorySlug(folder) : 'root'];
+  }
   const keywords = keywordCategories(entry);
   return keywords.length ? keywords : ['general'];
 }
 
 /** Category chips for a project: [{ slug, label, count }], most used first. */
 export function categorySummary(files) {
+  const mode = categoryMode(files);
   const counts = new Map();
   for (const file of files || []) {
-    for (const slug of entryCategories(file)) counts.set(slug, (counts.get(slug) || 0) + 1);
+    for (const slug of entryCategories(file, mode)) counts.set(slug, (counts.get(slug) || 0) + 1);
   }
   return [...counts.entries()]
     .map(([slug, count]) => ({ slug, label: categoryLabel(slug), count }))

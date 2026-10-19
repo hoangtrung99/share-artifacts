@@ -10,6 +10,7 @@
 
 import {
   categoryLabel,
+  categoryMode,
   categorySummary,
   entryCategories,
   loadCatalog,
@@ -70,10 +71,12 @@ async function handle(request, env) {
   };
 
   const addRecent = (projectName, files) => {
+    // Recent rows follow the same category model as the project listing (folder vs keywords).
+    const mode = categoryMode(files);
     for (const file of files) {
       const time = resolveArtifactTime(file);
       if (!time.sortDate) continue;
-      const category = entryCategories(file)[0];
+      const category = entryCategories(file, mode)[0];
       recent.push({
         sortDate: time.sortDate,
         item: {

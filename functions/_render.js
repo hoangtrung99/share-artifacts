@@ -14,9 +14,14 @@ import {
   themePickerButton,
   shellChrome,
 } from './_ui.js';
-import { categorySummary, entryCategories, categoryLabel } from './_store.js';
+import {
+  categoryMode,
+  categorySummary,
+  entryCategories,
+  categoryLabel,
+} from './_store.js';
 
-export const ASSET_V = 'd83f52eb';
+export const ASSET_V = '3c2b5026';
 
 const SITE_HOST = 'artifacts.hoangtrung.dev';
 
@@ -166,9 +171,9 @@ function skipLink(id) {
 /* -------------------------------------------------------------- file rows */
 
 /** One artifact row (li carries the viewer.js filter/sort dataset). */
-function fileRow(f) {
+function fileRow(f, mode) {
   const type = f.type === 'md' ? 'md' : 'html';
-  const cats = entryCategories(f);
+  const cats = entryCategories(f, mode);
   const categoryLabelText = cats.map((slug) => categoryLabel(slug)).join(', ');
   const search = [f.title, f.routePath, f.description, f.folder, ...cats]
     .join(' ')
@@ -190,9 +195,9 @@ function fileRow(f) {
       </li>`;
 }
 
-function fileList(items) {
+function fileList(items, mode) {
   return `<ul class="file-list">
-${items.map(fileRow).join('\n')}
+${items.map((item) => fileRow(item, mode)).join('\n')}
 </ul>`;
 }
 
@@ -242,9 +247,11 @@ function buildTree(items) {
 }
 
 /** Folder group: <details> with data-folder/data-depth; nested groups stay inside the parent. */
-function folderGroup(node, depth) {
-  const files = node.files.length ? fileList(node.files) : '';
-  const children = node.children.map((child) => folderGroup(child, depth + 1)).join('\n');
+function folderGroup(node, depth, mode) {
+  const files = node.files.length ? fileList(node.files, mode) : '';
+  const children = node.children
+    .map((child) => folderGroup(child, depth + 1, mode))
+    .join('\n');
   return `<details class="proj-group" data-folder="${escAttr(node.path)}" data-depth="${depth}" style="--depth: ${depth}" open>
       <summary class="proj-group-title">
         ${icon('chevron-right', 'icon grp-chevron')}
@@ -356,6 +363,54 @@ function viewerBar({
 /* ------------------------------------------------------------ listing page */
 
 /**
+ * Compact category dropdown for the project tools row. Rendered only when the project has more
+ * than one category. In folder mode Root ("no category", folder === '') is always listed first
+ * after All — even at count 0 — and the remaining categories follow by count. Keyword-mode
+ * projects have no Root entry; their categories are all keyword slugs.
+ */
+function categoryFilterHtml(list, categories, mode) {
+  if (categories.length < 2) return '';
+  const isFolderMode = mode === 'folder';
+  const root = isFolderMode ? categories.find((category) => category.slug === 'root') : null;
+  const options = [
+    `<button type="button" class="cat-option" data-cat="all" aria-pressed="true">All <span class="cat-count">${list.length}</span></button>`,
+    isFolderMode
+      ? `<button type="button" class="cat-option" data-cat="root" aria-pressed="false">Root <span class="cat-count">${root ? root.count : 0}</span></button>`
+      : '',
+    ...categories
+      .filter((category) => !(isFolderMode && category.slug === 'root'))
+      .map(
+        (category) =>
+          `<button type="button" class="cat-option" data-cat="${escAttr(category.slug)}" aria-pressed="false">${esc(category.label)} <span class="cat-count">${category.count}</span></button>`,
+      ),
+  ].filter(Boolean);
+
+  return `<div class="cat-filter" data-cat-filter>
+        <button class="cat-trigger" type="button" data-cat-trigger aria-expanded="false" aria-haspopup="true">
+          ${icon('chevron-down')}
+          <span data-cat-label>Category: All</span>
+        </button>
+        <div class="cat-popover" data-cat-popover hidden>
+          <p class="micro">Category</p>
+          <div class="cat-options" data-cat-chips role="group" aria-label="Filter by category">
+            ${options.join('\n            ')}
+          </div>
+        </div>
+      </div>`;
+}
+
+/** Expand/collapse-all controls; only meaningful when the project has folders. */
+function treeControlsHtml(list) {
+  const hasFolders = list.some((file) => String(file.folder || '').trim());
+  if (!hasFolders) return '';
+  return `<span class="spacer"></span>
+      <div class="tree-controls" data-tree-controls>
+        <button class="icon-btn" type="button" data-expand-all data-tip="Expand all folders" aria-label="Expand all folders">${icon('chevrons-down')}</button>
+        <button class="icon-btn" type="button" data-collapse-all data-tip="Collapse all folders" aria-label="Collapse all folders">${icon('chevrons-up')}</button>
+      </div>`;
+}
+
+/**
  * Project file listing page.
  * @param {object} opts
  * @param {string} opts.project
@@ -365,6 +420,7 @@ function viewerBar({
  */
 export function projectListingPage({ project, files, locked, ghost }) {
   const list = Array.isArray(files) ? files : [];
+  const mode = categoryMode(list);
   const tree = buildTree(list);
   // Root-level files render directly (no "(root)" group), most recent first.
   tree.files.sort((a, b) => {
@@ -375,8 +431,8 @@ export function projectListingPage({ project, files, locked, ghost }) {
   });
 
   const trees = [
-    ...tree.children.map((child) => folderGroup(child, 0)),
-    tree.files.length ? fileList(tree.files) : '',
+    ...tree.children.map((child) => folderGroup(child, 0, mode)),
+    tree.files.length ? fileList(tree.files, mode) : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -391,21 +447,8 @@ export function projectListingPage({ project, files, locked, ghost }) {
     .join('\n        ');
 
   const categories = categorySummary(list);
-  const categoryRow =
-    categories.length > 1
-      ? `<div class="category-row">
-        <span class="micro category-label">Category</span>
-        <div class="cat-chips" role="group" aria-label="Filter by category" data-cat-chips>
-          <button type="button" class="cat-chip" data-cat="all" aria-pressed="true">All <span class="cat-count">${list.length}</span></button>
-${categories
-  .map(
-    (category) =>
-      `          <button type="button" class="cat-chip" data-cat="${escAttr(category.slug)}" aria-pressed="false">${esc(category.label)} <span class="cat-count">${category.count}</span></button>`,
-  )
-  .join('\n')}
-        </div>
-      </div>`
-      : '';
+  const categoryFilter = categoryFilterHtml(list, categories, mode);
+  const treeControls = treeControlsHtml(list);
 
   const emptyText = list.length ? 'No artifacts match this filter.' : 'No artifacts in this project yet.';
   const body = `${skipLink('main-project')}
@@ -437,8 +480,9 @@ ${projectTopbar(project, locked)}
         </select>
         ${icon('chevron-down')}
       </label>
+      ${categoryFilter}
+      ${treeControls}
     </div>
-    ${categoryRow}
   </header>
 
   <section class="file-index" aria-labelledby="files-label">

@@ -257,6 +257,7 @@
 
   function openThemePopover(trigger) {
     if (!themePopover || !trigger) return;
+    closeCatPopover(false);
     closeMoreMenu(false);
     hideTip();
     clearTimeout(themeCloseTimer);
@@ -415,6 +416,7 @@
 
   function openMoreMenu(trigger) {
     if (!morePopover || !trigger) return;
+    closeCatPopover(false);
     closeThemePopover(false);
     hideTip();
     clearTimeout(moreCloseTimer);
@@ -447,6 +449,85 @@
     const trigger = moreTrigger;
     moreTrigger = null;
     if (restoreFocus && trigger && document.contains(trigger)) focusEl(trigger);
+  }
+
+  /* --------------------------------------------------------- category popover */
+
+  let catFilter = null;
+  let catPopover = null;
+  let catTrigger = null;
+
+  function catOptions() {
+    return catPopover ? Array.prototype.slice.call(catPopover.querySelectorAll('[data-cat]')) : [];
+  }
+
+  function initCatPopover() {
+    catFilter = document.querySelector('[data-cat-filter]');
+    catPopover = document.querySelector('[data-cat-popover]');
+    catTrigger = catFilter ? catFilter.querySelector('[data-cat-trigger]') : null;
+    if (!catFilter || !catPopover || !catTrigger) return;
+
+    catTrigger.addEventListener('click', function () {
+      if (!catPopover.hidden) closeCatPopover(true);
+      else openCatPopover();
+    });
+
+    catPopover.addEventListener('keydown', function (event) {
+      const options = catOptions();
+      if (!options.length) return;
+      const index = options.indexOf(document.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeCatPopover(true);
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        options[(index + 1 + options.length) % options.length].focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        options[(index - 1 + options.length) % options.length].focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        options[0].focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        options[options.length - 1].focus();
+      }
+    });
+
+    document.addEventListener('pointerdown', function (event) {
+      if (catPopover.hidden) return;
+      if (catFilter.contains(event.target)) return;
+      closeCatPopover(false);
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape' || catPopover.hidden) return;
+      event.preventDefault();
+      closeCatPopover(true);
+    });
+  }
+
+  function openCatPopover() {
+    if (!catPopover || !catTrigger) return;
+    hideTip();
+    closeThemePopover(false);
+    closeMoreMenu(false);
+    catPopover.hidden = false;
+    requestAnimationFrame(function () {
+      if (!catPopover.hidden) catPopover.classList.add('is-open');
+    });
+    catTrigger.setAttribute('aria-expanded', 'true');
+    const first = catOptions()[0];
+    if (first) focusEl(first);
+  }
+
+  function closeCatPopover(restoreFocus) {
+    if (!catPopover || catPopover.hidden) return;
+    // The popover is anchored by CSS without an open/close transition, so hide it at once.
+    catPopover.classList.remove('is-open');
+    catPopover.hidden = true;
+    catTrigger.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && catTrigger && document.contains(catTrigger)) focusEl(catTrigger);
   }
 
   /* --------------------------------------------------------------- clipboard */
@@ -632,6 +713,7 @@
 
   function openShare(trigger) {
     hideTip();
+    closeCatPopover(false);
     closeThemePopover(false);
     closeMoreMenu(false);
     const wasHidden = shareModal.hidden;
@@ -915,6 +997,12 @@
         knownCats.add(cat);
       });
     });
+    // Options can exist without matching rows (Root is always rendered in folder mode, even
+    // at count 0), so a ?cat= for one of them must restore rather than be dropped.
+    catButtons.forEach(function (button) {
+      const value = button.dataset.cat;
+      if (value && value !== 'all') knownCats.add(value);
+    });
 
     // Restore state from the URL; values the markup can't represent are ignored.
     const params = new URLSearchParams(location.search);
@@ -990,6 +1078,17 @@
         const pressed = !value || value === 'all' ? activeCats.size === 0 : activeCats.has(value);
         button.setAttribute('aria-pressed', String(pressed));
       });
+      updateCatLabel();
+    }
+
+    // Compact trigger summary: All / Root / N selected.
+    function updateCatLabel() {
+      const label = document.querySelector('[data-cat-label]');
+      if (!label) return;
+      let text = 'Category: All';
+      if (activeCats.size === 1 && activeCats.has('root')) text = 'Category: Root';
+      else if (activeCats.size > 0) text = 'Category: ' + activeCats.size + ' selected';
+      label.textContent = text;
     }
 
     function emptyMessage(searching) {
@@ -1095,6 +1194,16 @@
       }
     }
     document.addEventListener('click', function (event) {
+      const treeToggle = event.target.closest('[data-expand-all], [data-collapse-all]');
+      if (treeToggle && !tree.contains(treeToggle)) {
+        const open = treeToggle.hasAttribute('data-expand-all');
+        // An explicit user choice wins over the filter's auto-open state restore.
+        forcedOpen.clear();
+        groups.forEach(function (group) {
+          group.open = open;
+        });
+        return;
+      }
       const typeButton = event.target.closest('[data-type]');
       if (typeButton && typeFilter && typeFilter.contains(typeButton)) {
         activeType = typeButton.dataset.type || 'all';
@@ -1103,6 +1212,7 @@
       }
       const catButton = event.target.closest('[data-cat]');
       if (catButton && catRoot && catRoot.contains(catButton)) {
+        // Multi-select OR; All resets. The popover stays open while toggling options.
         const value = catButton.dataset.cat || '';
         if (!value || value === 'all') activeCats.clear();
         else if (activeCats.has(value)) activeCats.delete(value);
@@ -1288,6 +1398,7 @@
     safe('more menu', initMoreMenu);
     safe('share dialog', initShare);
     safe('clipboard', initCopy);
+    safe('category popover', initCatPopover);
     safe('project filters', initProjectControls);
     safe('reader toc', initReaderToc);
     safe('reading progress', initReadProgress);
