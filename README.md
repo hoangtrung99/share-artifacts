@@ -244,7 +244,7 @@ content routes (`shell-assets/site.css`, `shell-assets/viewer.js`, `functions/_u
   progress line. Mobile keeps the artifact title and 44px controls and folds secondary actions into
   More.
 - **Artifact-matched viewer bar:** on HTML viewer pages the shell samples the same-origin artifact
-  iframe's computed background/text colours and repaints the bar to match (contrast-checked muted /
+  iframe's computed top-strip/background/text colours and repaints the bar to match (contrast-checked muted /
   icon tokens), so the bar reads as part of the artifact. It follows theme switches made inside the
   artifact via attribute observation plus a light sampler; cross-origin iframes keep the shell theme.
 - **Category filter:** a compact multi-select dropdown in the project toolbar (one trigger instead of

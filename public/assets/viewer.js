@@ -1453,6 +1453,25 @@
       }
       return mixed;
     }
+    // The bar sits flush against the top of the iframe, so match the colour that is actually
+    // painted there (the artifact's own top bar) rather than only the page background.
+    function topStripColor(doc, win, fallback) {
+      var width = doc.documentElement.clientWidth || win.innerWidth || 0;
+      if (!width) return fallback;
+      var points = [0.5, 0.08, 0.92];
+      for (var i = 0; i < points.length; i += 1) {
+        var x = Math.max(0, Math.min(width - 1, Math.round(width * points[i])));
+        var element = doc.elementFromPoint(x, Math.min(24, (win.innerHeight || 24) - 1));
+        while (element && element !== doc.documentElement) {
+          var style = win.getComputedStyle(element);
+          var color = parseColor(style.backgroundColor);
+          if (color && color.a > 0) return composite(color, fallback);
+          if (style.backgroundImage && style.backgroundImage !== 'none') return fallback;
+          element = element.parentElement;
+        }
+      }
+      return fallback;
+    }
     function sample() {
       var doc;
       var win;
@@ -1466,10 +1485,11 @@
       var bodyStyle = win.getComputedStyle(doc.body);
       var htmlStyle = win.getComputedStyle(doc.documentElement);
       var white = { r: 255, g: 255, b: 255, a: 1 };
-      var background = parseColor(bodyStyle.backgroundColor);
-      if (!background || background.a === 0) background = parseColor(htmlStyle.backgroundColor);
-      if (!background || background.a === 0) return;
-      background = composite(background, white);
+      var pageBackground = parseColor(bodyStyle.backgroundColor);
+      if (!pageBackground || pageBackground.a === 0) pageBackground = parseColor(htmlStyle.backgroundColor);
+      if (!pageBackground || pageBackground.a === 0) return;
+      pageBackground = composite(pageBackground, white);
+      var background = topStripColor(doc, win, pageBackground);
       var candidate = parseColor(bodyStyle.color) || parseColor(htmlStyle.color);
       var foreground = candidate && contrast(background, candidate) >= 4.5
         ? candidate
