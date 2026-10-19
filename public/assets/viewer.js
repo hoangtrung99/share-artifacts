@@ -2152,6 +2152,11 @@
   function reviewLoadThreads(options) {
     const opts = options || {};
     if (!review) return Promise.resolve();
+    // Never rebuild the list underneath an unsent/in-flight reply draft.
+    if (review.postingReply || reviewPanelReplyDraft()) {
+      review.threadsDirty = true;
+      return Promise.resolve();
+    }
     if (review.loadingThreads) {
       review.threadsDirty = true;
       return Promise.resolve();
@@ -2506,6 +2511,49 @@
     return !!(review && review.refs && review.refs.inline && !review.refs.inline.hidden);
   }
 
+  /** Non-empty draft value in the inline composer (comment body OR replacement-only). */
+  function reviewInlineDraftValue() {
+    if (!review || !review.refs) return '';
+    const body = review.refs.inlineBody ? review.refs.inlineBody.value.trim() : '';
+    const replacement =
+      review.refs.inlineReplacement && !review.refs.inlineReplacement.hidden
+        ? review.refs.inlineReplacement.value.trim()
+        : '';
+    return body || replacement;
+  }
+
+  /** The open inline reply form in the panel list (unsent draft), if any. */
+  function reviewPanelReplyDraft() {
+    if (!review || !review.refs || !review.refs.list) return null;
+    const input = review.refs.list.querySelector('[data-reply-input]');
+    if (!input) return null;
+    const form = input.closest('[data-thread-reply-form]');
+    return {
+      threadId: form ? form.getAttribute('data-thread-reply-form') : '',
+      value: input.value,
+      focused: document.activeElement === input,
+    };
+  }
+
+  /**
+   * Any unsent draft anywhere: panel composer (body/replacement), inline composer
+   * (body/replacement), panel reply form, popup reply box, or a reply in flight. Highlight
+   * clicks and other list-affecting interactions must be ignored while this is true.
+   */
+  function reviewAnyDraftActive() {
+    if (!review || !review.refs) return false;
+    if (review.postingReply) return true;
+    const refs = review.refs;
+    if (reviewComposerOpen()) {
+      if (refs.input && refs.input.value.trim()) return true;
+      if (refs.replacement && !refs.replacement.hidden && refs.replacement.value.trim()) return true;
+    }
+    if (reviewInlineOpen() && reviewInlineDraftValue()) return true;
+    if (reviewPanelReplyDraft()) return true;
+    if (review.popupThread && refs.threadPopInput && refs.threadPopInput.value.trim()) return true;
+    return false;
+  }
+
   function reviewStoredName() {
     try {
       return window.localStorage.getItem('artifacts-review-name') || '';
@@ -2746,6 +2794,7 @@
     }
     const thread = reviewFindThread(threadId);
     if (!thread) return;
+    review.postingReply = true;
     const key = reviewIdempotencyKey();
     const optimistic = {
       messageId: 'pending-' + key,
@@ -2784,6 +2833,11 @@
       })
       .finally(function () {
         button.disabled = false;
+        review.postingReply = false;
+        if (review && review.threadsDirty) {
+          review.threadsDirty = false;
+          reviewLoadThreads({ quiet: true });
+        }
       });
   }
 
@@ -3013,6 +3067,10 @@
     if (reviewInlineOpen()) {
       showToast('Finish or cancel the current note first.', 'error');
       review.refs.inlineBody.focus();
+      return;
+    }
+    if (reviewAnyDraftActive()) {
+      showToast('Finish or cancel the current draft first.', 'error');
       return;
     }
     if (review.readonly) {
@@ -3380,11 +3438,7 @@
         if (!review) return;
         // An unsent draft is never discarded by interacting with the artifact; the artifact
         // click handler routes highlight clicks and simply ignores them while a draft exists.
-        if (
-          reviewInlineOpen() &&
-          !review.refs.inline.contains(event.target) &&
-          !review.refs.inlineBody.value.trim()
-        ) {
+        if (reviewInlineOpen() && !review.refs.inline.contains(event.target) && !reviewInlineDraftValue()) {
           reviewHideInline();
           return;
         }
@@ -3631,7 +3685,7 @@
     const inlineVisible = !!(inlineEl && !inlineEl.hidden);
     if (inlineVisible && review.inline) {
       const draft = review.refs.inlineBody;
-      if (draft && draft.value.trim()) {
+      if (reviewInlineDraftValue()) {
         // Blocked opens must not disarm the selection state or let the hide timer clear the
         // draft: cancel the timer and keep the composer open.
         clearTimeout(review.inlineTimer);
@@ -4265,6 +4319,10 @@
       review.refs.input.focus();
       return;
     }
+    if (reviewAnyDraftActive()) {
+      showToast('Finish or cancel the current draft first.', 'error');
+      return;
+    }
     if (!reviewCanSelectToComment()) {
       showToast(reviewInlinePermissionText(), 'error');
       return;
@@ -4517,7 +4575,9 @@
     } catch (error) {
       /* ignore */
     }
-    if (reviewInlineOpen() || reviewComposerOpen()) return;
+    // Any unsent draft (panel/inline/reply/popup reply) wins: never open a popup, flash a card
+    // or rebuild the list underneath it.
+    if (reviewAnyDraftActive()) return;
     const insideContainer = !!(target.container && target.container.contains(eventTarget));
     if (review.popupThread) {
       // Any non-interactive artifact click dismisses the open popup; only an actual highlight
@@ -4568,7 +4628,9 @@
     const refs = review.refs;
     // Re-rendering the same thread (reply/status/poll) must not clear an unsent reply draft.
     const sameThread = !!(review.popupThread && review.popupThread.threadId === thread.threadId);
-    const previousReply = sameThread ? refs.threadPopInput.value : '';
+    // Preserve only UNSENT drafts: never restore text that was just submitted.
+    const previousReply =
+      sameThread && !review.popupReplySubmitting ? refs.threadPopInput.value : '';
     const anchor = thread.anchor || {};
     refs.threadPopChips.textContent = '';
     refs.threadPopChips.appendChild(
@@ -4630,7 +4692,7 @@
 
   function reviewShowThreadPopup(thread, event, target) {
     if (!review || !thread) return;
-    if (reviewInlineOpen() || reviewComposerOpen()) return;
+    if (reviewAnyDraftActive()) return;
     clearTimeout(review.selectionTimer);
     reviewHidePopover();
     const previousThread = review.popupThread;
@@ -4683,6 +4745,7 @@
     refs.threadPopSend.disabled = true;
     refs.threadPopError.hidden = true;
     review.postingReply = true;
+    review.popupReplySubmitting = true;
     reviewFetch('/api/feedback/' + encodeURIComponent(thread.threadId) + '/replies', {
       method: 'POST',
       body: { body: body, authorName: reviewStoredName(), idempotencyKey: reviewIdempotencyKey() },
@@ -4692,6 +4755,8 @@
         if (data && data.thread) {
           reviewReplaceThread(data.thread);
           review.popupThread = data.thread;
+          // Clear the submitted text BEFORE re-rendering so it cannot be resubmitted.
+          refs.threadPopInput.value = '';
           reviewRenderThreadPopup(data.thread);
         }
         showToast('Reply added');
@@ -4706,7 +4771,12 @@
       })
       .finally(function () {
         review.postingReply = false;
+        review.popupReplySubmitting = false;
         refs.threadPopSend.disabled = false;
+        if (review && review.threadsDirty) {
+          review.threadsDirty = false;
+          reviewLoadThreads({ quiet: true });
+        }
       });
   }
 
@@ -4884,7 +4954,7 @@
         !refs.inline.hidden &&
         !refs.inline.contains(event.target) &&
         !event.target.closest('[data-review-toggle]') &&
-        !(refs.inlineBody && refs.inlineBody.value.trim())
+        !reviewInlineDraftValue()
       ) {
         reviewHideInline();
       }
@@ -5207,6 +5277,7 @@
       mutationTimer: 0,
       inline: null,
       popupThread: null,
+      popupReplySubmitting: false,
       pillDismissed: false,
       pollTimer: 0,
       selectionTimer: 0,
