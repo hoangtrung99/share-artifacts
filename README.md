@@ -228,7 +228,7 @@ Served by `functions/[[path]].js` from R2:
 
 | Path | Behavior |
 |------|----------|
-| `/<project>/` | Project listing with folder tree + client filters (simple text filter, not Pagefind) |
+| `/<project>/` | Project listing with folder tree + client filters (text, category, type, sort; not Pagefind) |
 | `/<project>/<file>` | HTML: iframe viewer · MD: edge-rendered (TOC, highlight.js CDN, GFM task lists) |
 | `/<project>/<file>.html\|md` | Raw object |
 | `/api/*` | JSON APIs; unknown paths return JSON 404 |

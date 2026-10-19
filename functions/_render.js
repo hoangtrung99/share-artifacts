@@ -3,7 +3,7 @@
 // and edge-rendered pages share one stylesheet.
 // ASSET_V busts CDN/browser cache when shell assets change (max-age on /assets/*).
 
-export const ASSET_V = '40e0f111';
+export const ASSET_V = '867ba07d';
 
 /**
  * @param {object} opts
@@ -131,8 +131,9 @@ function fileLi(f) {
         ? `<span class="file-date"${dateTitle}>${esc(displayDate)}</span>`
         : '';
   const folder = f.folder || '';
+  const category = String(folder).split('/')[0] || '';
   const search = `${f.title || ''} ${f.routePath || ''}`.toLowerCase();
-  return `<li data-search="${esc(search)}" data-type="${esc(type)}" data-folder="${esc(folder)}" data-date="${esc(f.sortDate || '')}" data-artifact-date="${esc(f.artifactDate || '')}" data-title="${esc((f.title || '').toLowerCase())}">
+  return `<li data-search="${esc(search)}" data-type="${esc(type)}" data-folder="${esc(folder)}" data-category="${escAttr(category)}" data-date="${esc(f.sortDate || '')}" data-artifact-date="${esc(f.artifactDate || '')}" data-title="${esc((f.title || '').toLowerCase())}">
         <a class="file-link" href="/${escAttr(f.routePath)}">
           <span class="badge badge-${esc(type)}">${esc(type.toUpperCase())}</span>
           <span class="file-title">${esc(f.title || f.routePath)}</span>
@@ -193,6 +194,29 @@ export function projectListingPage({ project, files, locked, ghost }) {
     : '';
   const treeHtml = (folderHtml + rootFilesHtml) || '<p class="no-results">No files in this project yet.</p>';
 
+  // Category = top-level folder. The select filters the (already server-rendered) tree
+  // client-side, so it works together with the text/type/sort controls without a round-trip.
+  const categoryCounts = new Map();
+  for (const file of files || []) {
+    const key = String(file.folder || '').split('/')[0] || '';
+    categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
+  }
+  const categories = [...categoryCounts.entries()]
+    .map(([key, count]) => ({
+      value: key || '__root__',
+      // Match the tree's CSS capitalize() so the option labels read like the folder groups.
+      label: key ? key.charAt(0).toUpperCase() + key.slice(1) : '(Root)',
+      count,
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const categoryOptions = [
+    `<option value="">Category: all (${files.length})</option>`,
+    ...categories.map(
+      (category) =>
+        `<option value="${escAttr(category.value)}">${esc(category.label)} (${category.count})</option>`,
+    ),
+  ].join('');
+
   const lockBadge = locked
     ? `<span class="lock"><span aria-hidden="true">🔒</span> Protected</span>`
     : '';
@@ -220,6 +244,9 @@ export function projectListingPage({ project, files, locked, ghost }) {
       <h1 class="proj-h1">${esc(project)}</h1>
       <div class="proj-controls">
         <input type="search" class="proj-filter" data-proj-filter placeholder="Fuzzy filter files (title or folder path)…" aria-label="Filter files in this project" autocomplete="off" spellcheck="false">
+        <select class="cat-select" data-cat-filter aria-label="Filter by category (top-level folder)" title="Filter by category (top-level folder)">
+          ${categoryOptions}
+        </select>
         <div class="type-chips" role="group" aria-label="Filter by type" data-type-filter>
           <button type="button" class="chip is-active" data-type="all">All</button>
           <button type="button" class="chip" data-type="md">MD</button>

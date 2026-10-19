@@ -629,6 +629,14 @@ h1, h2, h3, h4 { line-height: 1.25; }
 .chip:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .chip.is-active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.cat-select {
+  font: inherit; font-size: 0.78rem; line-height: 1;
+  padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+  max-width: 16rem; text-overflow: ellipsis;
+}
+.cat-select:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.cat-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .no-results { color: var(--text-muted); padding: 1.5rem 0; }
 
 /* Collapsible group (native <details>) — nesting indent is a CONSTANT per level: the DOM nesting

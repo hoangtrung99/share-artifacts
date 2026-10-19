@@ -73,11 +73,19 @@
     const noRes = document.querySelector('[data-no-results]');
     const typeFilter = document.querySelector('[data-type-filter]');
     const sortFilter = document.querySelector('[data-sort-filter]');
+    const catFilter = document.querySelector('[data-cat-filter]');
 
     const params = new URLSearchParams(window.location.search);
     let activeType = params.get('type') || 'all';
     let activeSort = params.get('sort') || 'recent';
+    let activeCat = '';
     if (pf) pf.value = params.get('q') || '';
+    if (catFilter) {
+      // Setting an unknown value leaves selectedIndex -1; read it back so a stale ?cat=
+      // cannot hide every file.
+      catFilter.value = params.get('cat') || '';
+      activeCat = catFilter.value;
+    }
 
     const typeBtns = () =>
       typeFilter ? Array.from(typeFilter.querySelectorAll('[data-type]')) : [];
@@ -110,6 +118,7 @@
     const syncUrl = () => {
       const p = new URLSearchParams();
       if (pf?.value.trim()) p.set('q', pf.value.trim());
+      if (activeCat) p.set('cat', activeCat);
       if (activeType !== 'all') p.set('type', activeType);
       if (activeSort !== 'recent') p.set('sort', activeSort);
       const qs = p.toString();
@@ -156,15 +165,17 @@
       const groupEls = allGroups();
       const total = items.length;
       const q = (pf?.value || '').trim().toLowerCase();
-      const filtering = !!q || activeType !== 'all';
+      const filtering = !!q || !!activeCat || activeType !== 'all';
       let shown = 0;
       for (const li of items) {
         const typeOk = activeType === 'all' || li.dataset.type === activeType;
+        const category = li.dataset.category || '';
+        const catOk = !activeCat || (activeCat === '__root__' ? category === '' : category === activeCat);
         let textOk = true;
         if (q) {
           textOk = fuzzy(q, li.dataset.search || '') >= 0;
         }
-        const vis = typeOk && textOk;
+        const vis = typeOk && catOk && textOk;
         li.hidden = !vis;
         if (vis) shown++;
       }
@@ -226,6 +237,12 @@
 
     if (pf) {
       pf.addEventListener('input', apply);
+    }
+    if (catFilter) {
+      catFilter.addEventListener('change', () => {
+        activeCat = catFilter.value;
+        apply();
+      });
     }
 
     apply();

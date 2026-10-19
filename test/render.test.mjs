@@ -73,6 +73,28 @@ test('listing escapes titles/projects and renders a date for every row', () => {
   assert.match(html, /Recent/);
 });
 
+test('listing offers a category filter built from top-level folders', () => {
+  const html = projectListingPage({
+    project: 'verups',
+    files: [
+      listedFile({ title: 'Report A', routePath: 'verups/reports/a', folder: 'reports' }),
+      listedFile({ title: 'Report B', routePath: 'verups/reports/b', folder: 'reports' }),
+      listedFile({ title: 'Sub report', routePath: 'verups/reports/sub/c', folder: 'reports/sub' }),
+      listedFile({ title: 'Investigation', routePath: 'verups/investigations/d', folder: 'investigations' }),
+      listedFile({ title: 'Root file', routePath: 'verups/root-file', folder: '' }),
+    ],
+    locked: true,
+    ghost: false,
+  });
+  assert.match(html, /data-cat-filter/);
+  assert.match(html, /Category: all \(5\)/);
+  assert.match(html, /<option value="reports">Reports \(3\)<\/option>/);
+  assert.match(html, /<option value="investigations">Investigations \(1\)<\/option>/);
+  assert.match(html, /<option value="__root__">\(Root\) \(1\)<\/option>/);
+  assert.match(html, /data-category="reports"/);
+  assert.match(html, /data-category=""[^>]*data-date/);
+});
+
 test('ghost listings are noindex and public listings are indexable', () => {
   const ghost = projectListingPage({ project: 'games', files: [listedFile()], locked: false, ghost: true });
   assert.match(ghost, /<meta name="robots" content="noindex">/);
