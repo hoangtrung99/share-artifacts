@@ -21,7 +21,7 @@ import {
   categoryLabel,
 } from './_store.js';
 
-export const ASSET_V = '4a3ef6d1';
+export const ASSET_V = '506119b2';
 
 const SITE_HOST = 'artifacts.hoangtrung.dev';
 
@@ -35,7 +35,6 @@ const SITE_HOST = 'artifacts.hoangtrung.dev';
  * @param {string} [opts.description]
  * @param {string} opts.body
  * @param {boolean} [opts.fullBleed]
- * @param {string} [opts.bodyClass] extra body classes (e.g. "has-rev" for a pinned revision)
  * @param {boolean} [opts.noindex]
  * @param {boolean} [opts.includeViewerJs]
  * @param {string} [opts.headExtra] extra tags in <head> (e.g. highlight.js)
@@ -45,7 +44,6 @@ export function shellLayout({
   description = '',
   body,
   fullBleed = false,
-  bodyClass = '',
   noindex = false,
   includeViewerJs = true,
   headExtra = '',
@@ -54,8 +52,7 @@ export function shellLayout({
     ? `<meta name="description" content="${esc(description)}">`
     : '';
   const robots = noindex ? `<meta name="robots" content="noindex">` : '';
-  const bodyClasses = [fullBleed ? 'bleed' : '', bodyClass].filter(Boolean).join(' ');
-  const bodyAttr = bodyClasses ? ` class="${bodyClasses}"` : '';
+  const bodyClass = fullBleed ? ' class="bleed"' : '';
   const viewerJs = includeViewerJs
     ? `<script src="/assets/viewer.js?v=${ASSET_V}" defer></script>`
     : '';
@@ -75,7 +72,7 @@ export function shellLayout({
   ${desc}
   ${robots}
 </head>
-<body${bodyAttr}>
+<body${bodyClass}>
   ${ICON_SPRITE}
   ${body}
   ${shellChrome()}
@@ -316,7 +313,6 @@ function viewerBar({
   reader = false,
   readMinutes = 0,
   displayDate = '',
-  review = null,
 }) {
   const projHref = `/${escAttr(encodeProject(project))}/`;
   const sharePath = routePath ? `/${escAttr(routePath)}` : projHref;
@@ -354,7 +350,6 @@ function viewerBar({
     <span class="topbar-spacer"></span>
     <div class="topbar-actions bar-actions">
       <a class="btn bar-download" href="${escAttr(rawUrl)}" download="${escAttr(downloadName)}" data-tip="Download the ${downloadLabel} file" aria-label="Download the ${downloadLabel} file">${icon('download')}<span>Download</span></a>
-      ${review ? reviewBarButton() : ''}
       <button class="icon-btn bar-secondary" type="button" data-copy data-tip="Copy link" aria-label="Copy link">${icon('link')}</button>
       ${share}
       ${barThemeButton()}
@@ -517,169 +512,6 @@ ${locked ? shareModalHtml(project) : ''}`;
   });
 }
 
-/* ---------------------------------------------------------------- review UI */
-
-/**
- * Review context for the current viewer/reader page. `artifact`/`revision` are optional and
- * only supplied once the revision registry exists (backend-contract.md §4), so legacy
- * artifacts render the same review UI with path-derived context and no version history.
- */
-function reviewContext({ project, routePath, rawUrl, title, type, artifact = null, revision = null }) {
-  const file =
-    (artifact && artifact.file) ||
-    (rawUrl ? String(rawUrl).replace(/^\/+/, '').replace(/^[^/]+\//, '') : '');
-  const hasRevision = !!(revision && revision.revisionId);
-  return {
-    artifactId: (artifact && artifact.artifactId) || '',
-    project: (artifact && artifact.project) || project || '',
-    file,
-    route: (artifact && artifact.routePath) || routePath || '',
-    title: title || '',
-    type: type === 'md' ? 'md' : 'html',
-    revisionId: hasRevision ? revision.revisionId : '',
-    revisionNumber: hasRevision ? revision.number || '' : '',
-    revisionTotal: hasRevision ? revision.total || '' : '',
-    revisionLatestNumber: hasRevision ? revision.latestNumber || '' : '',
-    hasRevision,
-    isLatest: hasRevision ? revision.isLatest !== false : true,
-  };
-}
-
-function reviewBarButton() {
-  return `<button class="icon-btn bar-feedback" type="button" data-review-toggle data-tip="Feedback" aria-label="Feedback" aria-haspopup="dialog" aria-controls="review-panel" aria-expanded="false">${icon('comment')}<span class="review-badge" data-review-badge hidden></span></button>`;
-}
-
-function reviewDataAttrs(ctx) {
-  return [
-    `data-review-project="${escAttr(ctx.project)}"`,
-    `data-review-file="${escAttr(ctx.file)}"`,
-    `data-review-route="${escAttr(ctx.route)}"`,
-    `data-review-title="${escAttr(ctx.title)}"`,
-    `data-review-artifact="${escAttr(ctx.artifactId)}"`,
-    `data-review-revision="${escAttr(ctx.revisionId)}"`,
-    `data-review-revision-number="${escAttr(ctx.revisionNumber)}"`,
-    `data-review-is-latest="${ctx.hasRevision ? (ctx.isLatest ? 'true' : 'false') : ''}"`,
-  ].join('\n  ');
-}
-
-/** Read-only "viewing revision N of M" banner; absent for latest and legacy artifacts. */
-function revisionBannerHtml(ctx) {
-  if (!ctx.hasRevision || ctx.isLatest) return '';
-  return `<div class="rev-banner" data-rev-banner role="status">
-  <span class="rev-banner-text">${icon('history')}<span>Viewing revision ${esc(ctx.revisionNumber)} of ${esc(ctx.revisionTotal)} — latest is v${esc(ctx.revisionLatestNumber)}</span></span>
-  <a class="rev-banner-link" href="/${escAttr(ctx.route)}">Back to latest</a>
-</div>`;
-}
-
-function versionsDialogHtml() {
-  return `<div class="modal-overlay review-versions" id="versions-modal" data-versions-modal hidden>
-  <div class="modal-card versions-card" role="dialog" aria-modal="true" aria-labelledby="versions-title" tabindex="-1" data-versions-card>
-    <div class="modal-head">
-      <div>
-        <h2 id="versions-title">Version history</h2>
-        <p class="modal-lede">Every publish is kept. Older revisions are read-only.</p>
-      </div>
-      <button class="icon-btn modal-close" type="button" data-versions-close aria-label="Close" data-tip="Close">${icon('close')}</button>
-    </div>
-    <div class="versions-body">
-      <div class="skeleton-list versions-loading" data-versions-loading hidden aria-hidden="true">
-        <div class="skeleton-row skeleton-row--proj"><span class="sk"></span><span class="sk sk--short"></span></div>
-        <div class="skeleton-row skeleton-row--proj"><span class="sk"></span><span class="sk sk--short"></span></div>
-      </div>
-      <p class="versions-error" data-versions-error role="alert" hidden></p>
-      <ol class="version-list" data-versions-list></ol>
-      <p class="versions-empty" data-versions-empty hidden>No published revisions yet for this artifact.</p>
-    </div>
-  </div>
-</div>`;
-}
-
-/**
- * Review sidebar/sheet, selection popover and mobile reopen pill. Server-rendered so the
- * shell owns the layout contract; viewer.js only fills user text (textContent) at runtime.
- */
-function reviewUiHtml(ctx) {
-  return `<aside class="review-panel" id="review-panel" role="dialog" aria-modal="false" aria-labelledby="review-panel-title" tabindex="-1" hidden
-  ${reviewDataAttrs(ctx)}>
-  <header class="review-head">
-    <div class="review-head-main">
-      <p class="micro">Review</p>
-      <h2 class="review-title" id="review-panel-title">Feedback</h2>
-      <p class="review-hint" data-review-hint hidden>Select text in the artifact to add feedback.</p>
-    </div>
-    <div class="review-head-actions">
-      <button class="icon-btn review-back" type="button" data-review-back aria-label="Back to selection" data-tip="Back to selection">${icon('chevron-down')}</button>
-      <button class="icon-btn" type="button" data-review-close aria-label="Close feedback" data-tip="Close">${icon('close')}</button>
-    </div>
-  </header>
-  <div class="review-filters">
-    <div class="segmented review-status" role="group" aria-label="Filter feedback by status" data-review-status>
-      <button type="button" data-review-filter="open" aria-pressed="true">Open<span class="review-count" data-review-count="open">0</span></button>
-      <button type="button" data-review-filter="addressed" aria-pressed="false">Addressed<span class="review-count" data-review-count="addressed">0</span></button>
-      <button type="button" data-review-filter="resolved" aria-pressed="false">Resolved<span class="review-count" data-review-count="resolved">0</span></button>
-    </div>
-    <label class="review-scope" data-review-scope-wrap hidden><input type="checkbox" data-review-scope> <span>All revisions</span></label>
-  </div>
-  <p class="review-note" data-review-note hidden></p>
-  <p class="sr-only" data-review-live aria-live="polite"></p>
-  <div class="review-body" data-review-body>
-    <div class="skeleton-list review-loading" data-review-loading hidden aria-hidden="true">
-      <div class="skeleton-row"><span class="sk sk--short"></span></div>
-      <div class="skeleton-row"><span class="sk"></span></div>
-      <div class="skeleton-row"><span class="sk sk--short"></span></div>
-    </div>
-    <div class="review-state" data-review-error role="alert" hidden>
-      ${icon('alert')}
-      <p data-review-error-text></p>
-      <button class="btn" type="button" data-review-retry>Retry</button>
-    </div>
-    <div class="review-state" data-review-empty hidden>
-      ${icon('comment')}
-      <p data-review-empty-text></p>
-    </div>
-    <ol class="thread-list" data-review-list></ol>
-  </div>
-  <form class="review-composer" data-review-composer hidden novalidate>
-    <p class="micro review-composer-kicker" data-review-composer-kicker>New comment</p>
-    <blockquote class="review-quote" data-review-composer-quote></blockquote>
-    <div class="review-kind" role="group" aria-label="Feedback type" data-review-kind hidden>
-      <button type="button" data-review-kind-value="comment" aria-pressed="true">Comment</button>
-      <button type="button" data-review-kind-value="replace" aria-pressed="false">Replace</button>
-      <button type="button" data-review-kind-value="remove" aria-pressed="false">Remove</button>
-    </div>
-    <label class="sr-only" for="review-author">Your name (optional)</label>
-    <input class="review-input review-name" id="review-author" data-review-name type="text" maxlength="80" placeholder="Your name (optional)" autocomplete="nickname" hidden>
-    <label class="sr-only" for="review-body-input">Feedback</label>
-    <textarea class="review-input" id="review-body-input" data-review-input rows="4" maxlength="8000" placeholder="Write feedback…"></textarea>
-    <label class="sr-only" for="review-replacement">Suggested replacement</label>
-    <textarea class="review-input" id="review-replacement" data-review-replacement rows="3" maxlength="8000" placeholder="Suggested replacement…" hidden></textarea>
-    <p class="review-form-error" data-review-form-error role="alert" hidden></p>
-    <div class="review-composer-actions">
-      <button class="btn" type="button" data-review-cancel>Cancel</button>
-      <button class="btn btn--primary" type="submit" data-review-submit>Add comment</button>
-    </div>
-    <p class="review-composer-hint">Ctrl/Cmd + Enter to submit</p>
-  </form>
-  <footer class="review-foot" data-review-foot hidden>
-    <div class="segmented review-format" role="group" aria-label="Export format">
-      <button type="button" data-review-format="md" aria-pressed="true">MD</button>
-      <button type="button" data-review-format="json" aria-pressed="false">JSON</button>
-    </div>
-    <span class="review-foot-spacer"></span>
-    <button class="btn review-foot-btn" type="button" data-review-copy>${icon('link')}<span>Copy</span></button>
-    <button class="btn review-foot-btn" type="button" data-review-download>${icon('download')}<span>Download</span></button>
-  </footer>
-</aside>
-<div class="review-scrim" data-review-scrim hidden></div>
-<div class="review-popover" data-review-popover role="toolbar" aria-label="Add feedback" hidden>
-  <button class="review-pop-btn" type="button" data-review-kind="comment">Comment</button>
-  <button class="review-pop-btn" type="button" data-review-kind="replace">Replace</button>
-  <button class="review-pop-btn" type="button" data-review-kind="remove">Remove</button>
-</div>
-<button class="review-pill" data-review-pill type="button" hidden>${icon('comment')}<span data-review-pill-text>Feedback</span></button>
-${versionsDialogHtml()}`;
-}
-
 /* -------------------------------------------------------------- HTML viewer */
 
 /** HTML artifact viewer — full-bleed iframe of the raw URL behind the 48px bar. */
@@ -693,18 +525,12 @@ export function htmlViewerPage({
   time = null,
   locked,
   ghost,
-  artifact = null,
-  revision = null,
 }) {
-  const ctx = reviewContext({ project, routePath, rawUrl, title, type: 'html', artifact, revision });
-  const banner = revisionBannerHtml(ctx);
   const body = `${skipLink('main-viewer')}
-${viewerBar({ project, title, routePath, rawUrl, downloadName, type: 'html', time, locked, review: ctx })}
-${banner}
+${viewerBar({ project, title, routePath, rawUrl, downloadName, type: 'html', time, locked })}
 <main class="viewer-main" id="main-viewer" tabindex="-1">
   <iframe class="viewer-frame" src="${escAttr(rawUrl)}" title="${escAttr(title)}"></iframe>
 </main>
-${reviewUiHtml(ctx)}
 ${locked ? shareModalHtml(project) : ''}`;
 
   return shellLayout({
@@ -712,7 +538,6 @@ ${locked ? shareModalHtml(project) : ''}`;
     description,
     body,
     fullBleed: true,
-    bodyClass: banner ? 'has-rev' : '',
     noindex: ghost,
   });
 }
@@ -761,11 +586,7 @@ export function mdViewerPage({
   time = null,
   locked,
   ghost,
-  artifact = null,
-  revision = null,
 }) {
-  const reviewCtx = reviewContext({ project, routePath, rawUrl, title, type: 'md', artifact, revision });
-  const reviewBanner = revisionBannerHtml(reviewCtx);
   const bodyHtml = stripLeadingH1(htmlBody);
   const tocHeadings = (Array.isArray(headings) ? headings : []).filter(
     (h) => h && (h.depth === 2 || h.depth === 3) && h.id && h.text,
@@ -812,8 +633,7 @@ ${tocItems(tocHeadings)}
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" defer></script>`;
 
   const body = `${skipLink('main-reader')}
-${viewerBar({ project, title, routePath, rawUrl, downloadName, type: 'md', time, locked, reader: true, readMinutes, displayDate: shownDate, review: reviewCtx })}
-${reviewBanner}
+${viewerBar({ project, title, routePath, rawUrl, downloadName, type: 'md', time, locked, reader: true, readMinutes, displayDate: shownDate })}
 <main class="reader" id="main-reader" tabindex="-1">
   <div class="reader-grid">
     ${tocHtml}
@@ -836,7 +656,6 @@ ${reviewBanner}
     </article>
   </div>
 </main>
-${reviewUiHtml(reviewCtx)}
 ${locked ? shareModalHtml(project) : ''}`;
 
   return shellLayout({
@@ -844,7 +663,6 @@ ${locked ? shareModalHtml(project) : ''}`;
     description,
     body,
     fullBleed: true,
-    bodyClass: reviewBanner ? 'has-rev' : '',
     noindex: ghost,
     headExtra,
   });
