@@ -1,13 +1,31 @@
 ---
 // Static 404 page. Cloudflare Pages serves dist/404.html for unmatched routes.
 import Base from '../layouts/Base.astro';
+import { themePickerButton } from '../../functions/_ui.js';
 ---
 
-<Base title="404 — Artifacts" description="Page not found.">
+<Base title="Page not found — Artifacts" description="That page doesn’t exist.">
   <meta slot="head" name="robots" content="noindex" />
-  <header class="gallery-head">
-    <h1>404</h1>
-    <p class="lede">This page does not exist.</p>
+  <a class="skip-link" href="#main-notfound">Skip to content</a>
+
+  <header class="topbar" data-topbar>
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Artifacts — home">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span>Artifacts</span>
+        <span class="brand-host">artifacts.hoangtrung.dev</span>
+      </a>
+      <span class="topbar-spacer"></span>
+      <div class="topbar-actions" set:html={themePickerButton()} />
+    </div>
   </header>
-  <p><a href="/">Back to the gallery</a></p>
+
+  <main class="login-wrap" id="main-notfound" tabindex="-1">
+    <section class="login-card" aria-labelledby="notfound-title">
+      <p class="micro">404</p>
+      <h1 id="notfound-title">That page doesn’t exist.</h1>
+      <p class="login-lede">The link may be out of date, or the artifact may have moved. Every artifact keeps a stable link, so check the address or head back to the gallery.</p>
+      <p class="login-note"><a href="/">Back to the gallery</a></p>
+    </section>
+  </main>
 </Base>

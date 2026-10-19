@@ -1,59 +1,205 @@
 ---
-// Ghost gallery — static shell. Only served after functions/ghost.js verifies cf_ghost
-// (next() fall-through). Lists ghost projects from /api/catalog (included when cookie present).
+// Ghost gallery — static shell, only reached after functions/ghost.js verifies the cf_ghost
+// cookie (otherwise it serves its own unlock page / redirect). Lists ghost-flagged projects from
+// /api/catalog (the API includes them only when the cookie is valid).
 import Base from '../layouts/Base.astro';
+import { icon, themePickerButton } from '../../functions/_ui.js';
 ---
 
-<Base title="👻 Ghost — Artifacts" description="Hidden projects.">
+<Base title="Ghost projects — Artifacts" description="Hidden projects, visible only in ghost mode.">
   <meta slot="head" name="robots" content="noindex" />
-  <header class="gallery-head">
-    <h1>👻 Ghost projects</h1>
-    <p class="lede">Hidden from the public gallery.</p>
-    <p class="count" id="ghost-count">Loading…</p>
+  <a class="skip-link" href="#main-ghost">Skip to content</a>
+
+  <header class="topbar" data-topbar>
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Artifacts — home">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span>Artifacts</span>
+        <span class="brand-host">artifacts.hoangtrung.dev</span>
+      </a>
+      <span class="mode-pill"><Fragment set:html={icon('ghost')} /> Ghost mode</span>
+      <span class="topbar-spacer"></span>
+      <div class="topbar-actions" set:html={themePickerButton()} />
+    </div>
   </header>
 
-  <ul class="cards" id="ghost-cards"></ul>
-  <p class="no-results" id="ghost-empty" hidden>No ghost projects configured.</p>
+  <main class="page" id="main-ghost" tabindex="-1" aria-busy="true">
+    <header class="ghost-head">
+      <h1 class="display">Ghost projects</h1>
+      <p class="lede">Hidden from the public gallery. Visible only on this device, for seven days.</p>
+      <p class="ghost-note">
+        <Fragment set:html={icon('eye-off')} />
+        Nobody else sees this list — not even the gallery’s project count.
+      </p>
+    </header>
 
-  <p class="count" style="margin-top: 2.5rem"><a href="/ghost?logout=1">Sign out of ghost mode</a></p>
-</Base>
+    <section class="index" aria-labelledby="ghost-projects-label">
+      <div class="section-head">
+        <h2 class="micro" id="ghost-projects-label">Projects</h2>
+        <span class="section-meta" id="ghost-count" aria-live="polite">Loading…</span>
+      </div>
 
-<script is:inline>
-  (async function () {
-    const cards = document.getElementById('ghost-cards');
-    const countEl = document.getElementById('ghost-count');
-    const emptyEl = document.getElementById('ghost-empty');
-    try {
-      const resp = await fetch('/api/catalog', { headers: { accept: 'application/json' } });
-      if (!resp.ok) throw new Error('status ' + resp.status);
-      const data = await resp.json();
-      const projects = (data.projects || []).filter((p) => p.ghost);
-      projects.sort((a, b) => a.name.localeCompare(b.name));
-      cards.innerHTML = '';
-      for (const p of projects) {
-        const li = document.createElement('li');
-        li.className = 'card';
-        const meta =
-          !p.protected && p.count != null
-            ? `<span class="card-date">${p.count} file${p.count === 1 ? '' : 's'}</span>`
-            : '';
-        li.innerHTML =
-          `<a class="card-link" href="/${encodeURIComponent(p.name)}" aria-label="Open project ${p.name}">` +
-          `<div class="card-top">` +
-          `<span class="proj-icon" aria-hidden="true">${p.protected ? '🔒' : '📁'}</span>` +
-          meta +
-          `</div>` +
-          `<h3 class="card-title proj-name">${p.name}</h3>` +
-          `<p class="card-desc">${p.protected ? 'Protected — password required to view files.' : 'Open — click to view files.'}</p>` +
-          `</a>`;
-        cards.appendChild(li);
+      <div id="ghost-skeleton" class="skeleton-list" aria-hidden="true">
+        <div class="skeleton-row skeleton-row--proj"><span class="sk" style="width:26%"></span><span class="sk sk--short"></span></div>
+        <div class="skeleton-row skeleton-row--proj"><span class="sk" style="width:20%"></span><span class="sk sk--short"></span></div>
+        <div class="skeleton-row skeleton-row--proj"><span class="sk" style="width:30%"></span><span class="sk sk--short"></span></div>
+      </div>
+
+      <div id="ghost-error-state" class="state-block" role="alert" hidden>
+        <Fragment set:html={icon('alert')} />
+        <p><strong>Couldn’t load hidden projects.</strong> Check your connection, then try again.</p>
+        <button class="btn" type="button" data-retry>Retry</button>
+      </div>
+
+      <ul class="index-list" id="ghost-list" hidden></ul>
+
+      <p class="empty-state" id="ghost-empty" hidden>
+        <Fragment set:html={icon('inbox')} /><br />No hidden projects.
+      </p>
+    </section>
+
+    <footer class="site-footer">
+      <span>Ghost access lasts 7 days on this device.</span>
+      <span aria-hidden="true">·</span>
+      <a href="/ghost?logout=1">Exit ghost mode</a>
+    </footer>
+  </main>
+
+  <script is:inline>
+    (function () {
+      'use strict';
+
+      const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const main = document.getElementById('main-ghost');
+      const skeleton = document.getElementById('ghost-skeleton');
+      const errorState = document.getElementById('ghost-error-state');
+      const list = document.getElementById('ghost-list');
+      const empty = document.getElementById('ghost-empty');
+      const countEl = document.getElementById('ghost-count');
+      const retryBtn = errorState.querySelector('[data-retry]');
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.textContent = text;
+        return node;
       }
-      countEl.textContent = `${projects.length} project${projects.length === 1 ? '' : 's'}`;
-      emptyEl.hidden = projects.length !== 0;
-    } catch (err) {
-      countEl.textContent = 'Could not load ghost projects';
-      emptyEl.hidden = false;
-      emptyEl.textContent = String(err.message || err);
-    }
-  })();
-</script>
+
+      function svgIcon(name) {
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('class', 'icon' + (name === 'chevron-right' ? ' chev' : ''));
+        svg.setAttribute('aria-hidden', 'true');
+        const use = document.createElementNS(NS, 'use');
+        use.setAttribute('href', '#i-' + name);
+        svg.appendChild(use);
+        return svg;
+      }
+
+      function formatDate(value) {
+        if (!value) return '';
+        const raw = String(value);
+        const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+        let year;
+        let month;
+        let day;
+        if (match) {
+          year = Number(match[1]);
+          month = Number(match[2]);
+          day = Number(match[3]);
+        } else {
+          const date = new Date(raw);
+          if (Number.isNaN(date.getTime())) return raw;
+          year = date.getUTCFullYear();
+          month = date.getUTCMonth() + 1;
+          day = date.getUTCDate();
+        }
+        if (month < 1 || month > 12) return raw;
+        return day + ' ' + MONTHS[month - 1] + ' ' + year;
+      }
+
+      function countLabel(count) {
+        if (typeof count !== 'number') return 'No artifacts yet';
+        return count + ' artifact' + (count === 1 ? '' : 's');
+      }
+
+      function byActivity(a, b) {
+        if (Boolean(a.protected) !== Boolean(b.protected)) return a.protected ? 1 : -1;
+        const aTime = a.updatedAt ? String(a.updatedAt) : '';
+        const bTime = b.updatedAt ? String(b.updatedAt) : '';
+        if (aTime !== bTime) return bTime.localeCompare(aTime);
+        return String(a.name).localeCompare(String(b.name));
+      }
+
+      function projectRow(project) {
+        const li = el('li');
+        const link = el('a', 'proj-row');
+        link.href = '/' + encodeURIComponent(project.name) + '/';
+        link.appendChild(el('span', 'proj-name', project.name));
+
+        if (project.protected) {
+          const meta = el('span', 'proj-meta status');
+          meta.appendChild(svgIcon('lock'));
+          meta.appendChild(document.createTextNode('Password protected'));
+          link.appendChild(meta);
+        } else {
+          const meta = el('span', 'proj-meta');
+          if (project.updatedAt) {
+            meta.appendChild(el('span', null, countLabel(project.count)));
+            meta.appendChild(el('span', 'sep'));
+            meta.appendChild(el('span', null, 'Updated ' + formatDate(project.updatedAt)));
+          } else {
+            meta.appendChild(el('span', null, 'No artifacts yet'));
+          }
+          link.appendChild(meta);
+        }
+
+        link.appendChild(svgIcon('chevron-right'));
+        li.appendChild(link);
+        return li;
+      }
+
+      function paint(projects) {
+        list.replaceChildren.apply(list, projects.map(projectRow));
+        list.hidden = projects.length === 0;
+        empty.hidden = projects.length !== 0;
+        countEl.textContent = projects.length === 0 ? '0 hidden' : projects.length + ' hidden';
+      }
+
+      function showError() {
+        main.setAttribute('aria-busy', 'false');
+        skeleton.hidden = true;
+        list.hidden = true;
+        empty.hidden = true;
+        errorState.hidden = false;
+        countEl.textContent = 'Unavailable';
+      }
+
+      async function load() {
+        main.setAttribute('aria-busy', 'true');
+        skeleton.hidden = false;
+        list.hidden = true;
+        empty.hidden = true;
+        errorState.hidden = true;
+        countEl.textContent = 'Loading…';
+        try {
+          const response = await fetch('/api/catalog', { headers: { accept: 'application/json' } });
+          if (!response.ok) throw new Error('Catalog request failed (' + response.status + ')');
+          const data = await response.json();
+          const projects = (Array.isArray(data.projects) ? data.projects : [])
+            .filter((project) => project && project.ghost)
+            .sort(byActivity);
+          main.setAttribute('aria-busy', 'false');
+          skeleton.hidden = true;
+          paint(projects);
+        } catch (err) {
+          showError();
+          console.error('[ghost]', err);
+        }
+      }
+
+      retryBtn.addEventListener('click', load);
+      load();
+    })();
+  </script>
+</Base>

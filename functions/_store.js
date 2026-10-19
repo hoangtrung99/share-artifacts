@@ -375,3 +375,57 @@ export function listProjectFiles(catalog, project, uploads = null) {
 
   return out;
 }
+
+const CATEGORY_LABELS = {
+  ai: 'AI',
+  html: 'HTML',
+  md: 'MD',
+  'dev-tools': 'Dev tools',
+  devtools: 'Dev tools',
+  infra: 'Infra',
+  networking: 'Networking',
+  crypto: 'Crypto',
+  personal: 'Personal',
+  general: 'General',
+};
+
+/** Normalise a tag/folder into a stable category slug. */
+export function categorySlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Human label for a category slug ("dev-tools" → "Dev tools", "ai" → "AI"). */
+export function categoryLabel(slug) {
+  if (CATEGORY_LABELS[slug]) return CATEGORY_LABELS[slug];
+  const words = String(slug || '').split('-').filter(Boolean);
+  if (!words.length) return 'General';
+  return words.map((word, index) => (index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word)).join(' ');
+}
+
+/**
+ * Categories for one artifact row.
+ * Explicit tags win; otherwise the top-level folder is the category; root files are "general".
+ * This keeps the folder-based behaviour the shell already had while letting authors opt into
+ * real topic categories via artifact metadata.
+ */
+export function entryCategories(entry) {
+  const tags = Array.isArray(entry?.tags) ? entry.tags.map(categorySlug).filter(Boolean) : [];
+  if (tags.length) return [...new Set(tags)];
+  const folder = String(entry?.folder || '').split('/')[0];
+  return [folder ? categorySlug(folder) : 'general'];
+}
+
+/** Category chips for a project: [{ slug, label, count }], most used first. */
+export function categorySummary(files) {
+  const counts = new Map();
+  for (const file of files || []) {
+    for (const slug of entryCategories(file)) counts.set(slug, (counts.get(slug) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([slug, count]) => ({ slug, label: categoryLabel(slug), count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}

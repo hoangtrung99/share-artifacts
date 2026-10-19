@@ -21,6 +21,7 @@ import {
 } from '../_auth.js';
 import { loadRegistry } from '../_store.js';
 import { redirectResponse, shellSecurity } from '../_http.js';
+import { shellLayout, brandHeader } from '../_render.js';
 
 export const onRequestGet = async ({ request, env, params }) => {
   const token = params.token;
@@ -49,16 +50,17 @@ export const onRequestGet = async ({ request, env, params }) => {
 };
 
 function expiredPage() {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>Share link expired — Artifacts</title><style>
-:root{--bg:#fff;--surface:#fff;--border:#e4e7ec;--text:#1a1d23;--muted:#5b6472;--accent:#2563eb;--radius:10px}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--surface:#161b22;--border:#2a313c;--text:#e6e9ee;--muted:#9aa4b2;--accent:#6ea8fe}}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:2rem}
-.card{max-width:420px;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.75rem;text-align:center}
-.kicker{font-size:.72rem;font-weight:600;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;display:inline-block;margin:0 0 .9rem}
-h1{font-size:1.4rem;margin:0 0 .5rem}
-p{color:var(--muted);font-size:.95rem;margin:0 0 1.25rem}
-a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-</style></head><body><div class="card"><span class="kicker">⏳ Share link</span><h1>Link expired or invalid</h1><p>This share link has expired or is no longer valid. Ask the person who shared it for a new link.</p><a href="/">Go to gallery →</a></div></body></html>`;
+  const body = `<a class="skip-link" href="#main-expired">Skip to content</a>
+${brandHeader()}
+<main class="login-wrap" id="main-expired" tabindex="-1">
+  <section class="login-card" aria-labelledby="expired-title">
+    <p class="login-kicker">Share link</p>
+    <h1 id="expired-title">Link expired or invalid</h1>
+    <p class="login-lede">This share link has expired or is no longer valid. Ask the person who shared it for a new link.</p>
+    <p class="login-note"><a href="/">Back to the gallery</a></p>
+  </section>
+</main>`;
+  const html = shellLayout({ title: 'Share link expired — Artifacts', body, noindex: true });
   return new Response(html, {
     status: 410,
     headers: {

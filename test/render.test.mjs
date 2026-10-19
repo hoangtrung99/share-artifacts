@@ -73,7 +73,7 @@ test('listing escapes titles/projects and renders a date for every row', () => {
   assert.match(html, /Recent/);
 });
 
-test('listing offers a category filter built from top-level folders', () => {
+test('listing offers multi-select category chips from tags/folders', () => {
   const html = projectListingPage({
     project: 'verups',
     files: [
@@ -82,17 +82,29 @@ test('listing offers a category filter built from top-level folders', () => {
       listedFile({ title: 'Sub report', routePath: 'verups/reports/sub/c', folder: 'reports/sub' }),
       listedFile({ title: 'Investigation', routePath: 'verups/investigations/d', folder: 'investigations' }),
       listedFile({ title: 'Root file', routePath: 'verups/root-file', folder: '' }),
+      listedFile({ title: 'Tagged', routePath: 'verups/tagged', tags: ['infra'] }),
     ],
     locked: true,
     ghost: false,
   });
-  assert.match(html, /data-cat-filter/);
-  assert.match(html, /Category: all \(5\)/);
-  assert.match(html, /<option value="reports">Reports \(3\)<\/option>/);
-  assert.match(html, /<option value="investigations">Investigations \(1\)<\/option>/);
-  assert.match(html, /<option value="__root__">\(Root\) \(1\)<\/option>/);
-  assert.match(html, /data-category="reports"/);
-  assert.match(html, /data-category=""[^>]*data-date/);
+  assert.match(html, /data-cat-chips/);
+  assert.match(html, /data-cat="all"/);
+  assert.match(html, /data-cat="reports"[^>]*>Reports <span class="cat-count">3<\/span>/);
+  assert.match(html, /data-cat="investigations"[^>]*>Investigations <span class="cat-count">1<\/span>/);
+  assert.match(html, /data-cat="general"[^>]*>General <span class="cat-count">1<\/span>/);
+  assert.match(html, /data-cat="infra"[^>]*>Infra <span class="cat-count">1<\/span>/);
+  assert.match(html, /data-cats="reports"/);
+  assert.match(html, /data-cats="general"/);
+  assert.match(html, /aria-pressed="true"[^>]*>All/);
+
+  // A project with a single category does not render the filter row.
+  const single = projectListingPage({
+    project: 'guides',
+    files: [listedFile({ title: 'Only', routePath: 'guides/only', folder: '' })],
+    locked: false,
+    ghost: false,
+  });
+  assert.doesNotMatch(single, /data-cat-chips/);
 });
 
 test('ghost listings are noindex and public listings are indexable', () => {
@@ -122,7 +134,8 @@ test('HTML viewer iframes the raw artifact and shows upload time', () => {
     ghost: false,
   });
   assert.match(html, /src="\/verups\/report.html"/);
-  assert.match(html, /↑ 2026-10-18/);
+  assert.match(html, /class="viewer-frame"/);
+  assert.match(html, /18 Oct 2026/);
   assert.match(html, /class="bleed"/);
   assert.match(html, /\/assets\/viewer.js\?v=/);
 });
@@ -150,7 +163,8 @@ test('MD viewer shows artifact-date badge with both timestamps in the tooltip', 
     locked: false,
     ghost: false,
   });
-  assert.match(html, /◆ 2026-05-01/);
+  assert.match(html, /class="reader"/);
+  assert.match(html, /1 May 2026/);
   assert.match(html, /Artifact date 2026-05-01T00:00:00.000Z/);
   assert.match(html, /uploaded 2026-07-21T04:30:00.000Z/);
   assert.match(html, /On this page/);

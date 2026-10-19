@@ -26,7 +26,7 @@ import {
   resolveArtifactTime,
 } from './_store.js';
 import { renderMarkdownDoc } from './_markdown.js';
-import { projectListingPage, htmlViewerPage, mdViewerPage, ASSET_V } from './_render.js';
+import { projectListingPage, htmlViewerPage, mdViewerPage, notFoundPage, ASSET_V } from './_render.js';
 import { pwKey } from './_auth.js';
 import {
   artifactSecurity,
@@ -104,6 +104,14 @@ export const onRequest = async (context) => {
     return textResponse('Content store not configured (R2 binding ARTIFACTS missing).', 503);
   }
 
+  /** Shared HTML 404 shell (never plain text on document routes). */
+  const notFound = (projectName = project) =>
+    htmlResponse(notFoundPage({ project: projectName }), {
+      method: request.method,
+      cache: 'no-store',
+      status: 404,
+    });
+
   const project = first;
   const { protected: protectedFolders, ghost: ghostFolders } = await loadRegistry(env);
   const locked = protectedFolders.has(project) || !!env[pwKey(project)];
@@ -117,7 +125,7 @@ export const onRequest = async (context) => {
     const knownProject = !!catalog.projects?.[project];
     // Unknown empty project with no catalog entry and not in registries → 404
     if (!files.length && !knownProject && !locked && !ghost) {
-      return textResponse('Not found', 404);
+      return notFound(project);
     }
     const cache = cacheControl(locked || ghost, 60);
     // Include the newest effective time so a re-upload refreshes the listing even when the
@@ -140,7 +148,7 @@ export const onRequest = async (context) => {
   if (lower.endsWith('.html') || lower.endsWith('.md')) {
     const isMd = lower.endsWith('.md');
     const obj = await getObject(env.ARTIFACTS, contentKey(project, rest));
-    if (!obj) return textResponse('Not found', 404);
+    if (!obj) return notFound(project);
     const cache = cacheControl(locked || ghost, 300);
     const etag = obj.httpEtag || null;
     if (isNotModified(request, etag)) return notModifiedResponse(etag, cache, artifactSecurity());
@@ -182,7 +190,7 @@ export const onRequest = async (context) => {
     }
   }
 
-  if (!entry) return textResponse('Not found', 404);
+  if (!entry) return notFound(project);
 
   const type = entry.type === 'md' ? 'md' : 'html';
   const file = entry.file || `${rest}.${type === 'md' ? 'md' : 'html'}`;
@@ -217,11 +225,11 @@ export const onRequest = async (context) => {
   let uploadIso = entry.uploadedAt || null;
   if (mdBody == null) {
     const obj = await getObject(env.ARTIFACTS, contentKey(project, file));
-    if (!obj) return textResponse('Not found', 404);
+    if (!obj) return notFound(project);
     uploadIso = uploadedIso(obj) || uploadIso;
     mdBody = await obj.text();
   }
-  if (mdBody == null) return textResponse('Not found', 404);
+  if (mdBody == null) return notFound(project);
   const time = resolveArtifactTime(entry, uploadIso);
 
   const etag = `"m-${hashString(`${routePath}|${time.sortDate || ''}|${mdBody.length}|${locked}|${ghost}|${ASSET_V}`)}"`;

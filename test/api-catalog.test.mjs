@@ -24,7 +24,7 @@ function fixture(overrides = {}) {
         guides: {
           files: [
             { file: 'a.html', routePath: 'guides/a', type: 'html', title: 'A', uploadedAt: '2026-10-18T04:00:00.000Z', uploadedAtReliable: true, artifactDate: null },
-            { file: 'b.md', routePath: 'guides/b', type: 'md', title: 'B', uploadedAt: '2026-10-17T04:00:00.000Z', uploadedAtReliable: true, artifactDate: null },
+            { file: 'b.md', routePath: 'guides/b', type: 'md', title: 'B', uploadedAt: '2026-10-17T04:00:00.000Z', uploadedAtReliable: true, artifactDate: null, tags: ['infra'] },
           ],
         },
         verups: {
@@ -73,6 +73,21 @@ test('public catalog lists public projects only, without protected file counts',
   const verups = data.projects.find((project) => project.name === 'verups');
   assert.equal(verups.protected, true);
   assert.equal(verups.count, null);
+
+  // Gallery recency + categories: public projects expose updatedAt/categories, protected ones
+  // must not leak either counts or topic categories.
+  assert.equal(guides.updatedAt, '2026-10-18T04:00:00.000Z');
+  assert.deepEqual(guides.categories.sort(), ['general', 'infra']);
+  assert.equal(verups.updatedAt, null);
+  assert.deepEqual(verups.categories, []);
+
+  assert.equal(Array.isArray(data.recent), true);
+  assert.equal(data.recent.length, 2);
+  assert.equal(data.recent[0].project, 'guides');
+  assert.equal(data.recent[0].title, 'A');
+  assert.equal(data.recent[0].category, 'General');
+  assert.match(data.recent[0].date, /^2026-10-18/);
+  assert.ok(!data.recent.some((item) => item.project === 'verups'), 'protected files never appear in recent');
 });
 
 test('a valid ghost cookie reveals ghost projects', async () => {
