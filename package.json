@@ -19,7 +19,8 @@
     "catalog:upsert": "node scripts/catalog-upsert.mjs",
     "registry:write": "node scripts/registry-write.mjs",
     "r2:inventory": "node scripts/backfill-r2-times.mjs",
-    "r2:backfill": "node scripts/backfill-r2-times.mjs --apply"
+    "r2:backfill": "node scripts/backfill-r2-times.mjs --apply",
+    "catalog:date": "node scripts/set-artifact-date.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",

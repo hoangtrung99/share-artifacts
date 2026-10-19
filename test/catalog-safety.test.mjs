@@ -346,3 +346,74 @@ test('--remove deletes the entry, drops empty projects and backs up first', () =
   const written = JSON.parse(fs.readFileSync(putCapture, 'utf8'));
   assert.equal(written.projects.guides, undefined);
 });
+
+test('set-artifact-date corrects a legacy date without touching recency metadata', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-set-date-'));
+  const source = path.join(directory, 'catalog.json');
+  const putCapture = path.join(directory, 'put.json');
+  const callLog = path.join(directory, 'calls.log');
+  fs.writeFileSync(
+    source,
+    JSON.stringify({
+      version: 1,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      projects: {
+        guides: {
+          files: [
+            {
+              project: 'guides',
+              file: 'old/report.html',
+              routePath: 'guides/old/report',
+              type: 'html',
+              title: 'Old report',
+              tags: [],
+              artifactDate: null,
+              uploadedAt: '2026-07-21T04:30:00.000Z',
+              uploadedAtReliable: false,
+              uploadSource: 'bulk-migration',
+            },
+          ],
+        },
+      },
+    }),
+  );
+
+  const result = runNode(
+    ['scripts/set-artifact-date.mjs', '--project', 'guides', '--file', 'old/report.html', '--date', '2026-05-01'],
+    {
+      FAKE_WRANGLER_MODE: 'valid',
+      FAKE_R2_GET_SOURCE: source,
+      FAKE_R2_PUT_CAPTURE: putCapture,
+      FAKE_WRANGLER_CALL_LOG: callLog,
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(callsFrom(callLog).map((call) => call[3]), ['get', 'put', 'put']);
+  const entry = JSON.parse(fs.readFileSync(putCapture, 'utf8')).projects.guides.files[0];
+  assert.equal(entry.artifactDate, '2026-05-01');
+  assert.equal(entry.artifactDateSource, 'manual');
+  // Recency metadata is deliberately untouched: the artifact is still a bulk/moved item.
+  assert.equal(entry.uploadedAt, '2026-07-21T04:30:00.000Z');
+  assert.equal(entry.uploadedAtReliable, false);
+  assert.equal(entry.uploadSource, 'bulk-migration');
+});
+
+test('set-artifact-date validates input before touching R2', () => {
+  for (const args of [
+    ['--project', 'guides', '--file', 'old/report.html', '--date', '01-05-2026'],
+    ['--project', 'guides', '--file', 'missing.html', '--date', '2026-05-01'],
+  ]) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'artifacts-set-date-invalid-'));
+    const callLog = path.join(directory, 'calls.log');
+    const putCapture = path.join(directory, 'put.json');
+    const result = runNode(['scripts/set-artifact-date.mjs', ...args], {
+      FAKE_WRANGLER_MODE: 'valid',
+      FAKE_R2_GET_SOURCE: path.join(directory, 'missing.json'),
+      FAKE_R2_PUT_CAPTURE: putCapture,
+      FAKE_WRANGLER_CALL_LOG: callLog,
+    });
+    assert.equal(result.status, 1, args.join(' '));
+    assert.equal(fs.existsSync(putCapture), false, args.join(' '));
+  }
+});

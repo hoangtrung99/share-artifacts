@@ -84,10 +84,18 @@ The listing displays `↑` for upload time and `◆` for an artifact date; hover
 values. "Recent" means newest effective time first; artifacts sharing a bulk timestamp are
 tie-broken by their artifact date.
 
-If a date is wrong or missing, re-deliver with an explicit date:
+If a date is wrong or missing, re-deliver with an explicit date (this also counts as a fresh
+publish):
 
 ```bash
 ./deliver.sh ./report.html verups --date 2026-10-19
+```
+
+To correct a legacy file's artifact date **without** re-uploading or changing its recency:
+
+```bash
+node scripts/set-artifact-date.mjs --project verups --file old/report.html --date 2026-05-01
+# or: pnpm catalog:date -- --project verups --file old/report.html --date 2026-05-01
 ```
 
 Inspect R2 and repair the catalog metadata (scan-only by default):
