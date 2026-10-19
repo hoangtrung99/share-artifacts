@@ -229,7 +229,10 @@ Served by `functions/[[path]].js` from R2:
 
 - Cache-Control: public content `public, max-age=60`; protected/ghost content **`private, no-store`**
   (raw bytes: 300s public / no-store private).
-- Listings/viewers send ETag and answer `If-None-Match` with 304; raw artifacts reuse R2's ETag.
+- Function handlers emit ETag validators and answer `If-None-Match` with 304 (covered by tests and
+  `wrangler pages dev`). Note: Cloudflare currently strips `ETag` from Pages **Function** responses
+  at the edge (verified in production), so browsers fall back to the `Cache-Control` max-age above;
+  static assets keep their ETags.
 - Security headers are set in Functions (`public/_headers` only applies to static assets):
   `nosniff`, referrer policy, and `frame-ancestors 'self'` so artifacts cannot be framed elsewhere.
 - `_astro/*` hashed assets are immutable for a year; `/assets/*` use short revalidating caches.
