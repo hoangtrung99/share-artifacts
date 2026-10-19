@@ -1677,3 +1677,40 @@ body.bleed { margin: 0; }
   .reader { padding: 0; }
   body { background: #fff; }
 }
+
+/* ---------- Artifact-matched viewer bar (same-origin HTML viewer) ---------- */
+/* viewer.js samples the artifact iframe's background/text colours and sets these variables. */
+.viewer-topbar.is-skinned {
+  background: var(--skin-bg, var(--paper));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom-color: color-mix(in srgb, var(--skin-fg, var(--ink)) 16%, transparent);
+  color: var(--skin-fg, var(--ink));
+  transition: background-color var(--d2) var(--ease-out), color var(--d2) var(--ease-out),
+    border-color var(--d2) var(--ease-out);
+}
+.viewer-topbar.is-skinned .crumbs a,
+.viewer-topbar.is-skinned .crumb-sep,
+.viewer-topbar.is-skinned .bar-meta,
+.viewer-topbar.is-skinned .bar-type,
+.viewer-topbar.is-skinned .bar-dot {
+  color: var(--skin-muted, color-mix(in srgb, var(--skin-fg, var(--ink)) 62%, transparent));
+}
+.viewer-topbar.is-skinned .crumb-current { color: var(--skin-fg, var(--ink)); }
+.viewer-topbar.is-skinned .icon-btn { color: var(--skin-icon, color-mix(in srgb, var(--skin-fg, var(--ink)) 68%, transparent)); }
+.viewer-topbar.is-skinned .icon-btn:hover {
+  background: color-mix(in srgb, var(--skin-fg, var(--ink)) 10%, transparent);
+  color: var(--skin-fg, var(--ink));
+}
+.viewer-topbar.is-skinned .bar-download {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--skin-fg, var(--ink)) 24%, transparent);
+  color: var(--skin-fg, var(--ink));
+}
+.viewer-topbar.is-skinned .bar-download:hover {
+  background: color-mix(in srgb, var(--skin-fg, var(--ink)) 8%, transparent);
+  border-color: color-mix(in srgb, var(--skin-fg, var(--ink)) 36%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewer-topbar.is-skinned { transition: none; }
+}

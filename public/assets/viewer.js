@@ -1389,7 +1389,141 @@
     });
   }
 
+
+  /* ------------------------------------------------------- artifact-matched bar */
+
+  // HTML artifacts are iframed same-origin, so the shell can sample their actual colours and
+  // keep the 48px bar visually continuous with the artifact — including when the artifact
+  // switches theme from inside the iframe. Cross-origin iframes keep the shell theme.
+  function initArtifactSkin() {
+    var frame = document.querySelector('.viewer-frame');
+    var bar = document.querySelector('.viewer-topbar');
+    if (!frame || !bar) return;
+
+    var observer = null;
+    var timer = null;
+    var lastKey = '';
+
+    function parseColor(value) {
+      var match = String(value || '').match(/rgba?\(([^)]+)\)/);
+      if (!match) return null;
+      var parts = match[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+      if (parts.length < 3 || parts.some(isNaN)) return null;
+      return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+    }
+    function composite(color, under) {
+      if (!color) return under;
+      var a = Number.isFinite(color.a) ? color.a : 1;
+      return {
+        r: Math.round(color.r * a + under.r * (1 - a)),
+        g: Math.round(color.g * a + under.g * (1 - a)),
+        b: Math.round(color.b * a + under.b * (1 - a)),
+        a: 1,
+      };
+    }
+    function rgb(color) {
+      return 'rgb(' + color.r + ', ' + color.g + ', ' + color.b + ')';
+    }
+    function luminance(color) {
+      var channels = [color.r, color.g, color.b].map(function (value) {
+        var v = value / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    }
+    function contrast(a, b) {
+      var la = luminance(a);
+      var lb = luminance(b);
+      return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+    }
+    function mix(a, b, amount) {
+      return {
+        r: Math.round(a.r + (b.r - a.r) * amount),
+        g: Math.round(a.g + (b.g - a.g) * amount),
+        b: Math.round(a.b + (b.b - a.b) * amount),
+        a: 1,
+      };
+    }
+    function atLeast(background, color, target, start) {
+      var amount = start;
+      var mixed = mix(background, color, amount);
+      while (contrast(background, mixed) < target && amount < 0.98) {
+        amount += 0.04;
+        mixed = mix(background, color, amount);
+      }
+      return mixed;
+    }
+    function sample() {
+      var doc;
+      var win;
+      try {
+        doc = frame.contentDocument;
+        win = frame.contentWindow;
+      } catch (error) {
+        return; // cross-origin artifact
+      }
+      if (!doc || !doc.body || !win) return;
+      var bodyStyle = win.getComputedStyle(doc.body);
+      var htmlStyle = win.getComputedStyle(doc.documentElement);
+      var white = { r: 255, g: 255, b: 255, a: 1 };
+      var background = parseColor(bodyStyle.backgroundColor);
+      if (!background || background.a === 0) background = parseColor(htmlStyle.backgroundColor);
+      if (!background || background.a === 0) return;
+      background = composite(background, white);
+      var candidate = parseColor(bodyStyle.color) || parseColor(htmlStyle.color);
+      var foreground = candidate && contrast(background, candidate) >= 4.5
+        ? candidate
+        : (luminance(background) > 0.5 ? { r: 17, g: 17, b: 17, a: 1 } : { r: 247, g: 247, b: 247, a: 1 });
+      var key = rgb(background) + '|' + rgb(foreground);
+      if (key === lastKey) return;
+      lastKey = key;
+      bar.style.setProperty('--skin-bg', rgb(background));
+      bar.style.setProperty('--skin-fg', rgb(foreground));
+      // Muted text must still hit AA (4.5:1); icons only need 3:1.
+      bar.style.setProperty('--skin-muted', rgb(atLeast(background, foreground, 4.5, 0.62)));
+      bar.style.setProperty('--skin-icon', rgb(atLeast(background, foreground, 3, 0.6)));
+      bar.classList.add('is-skinned');
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', rgb(background));
+    }
+    function stop() {
+      if (observer) observer.disconnect();
+      observer = null;
+      if (timer) clearInterval(timer);
+      timer = null;
+    }
+    function start() {
+      stop();
+      lastKey = '';
+      sample();
+      try {
+        var doc = frame.contentDocument;
+        if (!doc) return;
+        observer = new MutationObserver(function () {
+          setTimeout(sample, 30);
+        });
+        [doc.documentElement, doc.body].forEach(function (element) {
+          if (element) {
+            observer.observe(element, {
+              attributes: true,
+              attributeFilter: ['class', 'style', 'data-theme', 'data-mode', 'data-color-scheme'],
+            });
+          }
+        });
+        // Catches theme switches that only swap CSS variables/stylesheets without a root attr change.
+        timer = setInterval(function () {
+          if (!document.hidden) sample();
+        }, 600);
+      } catch (error) {
+        /* cross-origin: keep the shell theme */
+      }
+    }
+    frame.addEventListener('load', start);
+    start();
+  }
+
   /* -------------------------------------------------------------------- boot */
+
 
   onReady(function boot() {
     safe('toast', initToast);
@@ -1405,6 +1539,7 @@
     safe('code copy', initCodeCopy);
     safe('highlight', highlightCode);
     safe('topbar scroll', initTopbarScroll);
+    safe('artifact skin', initArtifactSkin);
     safe('keyboard', initKeyboard);
     safe('skip links', initSkipLinks);
     safe('ghost password', initGhostPassword);
