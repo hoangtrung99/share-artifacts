@@ -11,8 +11,12 @@ and hand the user a shareable link — auto-classifying the project, or asking w
 - **Repo:** `share-artifacts` (run all scripts from the **share-artifacts repo root** — absolute path varies by machine).
 - **Site:** thin Astro shell (gallery + login + ghost) on Cloudflare Pages. **Content lives on R2**
   (`artifacts-content` bucket). Pages Functions serve content and edge-render Markdown.
-- **Mechanism:** `deliver.sh` → `wrangler r2 object put --remote` + catalog upsert. **No** `pnpm build`,
-  **no** full Pages content rebuild, **no** git commit of artifacts for a normal deliver.
+- **Mechanism:** `deliver.sh` → hash + immutable revision snapshot + manifest → `wrangler r2 object
+  put --remote` for current content + catalog upsert. **No** `pnpm build`, no full Pages content
+  rebuild, no git commit of artifacts for a normal deliver.
+- **Versions:** every deliver adds a revision (`?rev=<revisionId>`, History button in the viewer);
+  identical bytes are a no-op. See `../artifact-versions/SKILL.md`. Review/comment links are a
+  separate grant (`../artifact-feedback/SKILL.md`); access layers in `../artifacts-access/SKILL.md`.
 - **Tooling is `wrangler` (Pages + R2), NOT `cloudflared`.**
 - **Shell deploy (rare):** `./deploy.sh` only when functions/shell/CSS change — not for new content.
 
@@ -78,7 +82,8 @@ REPO=$(find ~/Work ~ -maxdepth 4 -type d -name share-artifacts -not -path '*/nod
 
 ## Notes
 - One artifact per `deliver.sh` run. Nested path: `--name folder/file.html`.
-- Remove: `./unpublish.sh <project>/<file>` or `./unpublish.sh <project>` (R2 delete `--remote` + catalog).
+- Remove: `./unpublish.sh <project>/<file>` or `./unpublish.sh <project>` (writes a permanent
+  tombstone first, then deletes R2 bytes + catalog; tombstones are kept — see `../artifact-versions`).
 - Never commit passwords; secrets stay on Cloudflare. Registries live on R2 (`meta/protected.json`,
   `meta/ghost.json`); local `protected.list` / `ghost.list` are optional caches.
 - Redeploy the **shell** only when changing functions, Astro pages, or `public/assets/*`:

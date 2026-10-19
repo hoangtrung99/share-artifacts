@@ -279,11 +279,10 @@ exactly as before.
   `ARTIFACTS_COOKIE` or the admin token; `pnpm run feedback:grant -- create|list|revoke ...`
   mints/revokes review links. See `design/feedback-versioning/backend-contract.md` for the
   full API, anchor JSON and permission matrix, and `design/feedback-versioning/PLAN.md`
-  for the rollout plan. Agents working in this repo load the committed skills
-  [`artifact-feedback`](.claude/skills/artifact-feedback/SKILL.md) (read/create feedback,
-  review links, addressed/resolve workflow) and
-  [`artifact-versions`](.claude/skills/artifact-versions/SKILL.md) (publish, revision history,
-  bootstrap, unpublish).
+  for the rollout plan. Agents working in this repo load the committed skill suite —
+  see [`.claude/skills/README.md`](.claude/skills/README.md): `artifact-feedback`,
+  `artifact-versions`, `deploy-artifacts` (content publishing), `artifacts-access`,
+  `artifacts-deploy` (shell deploy), `artifacts-local-dev`.
 
 ## Shell UI
 
