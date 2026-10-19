@@ -53,13 +53,13 @@ export function isNotModified(request, etag) {
 
 /**
  * @param {string} html
- * @param {{ method?: string, cache?: string, etag?: string | null, security?: Record<string,string>, extra?: Record<string,string> }} [options]
+ * @param {{ method?: string, cache?: string, etag?: string | null, status?: number, security?: Record<string,string>, extra?: Record<string,string> }} [options]
  */
 export function htmlResponse(html, options = {}) {
-  const { method = 'GET', cache = 'public, max-age=60', etag = null, security = shellSecurity(), extra = {} } = options;
+  const { method = 'GET', cache = 'public, max-age=60', etag = null, status = 200, security = shellSecurity(), extra = {} } = options;
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8', 'cache-control': cache, ...security, ...extra });
   if (etag) headers.set('etag', etag);
-  return new Response(method === 'HEAD' ? null : html, { status: 200, headers });
+  return new Response(method === 'HEAD' ? null : html, { status, headers });
 }
 
 /**

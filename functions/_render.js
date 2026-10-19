@@ -2,10 +2,29 @@
 // Links non-hashed /assets/site.css + /assets/viewer.js so the thin Astro shell
 // and edge-rendered pages share one stylesheet.
 // ASSET_V busts CDN/browser cache when shell assets change (max-age on /assets/*).
+//
+// Markup contract: design/prototype.html. Shared primitives (icon sprite, pre-paint theme
+// bootstrap, global popovers) live in functions/_ui.js; category helpers in functions/_store.js.
 
-export const ASSET_V = '867ba07d';
+import {
+  ICON_SPRITE,
+  THEME_BOOTSTRAP,
+  DEFAULT_THEME,
+  icon,
+  themePickerButton,
+  shellChrome,
+} from './_ui.js';
+import { categorySummary, entryCategories, categoryLabel } from './_store.js';
+
+export const ASSET_V = 'd83f52eb';
+
+const SITE_HOST = 'artifacts.hoangtrung.dev';
 
 /**
+ * Shared document shell. Deliberately neutral: it does NOT wrap the page body in a landmark —
+ * every page provides exactly one <main> (listing .page, reader .reader, viewer .viewer-main,
+ * login/ghost-auth .login-wrap).
+ *
  * @param {object} opts
  * @param {string} opts.title
  * @param {string} [opts.description]
@@ -29,19 +48,19 @@ export function shellLayout({
     : '';
   const robots = noindex ? `<meta name="robots" content="noindex">` : '';
   const bodyClass = fullBleed ? ' class="bleed"' : '';
-  const wrapOpen = fullBleed ? '' : '<main class="container">';
-  const wrapClose = fullBleed ? '' : '</main>';
   const viewerJs = includeViewerJs
     ? `<script src="/assets/viewer.js?v=${ASSET_V}" defer></script>`
     : '';
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="${DEFAULT_THEME}" data-scheme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0a1119">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script>${THEME_BOOTSTRAP}</script>
   <link rel="stylesheet" href="/assets/site.css?v=${ASSET_V}">
   ${headExtra}
   <title>${esc(title)}</title>
@@ -49,50 +68,45 @@ export function shellLayout({
   ${robots}
 </head>
 <body${bodyClass}>
-  ${wrapOpen}
+  ${ICON_SPRITE}
   ${body}
-  ${wrapClose}
+  ${shellChrome()}
   ${viewerJs}
 </body>
 </html>`;
 }
 
+/* ------------------------------------------------------------------ helpers */
 
-/** Build nested folder tree from flat file items (each has .folder, .sortDate, …). */
-function buildTree(items) {
-  const root = { name: '', path: '', files: [], children: new Map(), count: 0, date: '' };
-  for (const it of items) {
-    const parts = it.folder ? String(it.folder).split('/').filter(Boolean) : [];
-    let node = root;
-    let curPath = '';
-    for (const part of parts) {
-      curPath = curPath ? `${curPath}/${part}` : part;
-      if (!node.children.has(part)) {
-        node.children.set(part, { name: part, path: curPath, files: [], children: new Map(), count: 0, date: '' });
-      }
-      node = node.children.get(part);
-    }
-    node.files.push(it);
-  }
-  const finalize = (node) => {
-    const kids = [...node.children.values()].map(finalize);
-    const dates = [
-      ...node.files.map((f) => f.sortDate || ''),
-      ...kids.map((c) => c.date),
-    ].filter(Boolean);
-    node.date = dates.length ? dates.reduce((m, d) => (d > m ? d : m)) : '';
-    kids.sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
-    node.files.sort((a, b) => {
-      const da = a.sortDate || '';
-      const db = b.sortDate || '';
-      if (da !== db) return db.localeCompare(da);
-      return (a.title || '').localeCompare(b.title || '');
-    });
-    node.children = kids;
-    node.count = node.files.length + kids.reduce((s, c) => s + c.count, 0);
-    return node;
-  };
-  return finalize(root);
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escAttr(s) {
+  return esc(s).replace(/'/g, '&#39;');
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "2026-09-25T09:12:00.000Z" | "2026-09-25" → "25 Sep 2026" (stable, UTC-based). */
+function formatDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return '';
+  const month = MONTHS[Number(match[2]) - 1];
+  if (!month) return '';
+  return `${Number(match[3])} ${month} ${match[1]}`;
+}
+
+function artifactCount(n) {
+  return `${n} artifact${n === 1 ? '' : 's'}`;
+}
+
+function encodeProject(project) {
+  return encodeURIComponent(String(project || ''));
 }
 
 /** Tooltip explaining where a timestamp came from (upload vs artifact date). */
@@ -112,56 +126,234 @@ function timeTitle(time) {
   return parts.join(' · ');
 }
 
-function timeBadge(time, className = 'date') {
-  if (!time || !time.displayDate) return '';
-  const arrow = time.displaySource === 'artifact' ? '◆' : '↑';
-  return `<span class="${className}" title="${escAttr(timeTitle(time))}">${arrow} ${esc(time.displayDate)}</span>`;
+function dateSpan(f, className = 'file-date') {
+  const title = timeTitle(f);
+  const titleAttr = title ? ` title="${escAttr(title)}"` : '';
+  if (f.displaySource === 'missing') return `<span class="${className}"${titleAttr}>—</span>`;
+  const display = formatDate(f.displayDate);
+  // Always emit the cell so the row grid keeps its columns even when no timestamp exists.
+  return `<span class="${className}"${titleAttr}>${display ? esc(display) : '—'}</span>`;
 }
 
-function fileLi(f) {
-  const type = f.type || 'html';
-  // Every row shows the best-known time: real upload time for fresh deliveries, artifact date
-  // for legacy/bulk imports where the R2 timestamp only reflects a migration or move.
-  const displayDate = f.displayDate || '';
-  const dateTitle = timeTitle(f) ? ` title="${escAttr(timeTitle(f))}"` : '';
-  const date =
-    f.displaySource === 'missing'
-      ? `<span class="file-date"${dateTitle}>—</span>`
-      : displayDate
-        ? `<span class="file-date"${dateTitle}>${esc(displayDate)}</span>`
-        : '';
-  const folder = f.folder || '';
-  const category = String(folder).split('/')[0] || '';
-  const search = `${f.title || ''} ${f.routePath || ''}`.toLowerCase();
-  return `<li data-search="${esc(search)}" data-type="${esc(type)}" data-folder="${esc(folder)}" data-category="${escAttr(category)}" data-date="${esc(f.sortDate || '')}" data-artifact-date="${esc(f.artifactDate || '')}" data-title="${esc((f.title || '').toLowerCase())}">
-        <a class="file-link" href="/${escAttr(f.routePath)}">
-          <span class="badge badge-${esc(type)}">${esc(type.toUpperCase())}</span>
-          <span class="file-title">${esc(f.title || f.routePath)}</span>
-          ${date}
+function brandTopbar(actions = themePickerButton(), pill = '') {
+  return `<header class="topbar" data-topbar>
+  <div class="topbar-inner">
+    <a class="brand" href="/" aria-label="Artifacts — home">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span>Artifacts</span>
+      <span class="brand-host">${SITE_HOST}</span>
+    </a>
+    ${pill}
+    <span class="topbar-spacer"></span>
+    <div class="topbar-actions">${actions}</div>
+  </div>
+</header>`;
+}
+
+/** Theme trigger for viewer/reader bars: same primitive, plus .bar-secondary so mobile hides it. */
+function barThemeButton() {
+  return `<button class="icon-btn bar-secondary" type="button" data-theme-picker data-tip="Theme" aria-label="Choose theme" aria-haspopup="listbox" aria-expanded="false">${icon('contrast')}</button>`;
+}
+
+function modePill() {
+  return `<span class="mode-pill">${icon('ghost')} Ghost mode</span>`;
+}
+
+function skipLink(id) {
+  return `<a class="skip-link" href="#${id}">Skip to content</a>`;
+}
+
+/* -------------------------------------------------------------- file rows */
+
+/** One artifact row (li carries the viewer.js filter/sort dataset). */
+function fileRow(f) {
+  const type = f.type === 'md' ? 'md' : 'html';
+  const cats = entryCategories(f);
+  const categoryLabelText = cats.map((slug) => categoryLabel(slug)).join(', ');
+  const search = [f.title, f.routePath, f.description, f.folder, ...cats]
+    .join(' ')
+    .toLowerCase();
+  const description = f.description
+    ? `<span class="file-desc">${esc(f.description)}</span>`
+    : '';
+  return `<li data-search="${escAttr(search)}" data-type="${type}" data-cats="${escAttr(cats.join(' '))}" data-category-label="${escAttr(categoryLabelText)}" data-date="${escAttr(f.sortDate || '')}" data-artifact-date="${escAttr(f.artifactDate || '')}" data-title="${escAttr((f.title || '').toLowerCase())}">
+        <a class="file-row" href="/${escAttr(f.routePath)}">
+          <span class="type-tag">${type.toUpperCase()}</span>
+          <span class="file-main">
+            <span class="file-title">${esc(f.title || f.routePath)}</span>
+            ${description}
+          </span>
+          <span class="file-cat">${esc(categoryLabel(cats[0] || 'general'))}</span>
+          ${dateSpan(f)}
+          ${icon('chevron-right', 'icon chev')}
         </a>
       </li>`;
 }
 
-function renderTreeNodes(nodes, depth = 0) {
-  return nodes
-    .map((node) => {
-      const filesHtml =
-        node.files.length > 0
-          ? `<ul class="file-list">${node.files.map(fileLi).join('\n')}</ul>`
-          : '';
-      const kids = node.children.length ? renderTreeNodes(node.children, depth + 1) : '';
-      return `<details class="proj-group" data-folder="${escAttr(node.path)}" data-name="${escAttr(node.name.toLowerCase())}" data-date="${escAttr(node.date || '')}" data-depth="${depth}" style="--depth: ${depth}" open>
-    <summary class="proj-group-title">
-      <span class="grp-chevron" aria-hidden="true">▸</span>
-      <span class="grp-name">${esc(node.name)}</span>
-      <span class="grp-count">${node.count}</span>
-    </summary>
-    ${filesHtml}
-    ${kids}
-  </details>`;
-    })
-    .join('\n');
+function fileList(items) {
+  return `<ul class="file-list">
+${items.map(fileRow).join('\n')}
+</ul>`;
 }
+
+/* ------------------------------------------------------------- folder tree */
+
+/** Build nested folder tree from flat file items (each has .folder, .sortDate, …). */
+function buildTree(items) {
+  const root = { name: '', path: '', files: [], children: new Map(), count: 0, date: '' };
+  for (const it of items) {
+    const parts = it.folder ? String(it.folder).split('/').filter(Boolean) : [];
+    let node = root;
+    let curPath = '';
+    for (const part of parts) {
+      curPath = curPath ? `${curPath}/${part}` : part;
+      if (!node.children.has(part)) {
+        node.children.set(part, {
+          name: part,
+          path: curPath,
+          files: [],
+          children: new Map(),
+          count: 0,
+          date: '',
+        });
+      }
+      node = node.children.get(part);
+    }
+    node.files.push(it);
+  }
+  const finalize = (node) => {
+    const kids = [...node.children.values()].map(finalize);
+    const dates = [...node.files.map((f) => f.sortDate || ''), ...kids.map((c) => c.date)].filter(
+      Boolean,
+    );
+    node.date = dates.length ? dates.reduce((m, d) => (d > m ? d : m)) : '';
+    kids.sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
+    node.files.sort((a, b) => {
+      const da = a.sortDate || '';
+      const db = b.sortDate || '';
+      if (da !== db) return db.localeCompare(da);
+      return (a.title || '').localeCompare(b.title || '');
+    });
+    node.children = kids;
+    node.count = node.files.length + kids.reduce((sum, child) => sum + child.count, 0);
+    return node;
+  };
+  return finalize(root);
+}
+
+/** Folder group: <details> with data-folder/data-depth; nested groups stay inside the parent. */
+function folderGroup(node, depth) {
+  const files = node.files.length ? fileList(node.files) : '';
+  const children = node.children.map((child) => folderGroup(child, depth + 1)).join('\n');
+  return `<details class="proj-group" data-folder="${escAttr(node.path)}" data-depth="${depth}" style="--depth: ${depth}" open>
+      <summary class="proj-group-title">
+        ${icon('chevron-right', 'icon grp-chevron')}
+        <span class="grp-name">${esc(node.name)}</span>
+        <span class="grp-count">${node.count}</span>
+      </summary>
+      ${files}
+      ${children}
+    </details>`;
+}
+
+/* ---------------------------------------------------------------- topbars */
+
+function projectTopbar(project, locked) {
+  const share = locked
+    ? `<button class="btn" type="button" data-share data-share-project="${escAttr(project)}" data-share-path="/${escAttr(encodeProject(project))}/" data-tip="Create share link" aria-label="Create share link">${icon('share')}<span>Share</span></button>`
+    : '';
+  const signout = locked
+    ? `<a class="icon-btn" href="/logout?project=${escAttr(encodeProject(project))}" data-tip="Sign out" aria-label="Sign out">${icon('logout')}</a>`
+    : '';
+  return `<header class="topbar" data-topbar>
+  <div class="topbar-inner">
+    <a class="icon-btn" href="/" data-tip="All projects" aria-label="All projects">${icon('arrow-left')}</a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Artifacts</a>
+      <span class="crumb-sep" aria-hidden="true">/</span>
+      <span class="crumb-current crumb-project" aria-current="page">${esc(project)}</span>
+    </nav>
+    <span class="topbar-spacer"></span>
+    <div class="topbar-actions">${share}${signout}${themePickerButton()}</div>
+  </div>
+</header>`;
+}
+
+function barMeta(type, date, readMinutes, time = null) {
+  const parts = [`<span class="bar-type">${type.toUpperCase()}</span>`];
+  if (date) {
+    const provenance = time ? timeTitle(time) : '';
+    const titleAttr = provenance ? ` title="${escAttr(provenance)}"` : '';
+    parts.push(`<span class="bar-dot">·</span><span${titleAttr}>${esc(date)}</span>`);
+  }
+  if (readMinutes) parts.push(`<span class="bar-dot">·</span><span>${readMinutes} min read</span>`);
+  return `<span class="bar-meta">${parts.join('')}</span>`;
+}
+
+/**
+ * Viewer/reader 48px bar: identity cluster (back, crumb, meta), spacer, action cluster
+ * (neutral Download, copy, share-if-locked, theme, More).
+ */
+function viewerBar({
+  project,
+  title,
+  routePath,
+  rawUrl,
+  downloadName,
+  type,
+  time,
+  locked,
+  reader = false,
+  readMinutes = 0,
+  displayDate = '',
+}) {
+  const projHref = `/${escAttr(encodeProject(project))}/`;
+  const sharePath = routePath ? `/${escAttr(routePath)}` : projHref;
+  const downloadLabel = type === 'md' ? 'markdown' : 'HTML';
+  const date = displayDate || formatDate(time?.displayDate || time?.artifactDate || '');
+
+  const crumbs = reader
+    ? `<nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Artifacts</a>
+      <span class="crumb-sep" aria-hidden="true">/</span>
+      <a class="crumb-project" href="${projHref}">${esc(project)}</a>
+      <span class="crumb-sep" aria-hidden="true">/</span>
+      <span class="crumb-current" aria-current="page">${esc(title)}</span>
+    </nav>`
+    : `<nav class="crumbs" aria-label="Breadcrumb">
+      <a class="crumb-project" href="${projHref}">${esc(project)}</a>
+      <span class="crumb-sep" aria-hidden="true">/</span>
+      <span class="crumb-current" aria-current="page">${esc(title)}</span>
+    </nav>`;
+
+  const share = locked
+    ? `<button class="icon-btn" type="button" data-share data-share-path="${sharePath}" data-share-project="${escAttr(project)}" data-tip="Create share link" aria-label="Create share link">${icon('share')}</button>`
+    : '';
+  const signoutAttr = locked
+    ? ` data-signout-url="/logout?project=${escAttr(encodeProject(project))}"`
+    : '';
+  // Only the HTML viewer exposes "Open raw file" (the MD reader's More menu prints instead).
+  const rawAttr = type === 'html' ? ` data-raw-url="${escAttr(rawUrl)}"` : '';
+
+  return `<header class="topbar viewer-topbar" data-topbar>
+  <div class="topbar-inner">
+    <a class="icon-btn" href="${projHref}" data-tip="Back to project" aria-label="Back to project">${icon('arrow-left')}</a>
+    ${crumbs}
+    ${barMeta(type, date, readMinutes, time)}
+    <span class="topbar-spacer"></span>
+    <div class="topbar-actions bar-actions">
+      <a class="btn bar-download" href="${escAttr(rawUrl)}" download="${escAttr(downloadName)}" data-tip="Download the ${downloadLabel} file" aria-label="Download the ${downloadLabel} file">${icon('download')}<span>Download</span></a>
+      <button class="icon-btn bar-secondary" type="button" data-copy data-tip="Copy link" aria-label="Copy link">${icon('link')}</button>
+      ${share}
+      ${barThemeButton()}
+      <button class="icon-btn" type="button" data-more data-tip="More actions" aria-label="More actions" aria-haspopup="menu" aria-expanded="false"${rawAttr}${signoutAttr}>${icon('more')}</button>
+    </div>
+  </div>
+  ${reader ? '<div class="read-progress" aria-hidden="true"><i id="read-progress-bar"></i></div>' : ''}
+</header>`;
+}
+
+/* ------------------------------------------------------------ listing page */
 
 /**
  * Project file listing page.
@@ -172,104 +364,101 @@ function renderTreeNodes(nodes, depth = 0) {
  * @param {boolean} opts.ghost
  */
 export function projectListingPage({ project, files, locked, ghost }) {
-  const tree = buildTree(files || []);
-  // Sort root-level files (recent first, name tiebreak) — same as old Astro listing.
+  const list = Array.isArray(files) ? files : [];
+  const tree = buildTree(list);
+  // Root-level files render directly (no "(root)" group), most recent first.
   tree.files.sort((a, b) => {
     const da = a.sortDate || '';
     const db = b.sortDate || '';
     if (da !== db) return db.localeCompare(da);
     return (a.title || '').localeCompare(b.title || '');
   });
-  const rootDate = tree.files.reduce((m, f) => ((f.sortDate || '') > m ? f.sortDate || '' : m), '');
-  const folderHtml = tree.children.length ? renderTreeNodes(tree.children, 0) : '';
-  const rootFilesHtml = tree.files.length
-    ? `<details class="proj-group" data-folder="" data-name="" data-date="${escAttr(rootDate)}" data-depth="0" style="--depth: 0" open>
-        <summary class="proj-group-title">
-          <span class="grp-chevron" aria-hidden="true">▸</span>
-          <span class="grp-name">(root)</span>
-          <span class="grp-count">${tree.files.length}</span>
-        </summary>
-        <ul class="file-list">${tree.files.map(fileLi).join('\n')}</ul>
-      </details>`
-    : '';
-  const treeHtml = (folderHtml + rootFilesHtml) || '<p class="no-results">No files in this project yet.</p>';
 
-  // Category = top-level folder. The select filters the (already server-rendered) tree
-  // client-side, so it works together with the text/type/sort controls without a round-trip.
-  const categoryCounts = new Map();
-  for (const file of files || []) {
-    const key = String(file.folder || '').split('/')[0] || '';
-    categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
-  }
-  const categories = [...categoryCounts.entries()]
-    .map(([key, count]) => ({
-      value: key || '__root__',
-      // Match the tree's CSS capitalize() so the option labels read like the folder groups.
-      label: key ? key.charAt(0).toUpperCase() + key.slice(1) : '(Root)',
-      count,
-    }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  const categoryOptions = [
-    `<option value="">Category: all (${files.length})</option>`,
-    ...categories.map(
-      (category) =>
-        `<option value="${escAttr(category.value)}">${esc(category.label)} (${category.count})</option>`,
-    ),
-  ].join('');
+  const trees = [
+    ...tree.children.map((child) => folderGroup(child, 0)),
+    tree.files.length ? fileList(tree.files) : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 
-  const lockBadge = locked
-    ? `<span class="lock"><span aria-hidden="true">🔒</span> Protected</span>`
-    : '';
-  const ghostBadge = ghost
-    ? `<span class="lock"><span aria-hidden="true">👻</span> Ghost</span>`
-    : '';
-  const shareBtn = locked
-    ? `<button class="share-link" type="button" data-share data-share-project="${escAttr(project)}" data-share-path="/${escAttr(encodeURIComponent(project))}/" data-tip="Create share link for this project">📤 Share</button>`
-    : '';
-  const signout = locked
-    ? `<a class="signout" href="/logout?project=${escAttr(encodeURIComponent(project))}">⎋ Sign out</a>`
-    : '';
+  const latest = list.reduce((max, file) => ((file.sortDate || '') > max ? file.sortDate : max), '');
+  const updated = formatDate(latest);
+  const meta = [
+    `<span>${artifactCount(list.length)}</span>`,
+    updated ? `<span class="sep"></span><span>Updated ${esc(updated)}</span>` : '',
+  ]
+    .filter(Boolean)
+    .join('\n        ');
 
-  const body = `
-    <header class="proj-head">
-      <nav class="crumbs" aria-label="Breadcrumb">
-        <a href="/">🏠 Artifacts</a>
-        <span class="crumb-sep" aria-hidden="true">/</span>
-        <span class="proj-name">${esc(project)}</span>
-        ${lockBadge}
-        ${ghostBadge}
-        ${shareBtn}
-        ${signout}
-      </nav>
-      <h1 class="proj-h1">${esc(project)}</h1>
-      <div class="proj-controls">
-        <input type="search" class="proj-filter" data-proj-filter placeholder="Fuzzy filter files (title or folder path)…" aria-label="Filter files in this project" autocomplete="off" spellcheck="false">
-        <select class="cat-select" data-cat-filter aria-label="Filter by category (top-level folder)" title="Filter by category (top-level folder)">
-          ${categoryOptions}
-        </select>
-        <div class="type-chips" role="group" aria-label="Filter by type" data-type-filter>
-          <button type="button" class="chip is-active" data-type="all">All</button>
-          <button type="button" class="chip" data-type="md">MD</button>
-          <button type="button" class="chip" data-type="html">HTML</button>
+  const categories = categorySummary(list);
+  const categoryRow =
+    categories.length > 1
+      ? `<div class="category-row">
+        <span class="micro category-label">Category</span>
+        <div class="cat-chips" role="group" aria-label="Filter by category" data-cat-chips>
+          <button type="button" class="cat-chip" data-cat="all" aria-pressed="true">All <span class="cat-count">${list.length}</span></button>
+${categories
+  .map(
+    (category) =>
+      `          <button type="button" class="cat-chip" data-cat="${escAttr(category.slug)}" aria-pressed="false">${esc(category.label)} <span class="cat-count">${category.count}</span></button>`,
+  )
+  .join('\n')}
         </div>
-        <div class="sort-chips" role="group" aria-label="Sort by" data-sort-filter>
-          <button type="button" class="chip is-active" data-sort="recent" title="Most recently uploaded first">Recent</button>
-          <button type="button" class="chip" data-sort="name">Name</button>
-          <button type="button" class="chip" data-sort="type">Type</button>
-        </div>
-        <div class="expand-controls">
-          <button type="button" class="chip" data-expand-all>Expand all</button>
-          <button type="button" class="chip" data-collapse-all>Collapse all</button>
-        </div>
-      </div>
-      <p class="count" data-filter-count>${files.length} file${files.length === 1 ? '' : 's'}</p>
-    </header>
-    <div class="proj-tree" data-proj-tree>
-      ${treeHtml}
+      </div>`
+      : '';
+
+  const emptyText = list.length ? 'No artifacts match this filter.' : 'No artifacts in this project yet.';
+  const body = `${skipLink('main-project')}
+${projectTopbar(project, locked)}
+<main class="page" id="main-project" tabindex="-1">
+  <header class="project-head">
+    <h1>${esc(project)}</h1>
+    <div class="project-meta">
+        ${meta}
     </div>
-    <p class="no-results" data-no-results hidden>No files match your filter.</p>
-    ${locked ? shareModalHtml() : ''}
-  `;
+
+    <div class="project-tools">
+      <label class="search">
+        ${icon('search')}
+        <input id="project-search" type="search" data-proj-filter placeholder="Filter artifacts…" autocomplete="off" spellcheck="false" aria-label="Filter artifacts in this project">
+        <span class="kbd" aria-hidden="true">/</span>
+      </label>
+      <div class="segmented" role="group" aria-label="Filter by type" data-type-filter>
+        <button type="button" data-type="all" aria-pressed="true">All</button>
+        <button type="button" data-type="html" aria-pressed="false">HTML</button>
+        <button type="button" data-type="md" aria-pressed="false">MD</button>
+      </div>
+      <label class="select-wrap">
+        <span class="sr-only">Sort artifacts</span>
+        <select class="select" id="project-sort" data-sort-filter>
+          <option value="recent">Recent</option>
+          <option value="name">Name</option>
+          <option value="type">Type</option>
+        </select>
+        ${icon('chevron-down')}
+      </label>
+    </div>
+    ${categoryRow}
+  </header>
+
+  <section class="file-index" aria-labelledby="files-label">
+    <div class="section-head">
+      <h2 class="micro" id="files-label">All artifacts</h2>
+      <span class="section-meta" id="project-count" data-filter-count aria-live="polite">${artifactCount(list.length)}</span>
+    </div>
+    <div data-proj-tree>
+      ${trees}
+    </div>
+    <p class="empty-state" data-no-results${list.length ? ' hidden' : ''}>${icon('inbox')}<br><span data-no-results-text>${emptyText}</span></p>
+  </section>
+
+  <footer class="site-footer">
+    <span>${artifactCount(list.length)} in this project.</span>
+    <span aria-hidden="true">·</span>
+    <a href="/">All projects</a>
+  </footer>
+</main>
+${locked ? shareModalHtml(project) : ''}`;
 
   return shellLayout({
     title: project,
@@ -279,15 +468,27 @@ export function projectListingPage({ project, files, locked, ghost }) {
   });
 }
 
-/** HTML artifact viewer — iframe of raw URL + toolbar. */
-export function htmlViewerPage({ title, description, project, routePath, rawUrl, downloadName, time = null, locked, ghost }) {
-  const body = `
-    <div class="viewer-bleed">
-      <iframe class="bleed-frame" src="${escAttr(rawUrl)}" title="${escAttr(title)}"></iframe>
-    </div>
-    ${viewerBar({ project, title, rawUrl, downloadName, type: 'html', time, locked, routePath })}
-    ${locked ? shareModalHtml() : ''}
-  `;
+/* -------------------------------------------------------------- HTML viewer */
+
+/** HTML artifact viewer — full-bleed iframe of the raw URL behind the 48px bar. */
+export function htmlViewerPage({
+  title,
+  description,
+  project,
+  routePath,
+  rawUrl,
+  downloadName,
+  time = null,
+  locked,
+  ghost,
+}) {
+  const body = `${skipLink('main-viewer')}
+${viewerBar({ project, title, routePath, rawUrl, downloadName, type: 'html', time, locked })}
+<main class="viewer-main" id="main-viewer" tabindex="-1">
+  <iframe class="viewer-frame" src="${escAttr(rawUrl)}" title="${escAttr(title)}"></iframe>
+</main>
+${locked ? shareModalHtml(project) : ''}`;
+
   return shellLayout({
     title,
     description,
@@ -297,7 +498,36 @@ export function htmlViewerPage({ title, description, project, routePath, rawUrl,
   });
 }
 
-/** Markdown artifact viewer — edge-rendered body + toolbar + optional TOC + hljs. */
+/* ---------------------------------------------------------------- MD reader */
+
+/** Strip a leading <h1> from rendered Markdown (the shell renders the title instead). */
+function stripLeadingH1(html) {
+  return String(html || '').replace(/^\s*<h1\b[^>]*>[\s\S]*?<\/h1>\s*/i, '');
+}
+
+/** Rough read time in minutes (~220 wpm) from the rendered body; 0 when there is no text. */
+function readMinutesFor(html) {
+  const text = String(html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return 0;
+  const words = text.split(' ').length;
+  return Math.max(1, Math.round(words / 220));
+}
+
+function tocItems(headings) {
+  // First entry starts marked, as in the prototype; the client scrollspy takes over on scroll.
+  return headings
+    .map(
+      (h, index) =>
+        `<li><a href="#${escAttr(h.id)}" data-toc-link${index === 0 ? ' aria-current="true"' : ''}>${esc(h.text)}</a></li>`,
+    )
+    .join('\n');
+}
+
+/** Markdown artifact reader — edge-rendered body + 48px bar + progress + TOC. */
 export function mdViewerPage({
   title,
   description,
@@ -313,59 +543,77 @@ export function mdViewerPage({
   locked,
   ghost,
 }) {
-  const tagHtml =
-    Array.isArray(tags) && tags.length
-      ? `<p class="tags" aria-label="Tags">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</p>`
-      : '';
-  const timeHtml = time
-    ? timeBadge(time)
-    : (date ? `<span class="date" title="Artifact date">${esc(date)}</span>` : '');
-
-  // TOC from h2/h3 only (h1 is usually the page title).
+  const bodyHtml = stripLeadingH1(htmlBody);
   const tocHeadings = (Array.isArray(headings) ? headings : []).filter(
     (h) => h && (h.depth === 2 || h.depth === 3) && h.id && h.text,
   );
   const hasToc = tocHeadings.length > 0;
+  const tocList = hasToc
+    ? `<ul>
+${tocItems(tocHeadings)}
+      </ul>`
+    : '';
+
   const tocHtml = hasToc
     ? `<aside class="toc" aria-label="Table of contents">
-        <p class="toc-title">On this page</p>
-        <ul>
-          ${tocHeadings
-            .map(
-              (h) =>
-                `<li class="toc-d${h.depth}"><a href="#${escAttr(h.id)}">${esc(h.text)}</a></li>`,
-            )
-            .join('\n')}
-        </ul>
+        <p class="micro">On this page</p>
+        ${tocList}
       </aside>`
     : '';
+  const tocMobile = hasToc
+    ? `<details class="toc-mobile">
+          <summary><span>On this page</span>${icon('chevron-down')}</summary>
+          ${tocList}
+        </details>`
+    : '';
+
+  const readMinutes = readMinutesFor(bodyHtml);
+  const shownDate = formatDate(time?.displayDate || time?.artifactDate || date || '');
+  const kickerParts = [`<span class="type-tag">MD</span>`];
+  if (shownDate) kickerParts.push(`<span>${esc(shownDate)}</span>`);
+  if (readMinutes) {
+    kickerParts.push(
+      `<span aria-hidden="true">·</span><span>${readMinutes} min read</span>`,
+    );
+  }
+  const tagHtml =
+    Array.isArray(tags) && tags.length
+      ? `<p class="tags" aria-label="Tags">${tags
+          .map((tag) => `<span class="tag">${esc(tag)}</span>`)
+          .join('')}</p>`
+      : '';
 
   const headExtra = `
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" media="(prefers-color-scheme: light)">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" defer></script>`;
 
-  const body = `
-    <div class="md-shell">
-      <article class="md-view">
-        <header class="viewer-head">
-          <p class="type-line">
-            <span class="badge badge-md">MD</span>
-            ${timeHtml}
-          </p>
-          <h1>${esc(title)}</h1>
-          ${description ? `<p class="lede">${esc(description)}</p>` : ''}
-          ${tagHtml}
-        </header>
-        <div class="md-layout" data-has-toc="${hasToc ? 'true' : 'false'}">
-          ${tocHtml}
-          <div class="md-body">${htmlBody}</div>
+  const body = `${skipLink('main-reader')}
+${viewerBar({ project, title, routePath, rawUrl, downloadName, type: 'md', time, locked, reader: true, readMinutes, displayDate: shownDate })}
+<main class="reader" id="main-reader" tabindex="-1">
+  <div class="reader-grid">
+    ${tocHtml}
+    <article>
+      <header class="reader-head">
+        <p class="reader-kicker">${kickerParts.join('\n          ')}</p>
+        <h1>${esc(title)}</h1>
+        ${description ? `<p class="reader-lede">${esc(description)}</p>` : ''}
+        ${tagHtml}
+        <div class="reader-meta">
+          <span>${esc(project)}</span>
+          <span aria-hidden="true">·</span>
+          <span>Markdown</span>
         </div>
-      </article>
-    </div>
-    ${viewerBar({ project, title, rawUrl, downloadName, type: 'md', time, locked, routePath })}
-    ${locked ? shareModalHtml() : ''}
-  `;
+      </header>
+
+      ${tocMobile}
+
+      <div class="reader-body">${bodyHtml}</div>
+    </article>
+  </div>
+</main>
+${locked ? shareModalHtml(project) : ''}`;
+
   return shellLayout({
     title,
     description,
@@ -376,84 +624,80 @@ export function mdViewerPage({
   });
 }
 
-function viewerBar({ project, title, rawUrl, downloadName, type, time = null, locked, routePath }) {
-  const proj = encodeURIComponent(project);
-  const sharePath = routePath ? `/${routePath}` : `/${proj}`;
-  const shareBtn = locked
-    ? `<button class="vb-btn" type="button" data-share data-share-path="${escAttr(sharePath)}" data-share-project="${escAttr(project)}" data-tip="Create share link" aria-label="Create share link"><span aria-hidden="true">📤</span></button>`
-    : '';
-  const printBtn =
-    type === 'md'
-      ? `<button class="vb-btn" type="button" data-print data-tip="Print or save as PDF" aria-label="Print or save as PDF"><span aria-hidden="true">🖨</span></button>`
-      : '';
-  const signout = locked
-    ? `<a class="vb-btn" href="/logout?project=${escAttr(proj)}" data-tip="Sign out of this project" aria-label="Sign out of this project"><span aria-hidden="true">⎋</span></a>`
-    : '';
+/* -------------------------------------------------------------------- 404 */
 
-  const uploadedBadge = timeBadge(time, 'vb-uploaded');
-  return `<header class="viewer-bar">
-  <div class="vb-left">
-    <a class="vb-btn" href="/${escAttr(proj)}" data-tip="Back to project" aria-label="Back to project"><span aria-hidden="true">←</span></a>
-    <span class="vb-crumb">
-      <span class="vb-proj">${esc(project)}</span>
-      ${title ? `<span class="vb-sep" aria-hidden="true">/</span><span class="vb-title">${esc(title)}</span>` : ''}
-    </span>
-    ${uploadedBadge}
-  </div>
-  <div class="vb-right">
-    <a class="vb-btn vb-primary" href="${escAttr(rawUrl)}" download="${escAttr(downloadName)}" data-tip="Download ${escAttr(downloadName)}" aria-label="Download ${escAttr(downloadName)}">
-      <span aria-hidden="true">⬇</span><span class="vb-label">Download</span>
-    </a>
-    <button class="vb-btn" type="button" data-copy-link data-tip="Copy link to this artifact" aria-label="Copy link to this artifact">
-      <span aria-hidden="true">🔗</span>
-    </button>
-    ${shareBtn}
-    <a class="vb-btn" href="${escAttr(rawUrl)}" target="_blank" rel="noopener" data-tip="Open raw file in a new tab" aria-label="Open raw file in a new tab">
-      <span aria-hidden="true">⤢</span>
-    </a>
-    ${printBtn}
-    <a class="vb-btn" href="/" data-tip="Home — all projects" aria-label="Home — all projects">
-      <span aria-hidden="true">🏠</span>
-    </a>
-    ${signout}
-  </div>
-</header>`;
+/**
+ * Shared in-shell 404 card (used by the content router for unknown content routes).
+ * `project` is accepted for routing context but the card always links home.
+ * @param {object} [opts]
+ * @param {string} [opts.project]
+ */
+export function notFoundPage({ project = '' } = {}) {
+  const body = `${skipLink('main-not-found')}
+${brandTopbar()}
+<main class="login-wrap" id="main-not-found" tabindex="-1">
+  <section class="login-card" aria-labelledby="notfound-title">
+    <p class="login-kicker">404</p>
+    <h1 id="notfound-title">That page doesn’t exist.</h1>
+    <p class="login-lede">The link may be stale, or the artifact was unpublished.</p>
+    <a class="btn btn--primary btn--block login-submit" href="/">Back to the gallery</a>
+  </section>
+</main>`;
+
+  return shellLayout({
+    title: 'Not found — Artifacts',
+    description: 'Page not found.',
+    body,
+    noindex: true,
+  });
 }
 
-function shareModalHtml() {
-  return `<div class="share-overlay" id="share-modal" hidden>
-  <div class="share-card" role="dialog" aria-modal="true" aria-labelledby="share-title">
-    <button class="share-close" type="button" data-share-close aria-label="Close">×</button>
-    <h2 id="share-title">Create share link</h2>
-    <p class="share-lede">Anyone with this link can view this project without a password.</p>
-    <div class="share-ttl-row">
-      <label class="share-label" for="share-ttl">Link duration</label>
-      <select class="share-select" id="share-ttl" data-share-ttl>
-        <option value="24h">24 hours</option>
-        <option value="7d">7 days</option>
-        <option value="30d" selected>30 days</option>
-        <option value="180d">180 days</option>
-      </select>
+/* ------------------------------------------------------------- share modal */
+
+function shareModalHtml(project) {
+  return `<div class="modal-overlay" id="share-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="share-title" aria-describedby="share-lede" tabindex="-1">
+    <div class="modal-head">
+      <div>
+        <h2 id="share-title">Create share link</h2>
+        <p class="modal-lede" id="share-lede">Anyone with this link can view <strong>${esc(project)}</strong> without a password.</p>
+      </div>
+      <button class="icon-btn modal-close" type="button" data-share-close data-tip="Close" aria-label="Close">${icon('close')}</button>
     </div>
-    <div class="share-url-row" data-share-result hidden>
-      <input class="share-url-input" id="share-url" readonly aria-label="Share URL">
-      <button class="btn btn-primary share-copy-btn" type="button" data-share-copy>Copy</button>
+
+    <div class="field" style="margin-top:0">
+      <span class="field-label" id="ttl-label">Link duration</span>
+      <div class="ttl-group" role="group" aria-labelledby="ttl-label">
+        <button type="button" data-ttl="24h" aria-pressed="false">24 hours</button>
+        <button type="button" data-ttl="7d" aria-pressed="false">7 days</button>
+        <button type="button" data-ttl="30d" aria-pressed="true">30 days</button>
+        <button type="button" data-ttl="180d" aria-pressed="false">180 days</button>
+      </div>
     </div>
-    <p class="share-error" data-share-error hidden></p>
-    <button class="btn btn-primary share-generate-btn" type="button" data-share-generate>Generate link</button>
-    <p class="share-note">The chosen duration controls both link validity and how long the recipient's access lasts. Changing the project password or rotating the site secret revokes outstanding links; individual revocation is not supported.</p>
+
+    <div class="modal-actions">
+      <button class="btn btn--primary btn--block" type="button" id="share-generate">Create link</button>
+    </div>
+
+    <div class="share-result" id="share-result" hidden>
+      <div class="share-url-row">
+        <code class="share-url" id="share-url" tabindex="0" aria-label="Share URL"></code>
+        <button class="btn" type="button" data-copy data-copy-target="#share-url">${icon('link')}<span>Copy link</span></button>
+      </div>
+    </div>
+
+    <p class="form-error" data-share-error role="alert" hidden></p>
+    <p class="modal-note">Expires automatically. Individual links can’t be revoked; changing the project password revokes all of them.</p>
   </div>
 </div>`;
 }
 
-function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+/** Brand header markup shared with the auth-style pages (ghost unlock, expired share, 404). */
+export function brandHeader(actions = themePickerButton(), pill = '') {
+  return brandTopbar(actions, pill);
 }
 
-function escAttr(s) {
-  return esc(s).replace(/'/g, '&#39;');
+/** Ghost-mode pill for auth/gallery-style edge pages. */
+export function ghostModePill() {
+  return modePill();
 }

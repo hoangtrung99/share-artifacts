@@ -1,5 +1,11 @@
 ---
+// Shell layout shared by every static Astro page (gallery, login, ghost, 404).
+//
+// The pre-paint theme bootstrap runs inline in <head> so the chosen palette is on <html>
+// before first paint. Icon sprite + global chrome (theme picker, More menu, toast, tooltip)
+// come from functions/_ui.js — the same primitives the edge renderers use.
 import '../../shell-assets/site.css';
+import { ICON_SPRITE, THEME_BOOTSTRAP, shellChrome } from '../../functions/_ui.js';
 
 interface Props {
   title: string;
@@ -8,19 +14,40 @@ interface Props {
 }
 
 const { title, description, fullBleed = false } = Astro.props;
+const chrome = shellChrome();
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="coast" data-scheme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" id="theme-color" content="#0a1119" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link
+      rel="preload"
+      href="/assets/fonts/plex-sans-var-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/assets/fonts/newsreader-var-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <script is:inline set:html={THEME_BOOTSTRAP}></script>
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
     <slot name="head" />
   </head>
-  <body class={fullBleed ? 'bleed' : ''}>
-    {fullBleed ? <slot /> : <main class="container"><slot /></main>}
+  <body class={fullBleed ? 'bleed' : undefined}>
+    <Fragment set:html={ICON_SPRITE} />
+    <slot />
+    <Fragment set:html={chrome} />
+    <script src="/assets/viewer.js" defer></script>
   </body>
 </html>

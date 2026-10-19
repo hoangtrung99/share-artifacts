@@ -207,8 +207,10 @@ test('markdown viewer renders at the edge with the upload time', async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Notes from the field/);
-  assert.match(html, /<h1 id="hello">Hello<\/h1>/);
-  assert.match(html, /↑ 2026-10-17/);
+  // The shell header owns the H1 now; the Markdown body starts at the first H2.
+  assert.doesNotMatch(html, /<h1 id="hello">Hello<\/h1>/);
+  assert.match(html, /17 Oct 2026/);
+  assert.match(html, /class="reader-body"/);
   assert.match(response.headers.get('cache-control'), /public, max-age=60/);
 });
 
@@ -217,7 +219,7 @@ test('HTML viewer iframes the raw URL and shows upload time', async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /src="\/guides\/reports\/new.html"/);
-  assert.match(html, /↑ 2026-10-18/);
+  assert.match(html, /18 Oct 2026/);
   assert.match(html, /New reliable report/);
 });
 
@@ -226,7 +228,7 @@ test('viewer falls back to an R2 probe for files missing from the catalog', asyn
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /probe/);
-  assert.match(html, /↑ 2026-09-30/);
+  assert.match(html, /30 Sep 2026/);
 });
 
 test('catalog entries whose R2 object disappeared render a stale marker', async () => {

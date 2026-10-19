@@ -1,95 +1,121 @@
 ---
-// Styled login page — served as a static asset at /login. GET requests land here (the
-// login.js function only handles POST, so GET falls through to this page).
+// Login page — served as a static asset at /login. GET requests land here (functions/login.js
+// only handles POST, so GET falls through to this page).
 //
-// This is a STATIC page: it is rendered once at build time and cannot read per-request query
-// params in frontmatter. So `project`, `next`, and the `error` flag are read CLIENT-SIDE from
-// location.search and injected into the form (hidden fields) + the visible project name + the
-// error message. The form POSTs back to /login (handled by functions/login.js).
+// This page is rendered once at build time and cannot read per-request query params in
+// frontmatter. So `project`, `next` and `error` are read CLIENT-SIDE from location.search and
+// injected into the form (hidden fields) + the visible project name + the error state.
+// The form POSTs back to /login (handled by functions/login.js).
 import Base from '../layouts/Base.astro';
+import { icon, themePickerButton } from '../../functions/_ui.js';
 ---
 
 <Base title="Sign in — Artifacts" description="Password required to view this protected project.">
-  <section class="login" aria-labelledby="login-title">
-    <div class="login-card">
-      <p class="login-kicker">
-        <span class="lock-dot" aria-hidden="true">🔒</span> Protected project
-      </p>
-      <h1 id="login-title">Sign in to <span class="login-project" data-project>this project</span></h1>
-      <p class="login-lede">Enter the password to view <span class="login-project-inline" data-project>this project</span>.</p>
+  <a class="skip-link" href="#main-login">Skip to content</a>
 
-      <p class="login-error" data-error role="alert" hidden>
-        Incorrect password. Please try again.
+  <header class="topbar" data-topbar>
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Artifacts — home">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span>Artifacts</span>
+        <span class="brand-host">artifacts.hoangtrung.dev</span>
+      </a>
+      <span class="topbar-spacer"></span>
+      <div class="topbar-actions" set:html={themePickerButton()} />
+    </div>
+  </header>
+
+  <main class="login-wrap" id="main-login" tabindex="-1">
+    <section class="login-card" aria-labelledby="login-title">
+      <h1 id="login-title">Sign in to <em data-project>this project</em></h1>
+      <p class="login-lede">This project is password protected. Enter the password to view its artifacts.</p>
+
+      <p class="form-error" id="login-error" role="alert" hidden>
+        <Fragment set:html={icon('alert')} />
+        <span>That password doesn’t match. Try again.</span>
       </p>
 
-      <form class="login-form" method="POST" action="/login" autocomplete="off">
+      <form class="login-form" method="POST" action="/login">
         <input type="hidden" name="project" data-field-project value="" />
         <input type="hidden" name="next" data-field-next value="/" />
-        <label class="login-label" for="password">Password</label>
-        <div class="login-input-wrap">
-          <input
-            class="login-input"
-            id="password"
-            name="password"
-            type="password"
-            required
-            autofocus
-            autocomplete="current-password"
-            aria-describedby="login-note"
-          />
-          <button type="button" class="pw-toggle" data-pw-toggle aria-label="Show password" aria-pressed="false">
-            <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-              <line x1="1" y1="1" x2="23" y2="23" />
-            </svg>
-          </button>
+        <div class="field">
+          <label class="field-label" for="password">Password</label>
+          <div class="input-wrap">
+            <input
+              class="text-input"
+              id="password"
+              name="password"
+              type="password"
+              required
+              autofocus
+              autocomplete="current-password"
+              aria-describedby="login-error"
+            />
+            <button class="pw-toggle" type="button" data-pw-toggle aria-label="Show password" aria-pressed="false">
+              <Fragment set:html={icon('eye', 'icon icon-on')} />
+              <Fragment set:html={icon('eye-off', 'icon icon-off')} />
+            </button>
+          </div>
         </div>
-        <button class="btn btn-primary login-submit" type="submit">Sign in</button>
+        <button class="btn btn--primary btn--block login-submit" type="submit">Continue</button>
       </form>
 
-      <p class="login-note" id="login-note">
-        Access is granted for 180 days on this device. <a href="/">Back to gallery</a>
-      </p>
-    </div>
-  </section>
+      <p class="login-note">Access lasts 180 days on this device. <a href="/">Back to gallery</a></p>
+    </section>
+  </main>
 
   <script is:inline>
-    // Read per-request context from the URL (static page → no server-side params).
-    const params = new URLSearchParams(location.search);
-    const rawProject = params.get('project') || '';
-    const project = rawProject.trim();
-    const next = params.get('next') || (project ? '/' + project + '/' : '/');
-    const hasError = params.get('error') === '1';
+    (function () {
+      'use strict';
 
-    if (project) {
-      for (const el of document.querySelectorAll('[data-project]')) el.textContent = project;
-      document.title = 'Sign in to ' + project + ' — Artifacts';
-    }
-    const pf = document.querySelector('[data-field-project]');
-    if (pf) pf.value = project;
-    const nf = document.querySelector('[data-field-next]');
-    // Only keep same-origin absolute paths in the hidden next field (defense in depth; the
-    // function re-sanitizes server-side too).
-    if (nf) nf.value = next.startsWith('/') && next[1] !== '/' ? next : (project ? '/' + project + '/' : '/');
+      const params = new URLSearchParams(location.search);
+      const project = (params.get('project') || '').trim();
+      const nextParam = params.get('next') || '';
+      // Only keep same-origin absolute paths in the hidden next field (defense in depth; the
+      // function re-sanitizes server-side too).
+      const next = nextParam.startsWith('/') && nextParam[1] !== '/'
+        ? nextParam
+        : (project ? '/' + project + '/' : '/');
+      const hasError = params.get('error') === '1';
 
-    const err = document.querySelector('[data-error]');
-    if (err && hasError) err.hidden = false;
+      if (project) {
+        for (const el of document.querySelectorAll('[data-project]')) el.textContent = project;
+        document.title = 'Sign in to ' + project + ' — Artifacts';
+      }
 
-    // Show/hide password toggle: flips the input type + the eye/eye-off icon (CSS keys off aria-pressed).
-    const pwInput = document.getElementById('password');
-    const pwToggle = document.querySelector('[data-pw-toggle]');
-    if (pwInput && pwToggle) {
-      pwToggle.addEventListener('click', () => {
-        const show = pwInput.type === 'password';
-        pwInput.type = show ? 'text' : 'password';
-        pwToggle.setAttribute('aria-pressed', String(show));
-        pwToggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
-        pwInput.focus();
-      });
-    }
+      const projectField = document.querySelector('[data-field-project]');
+      if (projectField) projectField.value = project;
+      const nextField = document.querySelector('[data-field-next]');
+      if (nextField) nextField.value = next;
+
+      const input = document.getElementById('password');
+      const error = document.getElementById('login-error');
+
+      if (hasError) {
+        if (error) error.hidden = false;
+        if (input) {
+          input.setAttribute('aria-invalid', 'true');
+          input.focus();
+        }
+      }
+
+      if (input) {
+        input.addEventListener('input', function () {
+          input.removeAttribute('aria-invalid');
+        });
+      }
+
+      // Show/hide password: flip the input type + the eye icons (CSS keys off aria-pressed).
+      const toggle = document.querySelector('[data-pw-toggle]');
+      if (input && toggle) {
+        toggle.addEventListener('click', function () {
+          const show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+          toggle.setAttribute('aria-pressed', String(show));
+          toggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+          input.focus();
+        });
+      }
+    })();
   </script>
 </Base>

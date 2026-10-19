@@ -1,5 +1,5 @@
 // GET  /ghost      — master password unlock for hidden (ghost) projects.
-//                    Without a valid cf_ghost cookie → render the login form (inline HTML).
+//                    Without a valid cf_ghost cookie → render the unlock form on the shared shell.
 //                    With a valid cf_ghost cookie → next() (falls through to static ghost.astro gallery).
 // POST /ghost      — verify master password, issue cf_ghost signed cookie, 302 to /ghost.
 //
@@ -25,40 +25,60 @@ import {
   GHOST_TOKEN_TTL,
 } from './_auth.js';
 import { htmlResponse, redirectResponse } from './_http.js';
+import { shellLayout, brandHeader, ghostModePill } from './_render.js';
+import { icon } from './_ui.js';
 
-// --- HTML: login form (inline CSS matching site design tokens) ---
+// --- HTML: ghost unlock form on the shared shell (login-card vocabulary) ---
 function loginPage(hasError) {
-  const errHtml = hasError
-    ? `<p class="error show">Incorrect password. Please try again.</p>`
-    : `<p class="error"></p>`;
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Ghost mode — Artifacts</title><style>
-:root{--bg:#fff;--surface:#fff;--border:#e4e7ec;--text:#1a1d23;--muted:#5b6472;--accent:#2563eb;--radius:10px}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--surface:#161b22;--border:#2a313c;--text:#e6e9ee;--muted:#9aa4b2;--accent:#6ea8fe}}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:2rem}
-.card{max-width:400px;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.75rem}
-.kicker{font-size:.72rem;font-weight:600;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;display:inline-block;margin:0 0 .9rem}
-h1{font-size:1.4rem;margin:0 0 .35rem;letter-spacing:-0.01em}
-.lede{color:var(--muted);font-size:.95rem;margin:0 0 1.25rem}
-.error{color:#e5484d;font-size:.88rem;margin:0 0 1rem;display:none}.error.show{display:block}
-@media(prefers-color-scheme:dark){.error{color:#ff9b8f}}
-form{display:flex;flex-direction:column;gap:.55rem}
-label{font-size:.82rem;font-weight:600}
-input{padding:.6rem .7rem;border:1px solid var(--border);border-radius:8px;font-size:1rem;background:var(--bg);color:var(--text)}input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-button{padding:.65rem 1rem;font-size:.95rem;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;margin-top:.4rem}button:hover{filter:brightness(1.1)}
-.note{color:var(--muted);font-size:.82rem;margin:1rem 0 0}
-a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-</style></head><body><div class="card"><span class="kicker">👻 Ghost mode</span><h1>Hidden projects</h1><p class="lede">Enter the master password to reveal hidden projects.</p>${errHtml}<form method="POST" action="/ghost" autocomplete="off"><label for="pw">Master password</label><input id="pw" name="password" type="password" required autofocus autocomplete="current-password"><button type="submit">Unlock</button></form><p class="note"><a href="/">← Back to gallery</a></p></div></body></html>`;
-  return html;
+  const inputAttrs = hasError
+    ? ' aria-invalid="true" aria-describedby="ghost-unlock-error"'
+    : '';
+  const body = `<a class="skip-link" href="#main-ghostauth">Skip to content</a>
+${brandHeader(undefined, ghostModePill())}
+<main class="login-wrap" id="main-ghostauth" tabindex="-1">
+  <section class="login-card" aria-labelledby="ghost-unlock-title">
+    <h1 id="ghost-unlock-title">Unlock <em>ghost mode</em></h1>
+    <p class="login-lede">Enter the master password to see hidden projects on this device.</p>
+
+    <p class="form-error" id="ghost-unlock-error" role="alert"${hasError ? '' : ' hidden'}>
+      ${icon('alert')}
+      <span>That password doesn’t match. Try again.</span>
+    </p>
+
+    <form class="login-form" method="POST" action="/ghost" autocomplete="off">
+      <div class="field">
+        <label class="field-label" for="ghost-password">Master password</label>
+        <div class="input-wrap">
+          <input class="text-input" id="ghost-password" name="password" type="password" required autofocus autocomplete="current-password"${inputAttrs}>
+          <button class="pw-toggle" type="button" data-ghost-pw-toggle aria-label="Show password" aria-pressed="false">
+            ${icon('eye', 'icon icon-on')}
+            ${icon('eye-off', 'icon icon-off')}
+          </button>
+        </div>
+      </div>
+      <button class="btn btn--primary btn--block login-submit" type="submit">Unlock</button>
+    </form>
+
+    <p class="login-note">
+      Ghost access lasts 7 days on this device. <a href="/">Back to gallery</a>
+    </p>
+  </section>
+</main>`;
+  return shellLayout({ title: 'Ghost mode — Artifacts', body, noindex: true });
 }
 
 // --- HTML: config error (GHOST_MASTER_PW or COOKIE_SECRET missing) ---
 function configErrorPage() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>Ghost — Not configured</title><style>
-body{margin:0;font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:2rem;color:#1a1d23}
-@media(prefers-color-scheme:dark){body{background:#0e1116;color:#e6e9ee}}
-.card{max-width:400px;text-align:center}.card h1{font-size:1.3rem}
-.card p{opacity:.7;font-size:.9rem}
-</style></head><body><div class="card"><h1>👻 Ghost mode not configured</h1><p>Ghost projects exist but the master password is not set. Contact the site owner.</p></div></body></html>`;
+  const body = `<a class="skip-link" href="#main-ghost-config">Skip to content</a>
+${brandHeader(undefined, ghostModePill())}
+<main class="login-wrap" id="main-ghost-config" tabindex="-1">
+  <section class="login-card" aria-labelledby="ghost-config-title">
+    <p class="login-kicker">${icon('alert')} Configuration</p>
+    <h1 id="ghost-config-title">Ghost mode not configured</h1>
+    <p class="login-lede">Ghost projects exist, but the master password is not set. Contact the site owner.</p>
+  </section>
+</main>`;
+  return shellLayout({ title: 'Ghost — Not configured', body, noindex: true });
 }
 
 export const onRequestGet = async ({ request, env, next }) => {

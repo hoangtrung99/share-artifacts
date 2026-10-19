@@ -175,8 +175,10 @@ CI also runs typecheck/test/build on push and PR.
 ### Metadata
 
 - **Markdown:** frontmatter `title`, `description`, `tags`, `date`.
-- **HTML:** `<title>`, `<meta name="description">`, optional `<meta name="date" content="YYYY-MM-DD">`.
-- Listing dates come from the time model above, not from these tags.
+- **HTML:** `<title>`, `<meta name="description">`, optional `<meta name="date" content="YYYY-MM-DD">`,
+  optional `<meta name="tags" content="infra, networking">`.
+- Listing dates come from the time model above, not from these tags. Tags also drive the category
+  filter; without tags the top-level folder is used, and root files count as `General`.
 
 ## Password protection
 
@@ -222,17 +224,43 @@ request must be same-origin. TTL options: **24h / 7d / 30d / 180d**. Stateless H
 `COOKIE_SECRET` or changing the project password revokes outstanding links; individual revocation
 is not supported.
 
+## Shell UI
+
+The shell is a thin, self-hosted design system shared by the Astro pages and the Function-rendered
+content routes (`shell-assets/site.css`, `shell-assets/viewer.js`, `functions/_ui.js`).
+
+- **Themes:** five palettes — Coast (default, dark blue), Forest (dark green), Ink (dark neutral),
+  Paper (light warm), Sepia (light parchment). The picker lives in every topbar; the choice is
+  persisted in `localStorage['artifacts-theme']` and applied before paint by an inline bootstrap
+  (`?theme=` overrides it for review links). Every palette is built from the same token contract and
+  clears WCAG AA for text and control boundaries.
+- **Fonts:** self-hosted variable Newsreader (display + reading, roman/italic) and IBM Plex Sans
+  (UI), latin/latin-ext/vietnamese subsets under `public/assets/fonts/`.
+- **Compact viewer/reader bar (48px):** identity cluster (back, breadcrumb, mono artifact meta) and
+  action cluster (neutral Download, copy, Share for protected projects, theme picker, More). The
+  More menu carries Open raw / Print / Theme / Sign out per context; MD pages get a 2px reading
+  progress line. Mobile keeps the artifact title and 44px controls and folds secondary actions into
+  More.
+- **Category filter:** multi-select chips on the project listing. A category is an artifact `tag`
+  when present; otherwise the top-level folder; root files fall back to `General`. Chips are hidden
+  when a project has fewer than two categories, counts are rendered server-side, state lives in
+  `?cat=slug,slug` (OR semantics) and combines with text/type/sort.
+- **Gallery:** project index (activity-sorted, protected last) plus a "Recently added" feed from
+  `/api/catalog` (`updatedAt`, `categories`, `recent[]`; protected projects leak none of them).
+- **States:** skeleton loading, empty vs filtered-empty, retryable error, designed 404 shell for
+  unknown content routes.
+
 ## Content routes, caching and headers
 
 Served by `functions/[[path]].js` from R2:
 
 | Path | Behavior |
 |------|----------|
-| `/<project>/` | Project listing with folder tree + client filters (text, category, type, sort; not Pagefind) |
+| `/<project>/` | Project listing with folder tree + client filters (text, category chips, type, sort; not Pagefind) |
 | `/<project>/<file>` | HTML: iframe viewer · MD: edge-rendered (TOC, highlight.js CDN, GFM task lists) |
 | `/<project>/<file>.html\|md` | Raw object |
 | `/api/*` | JSON APIs; unknown paths return JSON 404 |
-| `/<unknown-project>/…` | plain-text 404 from the content catch-all |
+| `/<unknown-project>/…` | shared HTML 404 shell from the content catch-all |
 | anything else | `dist/404.html` (static shell fall-through) |
 
 - Cache-Control: public content `public, max-age=60`; protected/ghost content **`private, no-store`**

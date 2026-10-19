@@ -1,108 +1,321 @@
 ---
-// Home gallery — thin shell. Project list is fetched client-side from /api/catalog
-// (R2-backed). No build-time artifact enumeration.
+// Gallery index. The project + recent lists are fetched client-side from /api/catalog
+// (R2-backed, no build-time enumeration). Rows are built with DOM APIs — catalog strings
+// (names, titles) are never interpolated into HTML.
 import Base from '../layouts/Base.astro';
+import { icon, themePickerButton } from '../../functions/_ui.js';
 ---
 
-<Base title="Artifacts" description="Shared artifacts — browse by project.">
-  <header class="gallery-head">
-    <h1>Artifacts</h1>
-    <p class="lede">Browse by project. Protected projects need a password to open their files.</p>
-    <div class="proj-controls" style="margin-top:1rem">
-      <input
-        type="search"
-        class="proj-filter"
-        id="gallery-filter"
-        placeholder="Filter projects…"
-        aria-label="Filter projects"
-        autocomplete="off"
-        spellcheck="false"
-      />
+<Base title="Artifacts" description="Guides, reports, and translations — a personal archive of shared artifacts, each with a stable link.">
+  <a class="skip-link" href="#main-gallery">Skip to content</a>
+
+  <header class="topbar" data-topbar>
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Artifacts — home">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span>Artifacts</span>
+        <span class="brand-host">artifacts.hoangtrung.dev</span>
+      </a>
+      <span class="topbar-spacer"></span>
+      <div class="topbar-actions" set:html={themePickerButton()} />
     </div>
-    <p class="count" id="gallery-count">Loading projects…</p>
   </header>
 
-  <ul class="cards" id="gallery-cards"></ul>
-  <p class="no-results" id="gallery-empty" hidden>No projects match your filter.</p>
-  <p class="no-results" id="gallery-error" hidden></p>
+  <main class="page" id="main-gallery" tabindex="-1">
+    <header class="home-head">
+      <h1 class="display">Artifacts</h1>
+      <p class="lede">Guides, reports, and translations. Each keeps a stable link.</p>
+      <div class="home-tools">
+        <label class="search">
+          <Fragment set:html={icon('search')} />
+          <input
+            id="gallery-search"
+            type="search"
+            placeholder="Search projects and artifacts…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Search projects and artifacts"
+          />
+          <span class="kbd" aria-hidden="true">/</span>
+        </label>
+        <p class="count" id="gallery-count" aria-live="polite">Loading projects…</p>
+      </div>
+    </header>
+
+    <section class="index" aria-labelledby="projects-label">
+      <div class="section-head">
+        <h2 class="micro" id="projects-label">Projects</h2>
+        <span class="section-meta">sorted by activity</span>
+      </div>
+
+      <div id="gallery-skeleton" class="skeleton-list" aria-hidden="true">
+        <div class="skeleton-row skeleton-row--proj"><span class="sk" style="width:32%"></span><span class="sk sk--short"></span></div>
+        <div class="skeleton-row skeleton-row--proj"><span class="sk" style="width:24%"></span><span class="sk sk--short"></span></div>
+        <div class="skeleton-row skeleton-row--proj"><span class="sk" style="width:28%"></span><span class="sk sk--short"></span></div>
+        <div class="skeleton-row skeleton-row--proj"><span class="sk" style="width:20%"></span><span class="sk sk--short"></span></div>
+      </div>
+
+      <div id="gallery-error-state" class="state-block" role="alert" hidden>
+        <Fragment set:html={icon('alert')} />
+        <p><strong>Couldn’t load projects.</strong> Check your connection, then try again.</p>
+        <button class="btn" type="button" data-retry>Retry</button>
+      </div>
+
+      <ul class="index-list" id="project-list" hidden></ul>
+
+      <p class="empty-state" id="gallery-empty" hidden>
+        <Fragment set:html={icon('inbox')} /><br />
+        <span id="gallery-empty-text">No projects yet.</span>
+      </p>
+    </section>
+
+    <section class="recent" id="recent-section" aria-labelledby="recent-label" hidden>
+      <div class="section-head">
+        <h2 class="micro" id="recent-label">Recently added</h2>
+        <span class="section-meta">latest 5</span>
+      </div>
+      <ul class="recent-list" id="recent-list"></ul>
+      <p class="empty-state" id="recent-empty" hidden>
+        <Fragment set:html={icon('inbox')} /><br />Nothing recent matches that search.
+      </p>
+    </section>
+
+    <footer class="site-footer">
+      <span>Protected projects ask for a password once per device.</span>
+      <span aria-hidden="true">·</span>
+      <a href="/ghost">Ghost access</a>
+    </footer>
+  </main>
+
+  <script is:inline>
+    (function () {
+      'use strict';
+
+      const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const main = document.getElementById('main-gallery');
+      const skeleton = document.getElementById('gallery-skeleton');
+      const errorState = document.getElementById('gallery-error-state');
+      const projectList = document.getElementById('project-list');
+      const recentSection = document.getElementById('recent-section');
+      const recentList = document.getElementById('recent-list');
+      const galleryEmpty = document.getElementById('gallery-empty');
+      const galleryEmptyText = document.getElementById('gallery-empty-text');
+      const recentEmpty = document.getElementById('recent-empty');
+      const countEl = document.getElementById('gallery-count');
+      const searchEl = document.getElementById('gallery-search');
+      const retryBtn = errorState.querySelector('[data-retry]');
+
+      const state = { projects: [], recent: [] };
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.textContent = text;
+        return node;
+      }
+
+      function svgIcon(name) {
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('class', 'icon' + (name === 'chevron-right' ? ' chev' : ''));
+        svg.setAttribute('aria-hidden', 'true');
+        const use = document.createElementNS(NS, 'use');
+        use.setAttribute('href', '#i-' + name);
+        svg.appendChild(use);
+        return svg;
+      }
+
+      // "2026-09-25" / ISO timestamp -> "25 Sep 2026" (date part kept as authored, no TZ shift).
+      function formatDate(value) {
+        if (!value) return '';
+        const raw = String(value);
+        const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+        let year;
+        let month;
+        let day;
+        if (match) {
+          year = Number(match[1]);
+          month = Number(match[2]);
+          day = Number(match[3]);
+        } else {
+          const date = new Date(raw);
+          if (Number.isNaN(date.getTime())) return raw;
+          year = date.getUTCFullYear();
+          month = date.getUTCMonth() + 1;
+          day = date.getUTCDate();
+        }
+        if (month < 1 || month > 12) return raw;
+        return day + ' ' + MONTHS[month - 1] + ' ' + year;
+      }
+
+      function countLabel(count) {
+        if (typeof count !== 'number') return 'No artifacts yet';
+        return count + ' artifact' + (count === 1 ? '' : 's');
+      }
+
+      // Protected last; active projects first (updatedAt desc); empty ones last; name tie-break.
+      function byActivity(a, b) {
+        if (Boolean(a.protected) !== Boolean(b.protected)) return a.protected ? 1 : -1;
+        const aTime = a.updatedAt ? String(a.updatedAt) : '';
+        const bTime = b.updatedAt ? String(b.updatedAt) : '';
+        if (aTime !== bTime) return bTime.localeCompare(aTime);
+        return String(a.name).localeCompare(String(b.name));
+      }
+
+      function projectRow(project) {
+        const li = el('li');
+        const searchParts = [project.name];
+        if (Array.isArray(project.categories)) searchParts.push.apply(searchParts, project.categories);
+        if (project.protected) searchParts.push('protected');
+        li.dataset.search = searchParts.filter(Boolean).join(' ').toLowerCase();
+
+        const link = el('a', 'proj-row');
+        link.href = '/' + encodeURIComponent(project.name) + '/';
+        link.appendChild(el('span', 'proj-name', project.name));
+
+        if (project.protected) {
+          const meta = el('span', 'proj-meta status');
+          meta.appendChild(svgIcon('lock'));
+          meta.appendChild(document.createTextNode('Password protected'));
+          link.appendChild(meta);
+        } else {
+          const meta = el('span', 'proj-meta');
+          if (project.updatedAt) {
+            meta.appendChild(el('span', null, countLabel(project.count)));
+            meta.appendChild(el('span', 'sep'));
+            meta.appendChild(el('span', null, 'Updated ' + formatDate(project.updatedAt)));
+          } else {
+            meta.appendChild(el('span', null, 'No artifacts yet'));
+          }
+          link.appendChild(meta);
+        }
+
+        link.appendChild(svgIcon('chevron-right'));
+        li.appendChild(link);
+        return li;
+      }
+
+      function recentRow(item) {
+        const li = el('li');
+        const searchParts = [item.title, item.project, item.category, item.type];
+        li.dataset.search = searchParts.filter(Boolean).join(' ').toLowerCase();
+
+        const link = el('a', 'recent-row');
+        const routePath = String(item.routePath || '').split('/').filter(Boolean);
+        link.href = '/' + routePath.map(encodeURIComponent).join('/');
+        link.appendChild(el('span', 'recent-date', formatDate(item.date)));
+        link.appendChild(el('span', 'recent-title', item.title || item.routePath || 'Untitled'));
+        link.appendChild(el('span', 'recent-proj', item.project || ''));
+        link.appendChild(svgIcon('chevron-right'));
+        li.appendChild(link);
+        return li;
+      }
+
+      function setLoading(loading) {
+        main.setAttribute('aria-busy', loading ? 'true' : 'false');
+        skeleton.hidden = !loading;
+        if (loading) {
+          projectList.hidden = true;
+          recentSection.hidden = true;
+          galleryEmpty.hidden = true;
+          errorState.hidden = true;
+          countEl.textContent = 'Loading projects…';
+        }
+      }
+
+      function paint() {
+        projectList.replaceChildren.apply(projectList, state.projects.map(projectRow));
+        recentList.replaceChildren.apply(recentList, state.recent.map(recentRow));
+        projectList.hidden = state.projects.length === 0;
+        recentSection.hidden = state.recent.length === 0;
+        recentEmpty.hidden = true;
+        galleryEmpty.hidden = state.projects.length !== 0;
+        galleryEmptyText.textContent = 'No projects yet.';
+        filterGallery();
+      }
+
+      function filterGallery() {
+        const query = (searchEl.value || '').trim().toLowerCase();
+        let shown = 0;
+        for (const li of projectList.children) {
+          const hit = !query || (li.dataset.search || '').indexOf(query) !== -1;
+          li.hidden = !hit;
+          if (hit) shown += 1;
+        }
+        let recentShown = 0;
+        for (const li of recentList.children) {
+          const hit = !query || (li.dataset.search || '').indexOf(query) !== -1;
+          li.hidden = !hit;
+          if (hit) recentShown += 1;
+        }
+
+        const total = state.projects.length;
+        countEl.textContent = query
+          ? shown + ' of ' + total + ' project' + (total === 1 ? '' : 's')
+          : total + ' project' + (total === 1 ? '' : 's');
+
+        recentEmpty.hidden = !(query && state.recent.length !== 0 && recentShown === 0);
+        if (shown === 0) {
+          galleryEmpty.hidden = false;
+          galleryEmptyText.textContent = !query
+            ? 'No projects yet.'
+            : recentShown > 0
+              ? 'No projects match — matching artifacts are listed below.'
+              : 'No projects match that search.';
+        } else {
+          galleryEmpty.hidden = true;
+        }
+      }
+
+      function showError() {
+        main.setAttribute('aria-busy', 'false');
+        skeleton.hidden = true;
+        projectList.hidden = true;
+        recentSection.hidden = true;
+        galleryEmpty.hidden = true;
+        errorState.hidden = false;
+        countEl.textContent = 'Unavailable';
+      }
+
+      async function load() {
+        setLoading(true);
+        try {
+          const response = await fetch('/api/catalog', { headers: { accept: 'application/json' } });
+          if (!response.ok) throw new Error('Catalog request failed (' + response.status + ')');
+          const data = await response.json();
+          state.projects = (Array.isArray(data.projects) ? data.projects : [])
+            .filter((project) => project && !project.ghost)
+            .sort(byActivity);
+          state.recent = (Array.isArray(data.recent) ? data.recent : []).slice(0, 5);
+          setLoading(false);
+          paint();
+        } catch (err) {
+          showError();
+          console.error('[gallery]', err);
+        }
+      }
+
+      searchEl.addEventListener('input', filterGallery);
+
+      retryBtn.addEventListener('click', load);
+
+      document.addEventListener('keydown', function (event) {
+        const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+        const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+        if (!typing && (event.key === '/' || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k'))) {
+          event.preventDefault();
+          searchEl.focus();
+          searchEl.select();
+          return;
+        }
+        if (event.key === 'Escape' && document.activeElement === searchEl) {
+          searchEl.value = '';
+          filterGallery();
+          searchEl.blur();
+        }
+      });
+
+      load();
+    })();
+  </script>
 </Base>
-
-<script is:inline>
-  (async function () {
-    const cards = document.getElementById('gallery-cards');
-    const countEl = document.getElementById('gallery-count');
-    const emptyEl = document.getElementById('gallery-empty');
-    const errorEl = document.getElementById('gallery-error');
-    const filterEl = document.getElementById('gallery-filter');
-    let projects = [];
-
-    function render(list) {
-      cards.innerHTML = '';
-      for (const p of list) {
-        const li = document.createElement('li');
-        li.className = 'card';
-        li.dataset.name = p.name.toLowerCase();
-        const countLabel =
-          p.protected || p.count == null
-            ? p.protected
-              ? 'Protected — password required to view files.'
-              : 'Open — click to view files.'
-            : 'Open — click to view files.';
-        const meta =
-          !p.protected && p.count != null
-            ? `<span class="card-date">${p.count} file${p.count === 1 ? '' : 's'}</span>`
-            : '';
-        li.innerHTML =
-          `<a class="card-link" href="/${encodeURIComponent(p.name)}" aria-label="Open project ${p.name}">` +
-          `<div class="card-top">` +
-          `<span class="proj-icon" aria-hidden="true">${p.protected ? '🔒' : '📁'}</span>` +
-          meta +
-          `</div>` +
-          `<h3 class="card-title proj-name">${p.name}</h3>` +
-          `<p class="card-desc">${countLabel}</p>` +
-          `</a>`;
-        cards.appendChild(li);
-      }
-      countEl.textContent = `${list.length} project${list.length === 1 ? '' : 's'}`;
-      emptyEl.hidden = list.length !== 0;
-    }
-
-    function applyFilter() {
-      const q = (filterEl.value || '').trim().toLowerCase();
-      const filtered = q
-        ? projects.filter((p) => p.name.toLowerCase().includes(q))
-        : projects;
-      // Hide non-matching cards without re-fetch
-      const set = new Set(filtered.map((p) => p.name.toLowerCase()));
-      let shown = 0;
-      for (const li of cards.querySelectorAll('.card')) {
-        const vis = set.has(li.dataset.name);
-        li.hidden = !vis;
-        if (vis) shown++;
-      }
-      countEl.textContent = q
-        ? `${shown} / ${projects.length}`
-        : `${projects.length} project${projects.length === 1 ? '' : 's'}`;
-      emptyEl.hidden = shown !== 0;
-    }
-
-    try {
-      const resp = await fetch('/api/catalog', { headers: { accept: 'application/json' } });
-      if (!resp.ok) throw new Error('Catalog request failed (' + resp.status + ')');
-      const data = await resp.json();
-      projects = Array.isArray(data.projects) ? data.projects : [];
-      // Public gallery: omit ghosts (API already does); sort public first
-      projects.sort((a, b) =>
-        a.protected === b.protected ? a.name.localeCompare(b.name) : a.protected ? 1 : -1,
-      );
-      render(projects);
-      filterEl.addEventListener('input', applyFilter);
-    } catch (err) {
-      countEl.textContent = 'Could not load projects';
-      errorEl.hidden = false;
-      errorEl.textContent =
-        (err && err.message) ||
-        'Failed to load catalog. Is the site deployed with R2 bindings?';
-    }
-  })();
-</script>
