@@ -8,5 +8,16 @@
       "binding": "ARTIFACTS",
       "bucket_name": "artifacts-content"
     }
+  ],
+  // Review feedback D1 binding. The feature fails safe (503, actions hidden) when unbound.
+  // Create/apply: npx wrangler d1 create artifacts-feedback
+  //               npx wrangler d1 migrations apply artifacts-feedback --remote
+  // Local dev: npx wrangler pages dev dist --d1=FEEDBACK_DB
+  "d1_databases": [
+    {
+      "binding": "FEEDBACK_DB",
+      "database_name": "artifacts-feedback",
+      "database_id": "e9c16ea8-f60a-435b-a3c7-978d1cfc1f0e"
+    }
   ]
 }

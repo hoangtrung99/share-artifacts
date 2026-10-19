@@ -22,6 +22,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# Immutable revision registry written by scripts/revisions.mjs (removed on exit).
+REG_TMP=""
+cleanup() { if [ -n "$REG_TMP" ]; then rm -f "$REG_TMP"; fi; }
+trap cleanup EXIT
+
 SITE="https://artifacts.hoangtrung.dev"
 BUCKET="artifacts-content"
 
@@ -70,11 +75,19 @@ case "$BASENAME" in
   *.md)   CT="text/markdown; charset=utf-8";;
 esac
 
+# Register the immutable revision BEFORE overwriting the mutable object. The registry write is the
+# latest-pointer update (R2 uploads are idempotent by content hash); a failure aborts here so the
+# previous revision stays the latest and content/ is not touched.
+REG_TMP="$(mktemp -t artifacts-revision)"
+echo "🧾 Registering immutable revision…"
+node scripts/revisions.mjs register --project "$PROJECT" --file "$FILE_REL" --source "$SRC_ABS" --created-by deliver --out "$REG_TMP"
+LATEST_REV="$(node -e "try { process.stdout.write(String(JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).latestRevisionId || '')) } catch { process.stdout.write('') }" "$REG_TMP")"
+
 echo "📤 Uploading to R2: ${BUCKET}/${KEY}"
 npx wrangler r2 object put "${BUCKET}/${KEY}" --file="$SRC_ABS" --content-type="$CT" --remote
 
 # Extract metadata + upsert catalog in one process (records uploadedAt/artifactDate).
-CATALOG_ARGS=(--project "$PROJECT" --file "$FILE_REL" --source "$SRC_ABS")
+CATALOG_ARGS=(--project "$PROJECT" --file "$FILE_REL" --source "$SRC_ABS" --revision-file "$REG_TMP")
 [ -n "$ARTIFACT_DATE" ] && CATALOG_ARGS+=(--date "$ARTIFACT_DATE")
 node scripts/catalog-upsert.mjs "${CATALOG_ARGS[@]}"
 
@@ -97,4 +110,7 @@ echo
 echo "✅ Delivered (R2 — live without rebuild):"
 echo "   $VIEW_URL        (viewer)"
 echo "   $RAW_URL         (raw)"
+if [ -n "${LATEST_REV:-}" ]; then
+  echo "   ${VIEW_URL}?rev=${LATEST_REV}   (pinned revision)"
+fi
 [ "$OPEN" = 1 ] && command -v open >/dev/null && open "$VIEW_URL" || true

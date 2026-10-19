@@ -6,9 +6,16 @@
 //   /<project>/<file>.html   → raw HTML from R2
 //   /<project>/<file>.md     → raw Markdown from R2
 //
+// Version layer (additive): `?rev=<revisionId>` serves an immutable snapshot from
+// revisions/<artifactId>/<revisionId>/source.* instead of the mutable current bytes. The default
+// (no rev) serves the latest registered revision when the artifact has a registry, and falls back
+// to today's mutable `content/` behavior for legacy artifacts. Unknown revisions are a 404 — never
+// a silent fallback, because a review must stay bound to the bytes it was written against.
+//
 // Cache/security headers are set here because public/_headers only applies to static assets.
 // Password-protected and ghost content is never cacheable by shared caches; raw bytes support
-// ETag revalidation (304) so repeat views do not re-download the artifact.
+// ETag revalidation (304) so repeat views do not re-download the artifact. Immutable snapshots are
+// cacheable forever when public, and no-store when protected/ghost (auth is enforced before this).
 //
 // Shell paths (login, assets, api, …) call next() so the thin Astro shell / other
 // functions handle them. Auth is enforced by _middleware.js before this runs.
@@ -28,6 +35,15 @@ import {
 import { renderMarkdownDoc } from './_markdown.js';
 import { projectListingPage, htmlViewerPage, mdViewerPage, notFoundPage, ASSET_V } from './_render.js';
 import { pwKey } from './_auth.js';
+import {
+  artifactIdFor,
+  loadRevisionRegistryState,
+  isTombstoned,
+  latestRevision,
+  findRevision,
+  revisionKey,
+  readSnapshotText,
+} from './_feedback-revisions.js';
 import {
   artifactSecurity,
   cacheControl,
@@ -72,6 +88,48 @@ async function headUploadedAt(env, project, file) {
   }
 }
 
+/**
+ * Revision registry for one content path, verified to describe this exact artifact.
+ * A mismatched/missing registry means "legacy artifact": callers fall back to content/.
+ * @param {{ ARTIFACTS?: R2Bucket }} env
+ * @param {string} project
+ * @param {string} file
+ * @param {'html'|'md'} type
+ */
+async function contentRevisionRegistry(env, project, file, type, { fresh = false } = {}) {
+  const artifactId = await artifactIdFor(project, file);
+  let state = await loadRevisionRegistryState(env, artifactId, { fresh });
+  // Refresh one cached miss: a just-published manifest must not 404 behind the isolate cache.
+  if (!fresh && !state.registry && !state.malformed) {
+    state = await loadRevisionRegistryState(env, artifactId, { fresh: true });
+  }
+  const registry = state.registry
+    && state.registry.project === project
+    && state.registry.file === file
+    && state.registry.type === type
+    ? state.registry
+    : null;
+  return { artifactId, registry, tombstoned: isTombstoned(registry) };
+}
+
+/**
+ * Revision context handed to the viewer shell (frontend adds optional render params).
+ * @param {object} registry
+ * @param {object} revision
+ * @param {boolean} isLatest
+ */
+function revisionView(registry, revision, isLatest) {
+  return {
+    revisionId: revision.revisionId,
+    number: revision.number,
+    total: registry.revisions.length,
+    latestNumber: registry.latestRevisionNumber,
+    latestRevisionId: registry.latestRevisionId,
+    isLatest,
+    revisioningEnabled: true,
+  };
+}
+
 export const onRequest = async (context) => {
   const { request, env, next, params } = context;
 
@@ -90,6 +148,7 @@ export const onRequest = async (context) => {
 
   const first = safeDecode(segments[0]);
   if (SHELL_SEGMENTS.has(first) || first.startsWith('_')) return next();
+  if (first === 'r' && segments.length >= 2) return next(); // /r/<token> review redemption route
 
   // Known static file extensions that are not artifact content
   const last = segments[segments.length - 1] || '';
@@ -147,10 +206,43 @@ export const onRequest = async (context) => {
   // Raw HTML / Markdown bytes — no catalog read needed on this path.
   if (lower.endsWith('.html') || lower.endsWith('.md')) {
     const isMd = lower.endsWith('.md');
-    const obj = await getObject(env.ARTIFACTS, contentKey(project, rest));
-    if (!obj) return notFound(project);
-    const cache = cacheControl(locked || ghost, 300);
-    const etag = obj.httpEtag || null;
+    const type = isMd ? 'md' : 'html';
+    const revParam = url.searchParams.get('rev');
+    const isPrivate = locked || ghost;
+    let object = null;
+    let servedRevision = null;
+
+    if (revParam !== null) {
+      // Pinned revision: immutable snapshot, 404 when unknown (never fall back to latest).
+      const { artifactId, registry, tombstoned } = await contentRevisionRegistry(env, project, rest, type, { fresh: true });
+      if (tombstoned) return notFound(project);
+      const revision = registry ? findRevision(registry, revParam) : null;
+      if (!revision) return notFound(project);
+      object = await getObject(env.ARTIFACTS, revisionKey(artifactId, revision.revisionId, type));
+      if (!object) return notFound(project);
+      servedRevision = revision;
+    } else {
+      const { artifactId, registry, tombstoned } = await contentRevisionRegistry(env, project, rest, type);
+      if (tombstoned) return notFound(project); // unpublished: never fall back to content/
+      if (registry) {
+        const latest = latestRevision(registry);
+        if (latest) {
+          object = await getObject(env.ARTIFACTS, revisionKey(artifactId, latest.revisionId, type));
+          if (object) servedRevision = latest;
+          else console.error('[content] revision snapshot missing; falling back to mutable content');
+        }
+      }
+      if (!object) object = await getObject(env.ARTIFACTS, contentKey(project, rest));
+    }
+    if (!object) return notFound(project);
+
+    // Immutable snapshots never change: cache them forever when public, never when protected.
+    // Snapshots are content-addressed but unpublish must take effect promptly: cap public caching
+    // at 300s (same as today's raw bytes) instead of immutable. Protected content is never cached.
+    const cache = servedRevision
+      ? cacheControl(isPrivate, 300)
+      : cacheControl(isPrivate, 300);
+    const etag = servedRevision ? `"r-${servedRevision.revisionId}"` : object.httpEtag || null;
     if (isNotModified(request, etag)) return notModifiedResponse(etag, cache, artifactSecurity());
 
     const headers = new Headers();
@@ -158,7 +250,8 @@ export const onRequest = async (context) => {
     headers.set('cache-control', cache);
     for (const [key, value] of Object.entries(artifactSecurity())) headers.set(key, value);
     if (etag) headers.set('etag', etag);
-    return new Response(request.method === 'HEAD' ? null : obj.body, { status: 200, headers });
+    if (servedRevision) headers.set('x-artifact-revision', servedRevision.revisionId);
+    return new Response(request.method === 'HEAD' ? null : object.body, { status: 200, headers });
   }
 
   // Extensionless viewer
@@ -194,14 +287,40 @@ export const onRequest = async (context) => {
 
   const type = entry.type === 'md' ? 'md' : 'html';
   const file = entry.file || `${rest}.${type === 'md' ? 'md' : 'html'}`;
-  const rawUrl = `/${project}/${file}`;
+  const rawUrlBase = `/${project}/${file}`;
   const downloadName = file.split('/').pop();
   const cache = cacheControl(locked || ghost, 60);
+
+  // --- revision context (additive): registry latest by default, pinned when ?rev= is present ---
+  // A pinned viewer request must not 404 behind a warm isolate: refresh the manifest first.
+  const revParam = url.searchParams.get('rev');
+  const { artifactId, registry, tombstoned } = await contentRevisionRegistry(env, project, file, type, {
+    fresh: revParam !== null,
+  });
+  if (tombstoned) return notFound(project); // unpublished: never render a stale shell
+  const artifactContext = { artifactId, project, file, routePath };
+  let revisionContext = null;
+  let rawUrl = rawUrlBase;
+  if (revParam !== null) {
+    const revision = registry ? findRevision(registry, revParam) : null;
+    if (!revision) return notFound(project);
+    revisionContext = revisionView(registry, revision, revision.revisionId === registry.latestRevisionId);
+    rawUrl = `${rawUrlBase}?rev=${encodeURIComponent(revision.revisionId)}`;
+  } else if (registry) {
+    const latest = latestRevision(registry);
+    if (latest) {
+      // Pin every view to the latest immutable revision: iframe/raw/download and the feedback
+      // context must never load bytes that the review was not written against. The address bar URL
+      // stays canonical (no rev).
+      revisionContext = revisionView(registry, latest, true);
+      rawUrl = `${rawUrlBase}?rev=${encodeURIComponent(latest.revisionId)}`;
+    }
+  }
 
   if (type === 'html') {
     const uploadIso = entry.uploadedAt || (await headUploadedAt(env, project, file));
     const time = resolveArtifactTime(entry, uploadIso);
-    const etag = `"v-${hashString(`${routePath}|${time.sortDate || ''}|${locked}|${ghost}|${ASSET_V}`)}"`;
+    const etag = `"v-${hashString(`${routePath}|${revisionContext ? revisionContext.revisionId : time.sortDate || ''}|${locked}|${ghost}|${ASSET_V}`)}"`;
     if (isNotModified(request, etag)) return notModifiedResponse(etag, cache, shellSecurity());
     const html =
       request.method === 'HEAD'
@@ -216,13 +335,28 @@ export const onRequest = async (context) => {
             time,
             locked,
             ghost,
+            artifact: artifactContext,
+            revision: revisionContext,
           });
     return htmlResponse(html, { method: request.method, cache, etag });
   }
 
-  // MD viewer — edge render
-  let mdBody = entry._body;
+  // MD viewer — edge render. Prefer the immutable snapshot bytes when revisioned.
+  let mdBody = entry._body ?? null;
   let uploadIso = entry.uploadedAt || null;
+  if (revisionContext) {
+    const snapshot = await readSnapshotText(env, artifactId, revisionContext.revisionId, 'md');
+    if (snapshot != null) {
+      mdBody = snapshot;
+    } else if (revParam !== null) {
+      return notFound(project);
+    } else {
+      // Registry points at a snapshot that is missing: degrade to legacy mutable content.
+      console.error('[content] MD snapshot missing; falling back to mutable content');
+      revisionContext = null;
+      rawUrl = rawUrlBase;
+    }
+  }
   if (mdBody == null) {
     const obj = await getObject(env.ARTIFACTS, contentKey(project, file));
     if (!obj) return notFound(project);
@@ -232,7 +366,7 @@ export const onRequest = async (context) => {
   if (mdBody == null) return notFound(project);
   const time = resolveArtifactTime(entry, uploadIso);
 
-  const etag = `"m-${hashString(`${routePath}|${time.sortDate || ''}|${mdBody.length}|${locked}|${ghost}|${ASSET_V}`)}"`;
+  const etag = `"m-${hashString(`${routePath}|${revisionContext ? revisionContext.revisionId : mdBody.length}|${locked}|${ghost}|${ASSET_V}`)}"`;
   if (isNotModified(request, etag)) return notModifiedResponse(etag, cache, shellSecurity());
 
   const html =
@@ -254,6 +388,8 @@ export const onRequest = async (context) => {
             time,
             locked,
             ghost,
+            artifact: artifactContext,
+            revision: revisionContext,
           });
         })();
   return htmlResponse(html, { method: request.method, cache, etag });

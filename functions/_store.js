@@ -436,6 +436,7 @@ function entryFolder(entry) {
 /**
  * Curated keyword fallback for flat projects so existing untagged artifacts still get useful
  * categories. Only used in keyword mode.
+ * @type {Array<[string, RegExp]>}
  */
 const CATEGORY_KEYWORDS = [
   ['networking', /tailscale|warp|clash|mihomo|proxy|squid|tunnel|funnel|cloudfront|dns|\bssh\b|\bvpn\b|exit node|serve|mạng|network/i],

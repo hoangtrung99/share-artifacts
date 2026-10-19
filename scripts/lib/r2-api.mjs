@@ -13,6 +13,11 @@ import path from 'node:path';
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 export const DEFAULT_BUCKET = 'artifacts-content';
 
+/** R2 object keys are path-ish; encode each segment so nested keys address one object. */
+function encodeKey(key) {
+  return String(key).split('/').map((segment) => encodeURIComponent(segment)).join('/');
+}
+
 function wranglerConfigPaths() {
   const home = os.homedir();
   return [
@@ -111,4 +116,92 @@ export async function listR2Objects(options = {}) {
     if (pages > 50) throw new Error('R2 listing exceeded 50 pages; aborting.');
   } while (cursor);
   return objects;
+}
+
+// ---------------------------------------------------------------------------
+// Conditional (CAS) object reads/writes for JSON manifests (e.g. revision registries).
+// R2 supports If-Match / If-None-Match: "*" on the REST object endpoint; the wrangler CLI does not
+// expose them. Credentials are the same as the rest of this module (API token or wrangler login).
+// ---------------------------------------------------------------------------
+
+/** True when the Cloudflare REST API credentials needed for CAS writes are available. */
+export function hasConditionalCredentials() {
+  try {
+    getApiToken();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read an object with its ETag via the REST API.
+ * @param {string} key
+ * @param {{ bucket?: string, token?: string, accountId?: string }} [options]
+ * @returns {Promise<{ missing: boolean, text: string|null, etag: string|null }>}
+ */
+export async function r2GetObjectWithEtag(key, options = {}) {
+  const bucket = options.bucket || DEFAULT_BUCKET;
+  const token = options.token || getApiToken();
+  const accountId = options.accountId || (await getAccountId());
+  const response = await fetch(
+    `${API_BASE}/accounts/${accountId}/r2/buckets/${bucket}/objects/${encodeKey(key)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (response.status === 404) return { missing: true, text: null, etag: null };
+  if (!response.ok) throw new Error(`R2 GET ${key} failed: HTTP ${response.status}`);
+  return { missing: false, text: await response.text(), etag: response.headers.get('etag') };
+}
+
+/**
+ * A conditional write must carry a REAL precondition. Throws otherwise so a missing/empty ETag can
+ * never degrade into an unconditional PUT.
+ * @param {{ ifMatch?: string|null, ifNoneMatch?: string|null }} [options]
+ */
+export function assertConditionalPrecondition(options = {}) {
+  if (options.ifNoneMatch === '*' && !options.ifMatch) return;
+  if (typeof options.ifMatch === 'string' && options.ifMatch.trim()) return;
+  throw new Error('R2 conditional write requires an If-Match ETag or If-None-Match: "*"');
+}
+
+/**
+ * A CAS baseline fetched with credentials must carry an ETag; otherwise the update would be
+ * unconditional. Missing objects are fine (they use If-None-Match: "*" on create).
+ * @param {{ missing?: boolean, etag?: string|null } | null} result
+ * @param {string} key
+ */
+export function assertCasEtag(result, key) {
+  if (!result || result.missing) return;
+  if (typeof result.etag !== 'string' || !result.etag.trim()) {
+    throw new Error(`R2 GET ${key} returned no ETag; refusing an unconditional write`);
+  }
+}
+
+/**
+ * Conditional put of a text object.
+ *  - `ifMatch`: only write when the stored ETag still equals this value (CAS update).
+ *  - `ifNoneMatch: '*'`: only create when the object does not exist (CAS create).
+ * Returns { ok:false, conflict:true } on HTTP 412 so the caller can retry after re-reading.
+ * @param {string} key
+ * @param {string} text
+ * @param {{ ifMatch?: string|null, ifNoneMatch?: string|null, contentType?: string, bucket?: string, token?: string, accountId?: string }} [options]
+ */
+export async function r2PutTextConditional(key, text, options = {}) {
+  assertConditionalPrecondition(options);
+  const bucket = options.bucket || DEFAULT_BUCKET;
+  const token = options.token || getApiToken();
+  const accountId = options.accountId || (await getAccountId());
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'content-type': options.contentType || 'application/json; charset=utf-8',
+  };
+  if (options.ifNoneMatch) headers['if-none-match'] = options.ifNoneMatch;
+  if (options.ifMatch) headers['if-match'] = options.ifMatch;
+  const response = await fetch(
+    `${API_BASE}/accounts/${accountId}/r2/buckets/${bucket}/objects/${encodeKey(key)}`,
+    { method: 'PUT', headers, body: text },
+  );
+  if (response.status === 412) return { ok: false, conflict: true, status: 412 };
+  if (!response.ok) throw new Error(`R2 conditional PUT ${key} failed: HTTP ${response.status}`);
+  return { ok: true, conflict: false, status: response.status, etag: response.headers.get('etag') };
 }

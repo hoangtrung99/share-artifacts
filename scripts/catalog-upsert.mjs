@@ -25,7 +25,7 @@ const CATALOG_KEY = 'meta/catalog.json';
 const MAX_RETRIES = 5;
 
 function parseArgs(argv) {
-  const out = { remove: false, seed: null, project: null, file: null, meta: null, metaFile: null, source: null, date: null };
+  const out = { remove: false, seed: null, project: null, file: null, meta: null, metaFile: null, source: null, date: null, revisionFile: null };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--remove') out.remove = true;
@@ -36,6 +36,7 @@ function parseArgs(argv) {
     else if (a === '--meta-file') out.metaFile = argv[++i];
     else if (a === '--source') out.source = argv[++i];
     else if (a === '--date') out.date = argv[++i];
+    else if (a === '--revision-file') out.revisionFile = argv[++i];
     else throw new Error(`Unknown arg: ${a}`);
   }
   return out;
@@ -80,6 +81,42 @@ function entryFromArgs(args, project, file) {
   if (args.metaFile) return JSON.parse(fs.readFileSync(args.metaFile, 'utf8'));
   if (args.meta) return JSON.parse(args.meta);
   throw new Error('--source, --meta or --meta-file required unless --remove');
+}
+
+
+/**
+ * Revision fields recorded on a catalog entry (additive; absent for legacy artifacts).
+ * The revision registry in R2 stays the source of truth — the catalog only mirrors the pointer
+ * for discovery UI. --revision-file carries the just-written registry from revisions.mjs.
+ * @param {string} filePath
+ */
+function revisionFieldsFromFile(filePath) {
+  let registry;
+  try {
+    registry = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    throw new Error(`--revision-file is not valid JSON: ${error.message}`);
+  }
+  if (!registry || typeof registry.artifactId !== 'string') {
+    throw new Error('--revision-file must contain a revision registry (artifactId missing)');
+  }
+  return {
+    artifactId: registry.artifactId,
+    latestRevisionId: registry.latestRevisionId || '',
+    latestRevisionNumber: registry.latestRevisionNumber || 0,
+    revisionCount: Array.isArray(registry.revisions) ? registry.revisions.length : 0,
+  };
+}
+
+/** Keep a catalog entry's existing revision fields when a mutation does not carry new ones. */
+function existingRevisionFields(entry) {
+  if (!entry || typeof entry.artifactId !== 'string') return {};
+  return {
+    artifactId: entry.artifactId,
+    latestRevisionId: entry.latestRevisionId || '',
+    latestRevisionNumber: entry.latestRevisionNumber || 0,
+    revisionCount: entry.revisionCount || 0,
+  };
 }
 
 /**
@@ -127,6 +164,7 @@ async function main() {
     }
   }
 
+  const revisionFields = args.revisionFile ? revisionFieldsFromFile(args.revisionFile) : null;
   const nowIso = new Date().toISOString();
   let lastErr;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -146,6 +184,7 @@ async function main() {
         const existing = files.find((f) => f.file === file || f.routePath === entry.routePath);
         const merged = {
           ...entry,
+          ...(revisionFields || existingRevisionFields(existing)),
           artifactDate: entry.artifactDate || artifactDateFromEntry(entry),
           artifactDateSource: entry.artifactDateSource || (entry.date ? 'explicit' : 'heuristic'),
           createdAt: existing?.createdAt || existing?.uploadedAt || nowIso,

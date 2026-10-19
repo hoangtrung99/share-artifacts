@@ -20,7 +20,12 @@
     "registry:write": "node scripts/registry-write.mjs",
     "r2:inventory": "node scripts/backfill-r2-times.mjs",
     "r2:backfill": "node scripts/backfill-r2-times.mjs --apply",
-    "catalog:date": "node scripts/set-artifact-date.mjs"
+    "catalog:date": "node scripts/set-artifact-date.mjs",
+    "revisions:register": "node scripts/revisions.mjs register",
+    "revisions:bootstrap": "node scripts/bootstrap-revisions.mjs",
+    "revisions:status": "node scripts/revisions.mjs status",
+    "feedback": "node scripts/feedback.mjs",
+    "feedback:grant": "node scripts/review-grant.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",

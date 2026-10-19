@@ -58,6 +58,30 @@ export function r2PutFile(key, filePath, contentType) {
 }
 
 /**
+ * Put exact bytes into R2 via a temp file. Use this for immutable snapshots so the uploaded bytes
+ * are the ones that were hashed (never re-read a mutable source path after hashing).
+ * @param {string} key
+ * @param {Buffer | Uint8Array} bytes
+ * @param {string} [contentType]
+ */
+export function r2PutBuffer(key, bytes, contentType) {
+  const tmp = path.join(
+    os.tmpdir(),
+    `artifacts-r2-buf-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`,
+  );
+  fs.writeFileSync(tmp, bytes);
+  try {
+    return r2PutFile(key, tmp, contentType);
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
  * Put a string body into R2 via a temp file.
  * @param {string} key
  * @param {string} body
@@ -81,13 +105,15 @@ export function r2PutText(key, body, contentType = 'application/json; charset=ut
 }
 
 /**
- * Get an object as text. Returns null if missing (404).
+ * Get an object as exact bytes. Returns null if missing (404).
+ * Snapshots and content are hashed/verified on these bytes — never on a decoded string.
  * @param {string} key
+ * @returns {Buffer | null}
  */
-export function r2GetText(key) {
+export function r2GetBuffer(key) {
   const tmp = path.join(
     os.tmpdir(),
-    `artifacts-r2-get-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`,
+    `artifacts-r2-getbuf-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`,
   );
   const res = wrangler(['r2', 'object', 'get', `${BUCKET}/${key}`, `--file=${tmp}`, '--remote']);
   if (!res.ok) {
@@ -96,17 +122,13 @@ export function r2GetText(key) {
     } catch {
       /* ignore */
     }
-
     const message = res.stderr || res.stdout || `wrangler exit ${res.status}`;
-    const objectMissing =
-      /the specified key does not exist|no such key|nosuchkey/i.test(message);
+    const objectMissing = /the specified key does not exist|no such key|nosuchkey/i.test(message);
     if (objectMissing) return null;
-
     throw new Error(`r2 get ${key} failed:\n${message}`);
   }
   try {
-    const text = fs.readFileSync(tmp, 'utf8');
-    return text;
+    return fs.readFileSync(tmp);
   } finally {
     try {
       fs.unlinkSync(tmp);
@@ -114,6 +136,15 @@ export function r2GetText(key) {
       /* ignore */
     }
   }
+}
+
+/**
+ * Get an object as text. Returns null if missing (404).
+ * @param {string} key
+ */
+export function r2GetText(key) {
+  const bytes = r2GetBuffer(key);
+  return bytes == null ? null : bytes.toString('utf8');
 }
 
 /**
