@@ -189,6 +189,36 @@ test('findQuote checks prefix/suffix before offsets so reordered duplicates stay
   assert.equal(review.findQuote(original, { exact: 'X', start: 2 }, { trustOffsets: true }), null);
 });
 
+/* ------------------------------------------------ async race policy (unit) */
+
+test('race 1: a fetch response is discarded when any draft appeared while it was in flight', () => {
+  assert.equal(review.refreshBlocked({}), false);
+  assert.equal(review.refreshBlocked({ popupReplyDraft: true }), true);
+  assert.equal(review.refreshBlocked({ panelReplyDraft: true }), true);
+  assert.equal(review.refreshBlocked({ inlineDraft: true }), true);
+  assert.equal(review.refreshBlocked({ composerDraft: true }), true);
+  assert.equal(review.refreshBlocked({ replySubmitting: true }), true);
+});
+
+test('race 2: refresh never replaces the popup thread while a reply is being drafted/sent', () => {
+  assert.equal(review.shouldReplacePopupThread('th_1', 'th_1', true, ''), false);
+  assert.equal(review.shouldReplacePopupThread('th_1', 'th_1', false, 'draft'), false);
+  assert.equal(review.shouldReplacePopupThread('th_1', 'th_1', false, ''), true);
+  assert.equal(review.shouldReplacePopupThread('th_1', 'th_2', false, ''), true);
+  assert.equal(review.shouldReplacePopupThread('', 'th_1', false, ''), false);
+});
+
+test('race 3: status/render churn keeps the in-flight draft and only the replied thread owns it', () => {
+  // Re-render of the same thread preserves the textarea (even mid-submit).
+  assert.equal(review.shouldPreservePopupReplyText('th_1', 'th_1'), true);
+  assert.equal(review.shouldPreservePopupReplyText('th_1', 'th_2'), false);
+  assert.equal(review.shouldPreservePopupReplyText(null, 'th_1'), false);
+  // Success/failure UI applies only to the replied thread, by stable id.
+  assert.equal(review.replyOwnsPopup('th_1', 'th_1'), true);
+  assert.equal(review.replyOwnsPopup('th_2', 'th_1'), false);
+  assert.equal(review.replyOwnsPopup(null, 'th_1'), false);
+});
+
 test('relative time, bytes, clip and revision-id helpers', () => {
   const now = Date.parse('2026-10-19T06:00:00.000Z');
   assert.equal(review.relativeTime('2026-10-19T05:59:30.000Z', now), 'just now');

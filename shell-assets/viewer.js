@@ -2152,8 +2152,8 @@
   function reviewLoadThreads(options) {
     const opts = options || {};
     if (!review) return Promise.resolve();
-    // Never rebuild the list underneath an unsent/in-flight reply draft.
-    if (review.postingReply || reviewPanelReplyDraft()) {
+    // Never rebuild the list underneath any unsent/in-flight draft.
+    if (reviewAnyDraftActive()) {
       review.threadsDirty = true;
       return Promise.resolve();
     }
@@ -2165,6 +2165,12 @@
     if (!opts.quiet) reviewSetState('loading');
     return reviewFetch(reviewApiUrl('/api/feedback', reviewListQuery()))
       .then(function (data) {
+        // Drafts can appear while the request is in flight: re-check at response time and
+        // discard the payload (refetch later) instead of destroying an open reply form/list.
+        if (reviewAnyDraftActive()) {
+          review.threadsDirty = true;
+          return;
+        }
         review.threads = Array.isArray(data.threads) ? data.threads : [];
         review.threadById = new Map(
           review.threads.map(function (thread) {
@@ -2181,7 +2187,17 @@
         }
         if (review.popupThread) {
           const fresh = review.threadById.get(review.popupThread.threadId);
-          if (fresh) review.popupThread = fresh;
+          if (
+            fresh &&
+            reviewShouldReplacePopupThread(
+              review.popupThread.threadId,
+              fresh.threadId,
+              review.popupReplySubmitting,
+              review.refs.threadPopInput ? review.refs.threadPopInput.value : '',
+            )
+          ) {
+            review.popupThread = fresh;
+          }
         }
         review.lastLoadedAt = Date.now();
         reviewSyncArmed();
@@ -2205,7 +2221,7 @@
       })
       .finally(function () {
         review.loadingThreads = false;
-        if (review.threadsDirty) {
+        if (review.threadsDirty && !reviewAnyDraftActive()) {
           review.threadsDirty = false;
           setTimeout(function () {
             if (review) reviewLoadThreads({ quiet: true });
@@ -2511,6 +2527,38 @@
     return !!(review && review.refs && review.refs.inline && !review.refs.inline.hidden);
   }
 
+  /**
+   * Pure refresh policy: a fetched list may only be applied when no draft or reply is active.
+   * Kept pure so the async race cases can be unit-tested without a DOM.
+   */
+  function reviewRefreshBlocked(flags) {
+    const state = flags || {};
+    return !!(
+      state.composerDraft ||
+      state.inlineDraft ||
+      state.panelReplyDraft ||
+      state.popupReplyDraft ||
+      state.replySubmitting
+    );
+  }
+
+  /** Pure policy: refresh may replace popupThread only when no reply is being drafted/sent. */
+  function reviewShouldReplacePopupThread(currentThreadId, incomingThreadId, submitting, draftText) {
+    if (!currentThreadId || !incomingThreadId) return false;
+    if (submitting || String(draftText || '').trim()) return false;
+    return true;
+  }
+
+  /** Pure policy: re-rendering preserves popup reply text only for the same thread. */
+  function reviewShouldPreservePopupReplyText(currentThreadId, renderThreadId) {
+    return !!currentThreadId && currentThreadId === renderThreadId;
+  }
+
+  /** Pure policy: success/failure UI updates apply only to the thread that was replied to. */
+  function reviewReplyOwnsPopup(currentPopupThreadId, repliedThreadId) {
+    return !!repliedThreadId && currentPopupThreadId === repliedThreadId;
+  }
+
   /** Non-empty draft value in the inline composer (comment body OR replacement-only). */
   function reviewInlineDraftValue() {
     if (!review || !review.refs) return '';
@@ -2535,23 +2583,41 @@
     };
   }
 
+  /** Draft state snapshot used by the pure refresh policy. */
+  function reviewDraftFlags() {
+    if (!review || !review.refs) return {};
+    const refs = review.refs;
+    const composerDraft = !!(
+      reviewComposerOpen() &&
+      ((refs.input && refs.input.value.trim()) ||
+        (refs.replacement && !refs.replacement.hidden && refs.replacement.value.trim()))
+    );
+    return {
+      composerDraft: composerDraft,
+      inlineDraft: !!(reviewInlineOpen() && reviewInlineDraftValue()),
+      panelReplyDraft: !!reviewPanelReplyDraft(),
+      popupReplyDraft: reviewThreadPopupDraftActive(),
+      replySubmitting: !!review.postingReply,
+    };
+  }
+
+  function reviewThreadPopupDraftActive() {
+    return !!(
+      review &&
+      review.popupThread &&
+      review.refs &&
+      review.refs.threadPopInput &&
+      review.refs.threadPopInput.value.trim()
+    );
+  }
+
   /**
    * Any unsent draft anywhere: panel composer (body/replacement), inline composer
    * (body/replacement), panel reply form, popup reply box, or a reply in flight. Highlight
    * clicks and other list-affecting interactions must be ignored while this is true.
    */
   function reviewAnyDraftActive() {
-    if (!review || !review.refs) return false;
-    if (review.postingReply) return true;
-    const refs = review.refs;
-    if (reviewComposerOpen()) {
-      if (refs.input && refs.input.value.trim()) return true;
-      if (refs.replacement && !refs.replacement.hidden && refs.replacement.value.trim()) return true;
-    }
-    if (reviewInlineOpen() && reviewInlineDraftValue()) return true;
-    if (reviewPanelReplyDraft()) return true;
-    if (review.popupThread && refs.threadPopInput && refs.threadPopInput.value.trim()) return true;
-    return false;
+    return reviewRefreshBlocked(reviewDraftFlags());
   }
 
   function reviewStoredName() {
@@ -4432,6 +4498,10 @@
         review.submitting = false;
         refs.inlineSubmit.disabled = false;
         refs.inlineSubmit.removeAttribute('aria-busy');
+        // The submitted draft is no longer a draft: clear it BEFORE the quiet refresh so the
+        // refresh policy does not defer the list/badge update.
+        refs.inlineBody.value = '';
+        refs.inlineReplacement.value = '';
         // Only the composer instance that submitted may be closed/cleared.
         if (review.inline === inline) reviewHideInline();
         showToast('Feedback added');
@@ -4626,11 +4696,13 @@
   function reviewRenderThreadPopup(thread) {
     if (!review || !thread) return;
     const refs = review.refs;
-    // Re-rendering the same thread (reply/status/poll) must not clear an unsent reply draft.
-    const sameThread = !!(review.popupThread && review.popupThread.threadId === thread.threadId);
-    // Preserve only UNSENT drafts: never restore text that was just submitted.
-    const previousReply =
-      sameThread && !review.popupReplySubmitting ? refs.threadPopInput.value : '';
+    // Re-rendering the same thread (reply/status/poll) must never clear a draft or in-flight
+    // submitted text. Success explicitly clears the textarea before calling this function.
+    const sameThread = reviewShouldPreservePopupReplyText(
+      review.popupThread && review.popupThread.threadId,
+      thread.threadId,
+    );
+    const previousReply = sameThread ? refs.threadPopInput.value : '';
     const anchor = thread.anchor || {};
     refs.threadPopChips.textContent = '';
     refs.threadPopChips.appendChild(
@@ -4742,32 +4814,48 @@
       refs.threadPopInput.focus();
       return;
     }
+    const replyThreadId = thread.threadId;
+    const replyText = refs.threadPopInput.value;
+    const replyTextarea = refs.threadPopInput;
     refs.threadPopSend.disabled = true;
     refs.threadPopError.hidden = true;
     review.postingReply = true;
     review.popupReplySubmitting = true;
-    reviewFetch('/api/feedback/' + encodeURIComponent(thread.threadId) + '/replies', {
+    reviewFetch('/api/feedback/' + encodeURIComponent(replyThreadId) + '/replies', {
       method: 'POST',
       body: { body: body, authorName: reviewStoredName(), idempotencyKey: reviewIdempotencyKey() },
     })
       .then(function (data) {
-        if (review.popupThread !== thread) return;
-        if (data && data.thread) {
-          reviewReplaceThread(data.thread);
-          review.popupThread = data.thread;
-          // Clear the submitted text BEFORE re-rendering so it cannot be resubmitted.
-          refs.threadPopInput.value = '';
-          reviewRenderThreadPopup(data.thread);
+        // Stable thread identity: a refresh may swap the popupThread object but not its id.
+        const ownsPopup = reviewReplyOwnsPopup(
+          review.popupThread && review.popupThread.threadId,
+          replyThreadId,
+        );
+        if (data && data.thread) reviewReplaceThread(data.thread);
+        if (ownsPopup) {
+          // Clear the exact textarea that submitted, then re-render from server state.
+          if (replyTextarea === refs.threadPopInput) replyTextarea.value = '';
+          const updated = reviewFindThread(replyThreadId) || (data && data.thread);
+          if (updated) {
+            review.popupThread = updated;
+            reviewRenderThreadPopup(updated);
+          }
         }
         showToast('Reply added');
         reviewLoadThreads({ quiet: true });
         reviewPaintHighlights();
       })
       .catch(function (error) {
-        if (review.popupThread !== thread) return;
+        // Always restore the draft on failure — independent of object identity/churn.
+        if (
+          reviewReplyOwnsPopup(review.popupThread && review.popupThread.threadId, replyThreadId) &&
+          replyTextarea === refs.threadPopInput
+        ) {
+          refs.threadPopInput.value = replyText;
+          refs.threadPopError.textContent = (error && error.message) || 'Reply could not be added.';
+          refs.threadPopError.hidden = false;
+        }
         reviewShowApiError(error, 'Reply could not be added.');
-        refs.threadPopError.textContent = (error && error.message) || 'Reply could not be added.';
-        refs.threadPopError.hidden = false;
       })
       .finally(function () {
         review.postingReply = false;
@@ -5327,6 +5415,10 @@
       formatBytes: reviewFormatBytes,
       clip: reviewClip,
       isRevisionId: reviewIsRevisionId,
+      refreshBlocked: reviewRefreshBlocked,
+      shouldReplacePopupThread: reviewShouldReplacePopupThread,
+      shouldPreservePopupReplyText: reviewShouldPreservePopupReplyText,
+      replyOwnsPopup: reviewReplyOwnsPopup,
       STATUS_LABEL: REVIEW_STATUS_LABEL,
       KIND_LABEL: REVIEW_KIND_LABEL,
     };
