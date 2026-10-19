@@ -3127,8 +3127,14 @@
         review.pendingThread = null;
         reviewRenderThreads();
         if (review.composer === composer) {
-          refs.composer.hidden = false;
-          reviewShowFormError((error && error.message) || 'Feedback could not be added.');
+          if (reviewInlineOpen()) {
+            // A newer inline draft exists: the panel draft loses ownership and is discarded
+            // instead of being restored beside the newer composer.
+            review.composer = null;
+          } else {
+            refs.composer.hidden = false;
+            reviewShowFormError((error && error.message) || 'Feedback could not be added.');
+          }
         }
         reviewShowApiError(error, 'Feedback could not be added.');
       })
@@ -3193,6 +3199,12 @@
       const doc = frame.contentDocument;
       const href = frame.contentWindow && frame.contentWindow.location ? frame.contentWindow.location.href : '';
       if (!doc || !doc.body || !href || href === 'about:blank' || href === 'about:srcdoc') {
+        if (review.frameLoadedOnce) {
+          // A completed artifact document navigated to about:* — that is a real escape from
+          // the artifact, not a pending first load, so surface the guard/hint.
+          review.framePending = false;
+          return false;
+        }
         // Still loading: not a mismatch, just not ready to arm selection yet.
         review.framePending = true;
         return false;
@@ -3529,6 +3541,12 @@
       review.refs.inlineBody.focus();
       return;
     }
+    if (reviewComposerOpen()) {
+      event.preventDefault();
+      showToast('Finish or cancel the panel comment first.', 'error');
+      review.refs.input.focus();
+      return;
+    }
     const active = event.target;
     const tag = active && active.tagName ? active.tagName.toLowerCase() : '';
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -3553,13 +3571,20 @@
   }
 
   function reviewOpenPanel(options) {
-    if (!review || review.available === false) return;
-    if (reviewInlineOpen()) {
+    if (!review || review.available === false) return false;
+    const inlineEl = review.refs.inline;
+    const inlineVisible = !!(inlineEl && !inlineEl.hidden);
+    if (inlineVisible && review.inline) {
       const draft = review.refs.inlineBody;
       if (draft && draft.value.trim()) {
+        // Blocked opens must not disarm the selection state or let the hide timer clear the
+        // draft: cancel the timer and keep the composer open.
+        clearTimeout(review.inlineTimer);
+        inlineEl.hidden = false;
+        inlineEl.classList.add('is-open');
         showToast('Finish or cancel the current note first.', 'error');
         draft.focus();
-        return;
+        return false;
       }
       reviewHideInline();
     }
@@ -3587,6 +3612,7 @@
     if (opts.focus !== false && !wasOpen) {
       reviewFocusPanel();
     }
+    return true;
   }
 
   function reviewFocusPanel() {
@@ -4172,6 +4198,12 @@
       review.refs.inlineBody.focus();
       return;
     }
+    if (reviewComposerOpen()) {
+      // One draft in both directions: an active panel composer owns the draft slot.
+      showToast('Finish or cancel the panel comment first.', 'error');
+      review.refs.input.focus();
+      return;
+    }
     if (!reviewCanSelectToComment()) {
       showToast(reviewInlinePermissionText(), 'error');
       return;
@@ -4378,8 +4410,11 @@
     document.querySelectorAll('[data-review-toggle]').forEach(function (button) {
       button.addEventListener('click', function (event) {
         event.preventDefault();
-        if (review.open) reviewClosePanel({ restoreFocus: true });
-        else reviewOpenPanel({ focus: true });
+        if (review.open) {
+          reviewClosePanel({ restoreFocus: true });
+        } else {
+          reviewOpenPanel({ focus: true });
+        }
       });
     });
     const closeButton = refs.panel.querySelector('[data-review-close]');
@@ -4429,7 +4464,12 @@
     }
     document.addEventListener('pointerdown', function (event) {
       if (!review) return;
-      if (refs.inline && !refs.inline.hidden && !refs.inline.contains(event.target)) {
+      if (
+        refs.inline &&
+        !refs.inline.hidden &&
+        !refs.inline.contains(event.target) &&
+        !event.target.closest('[data-review-toggle]')
+      ) {
         reviewHideInline();
       }
       if (refs.popover && !refs.popover.hidden && !refs.popover.contains(event.target)) {
@@ -4533,6 +4573,7 @@
         review.targets.forEach(reviewAttachTarget);
         reviewInvalidateIndexes();
         reviewUpdateFrameGuard();
+        if (review.frameReady) review.frameLoadedOnce = true;
         // Permissions may have resolved before the artifact document finished loading:
         // re-arm selection now that the iframe identity can be verified.
         reviewSyncArmed();
@@ -4715,6 +4756,7 @@
       frameExpected: null,
       frameReady: true,
       framePending: !!document.querySelector('iframe.viewer-frame'),
+      frameLoadedOnce: false,
       mutationTimer: 0,
       inline: null,
       pillDismissed: false,
@@ -4728,6 +4770,9 @@
     review.targets = reviewTargetElements();
     review.targets.forEach(reviewAttachTarget);
     review.frameExpected = reviewFrameExpected();
+    if (review.frameExpected && document.querySelector('iframe.viewer-frame') && reviewFrameMatches()) {
+      review.frameLoadedOnce = true;
+    }
     reviewBindEvents();
     reviewApplyPinnedRevision();
     const hashMatch = String(window.location.hash || '').match(/^#thread-(.+)$/);
