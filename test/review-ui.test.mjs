@@ -308,6 +308,10 @@ test('the empty feedback state offers a whole-document comment action', () => {
   assert.match(html, /Comment on whole document/);
   // Stale-index guard note ships in the panel (hidden until an in-iframe navigation).
   assert.match(html, /data-review-frame-note/);
+  // Thread popup (highlight click with the panel closed) ships with the shell.
+  assert.match(html, /data-review-thread-pop/);
+  assert.match(html, /data-review-thread-pop-reply/);
+  assert.match(html, /data-review-thread-pop-open/);
   // Inline selection composer ships with the shell so feedback never requires opening the panel.
   assert.match(html, /data-review-inline/);
   assert.match(html, /data-review-inline-body/);
@@ -377,9 +381,15 @@ test('site.css ships the review components on theme tokens', () => {
   assert.match(css, /\.review-pill \{/);
   assert.match(css, /\.versions-card \{/);
   assert.match(css, /\.rev-banner \{/);
-  // Highlight paint rules are injected into the target document by viewer.js at runtime.
+  // Highlight paint + themed artifact-scrollbar rules are injected into the target document.
   assert.match(read('shell-assets/viewer.js'), /::highlight\(review-open\)/);
   assert.match(read('shell-assets/viewer.js'), /CSS\.highlights/);
+  assert.match(css, /\.review-thread-pop \{/);
+  assert.match(css, /\.thread\.is-flash \{/);
+  assert.match(css, /::-webkit-scrollbar-thumb/);
+  assert.match(read('shell-assets/viewer.js'), /caretRangeFromPoint/);
+  assert.match(read('shell-assets/viewer.js'), /scrollbar-color/);
+  assert.match(read('shell-assets/viewer.js'), /reviewHitThread/);
   // Theme tokens only — the review block must not introduce raw palette hex values.
   const block = css.slice(css.indexOf('.bar-feedback'));
   assert.doesNotMatch(block, /#[0-9a-f]{3,8}\b/i);

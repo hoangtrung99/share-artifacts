@@ -45,6 +45,16 @@ exact occurrences → prefix/suffix context; ambiguity = `unanchored` (never wro
 reviewer); `resolved → open` (reopen). Resolve uses the recorded `addressedRevisionId`; a caller
 cannot retarget it. `expectedVersion` mismatch → `409 version_conflict` with the current thread.
 
+How to mark a comment addressed/resolved:
+
+1. Fix the artifact and publish it (`./deliver.sh ...`) — note the printed `?rev=<revisionId>` (or
+   `pnpm run revisions:status --project <p> --file <f>`).
+2. Owner marks addressed (CLI; the admin token is never exposed to the browser):
+   `pnpm run feedback -- addressed --thread <threadId> --revision <revisionId>`
+3. The reviewer opens the artifact with the review link, opens Feedback, and clicks **Resolve**
+   (or **Reopen** on a resolved thread). Project-cookie sessions are read-only by design; only the
+   admin token can mark addressed, because share links reuse the same project cookie.
+
 ## CLI env
 
 - `ARTIFACTS_SITE_URL` (default production URL)

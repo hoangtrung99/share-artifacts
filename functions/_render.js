@@ -21,7 +21,7 @@ import {
   categoryLabel,
 } from './_store.js';
 
-export const ASSET_V = 'c0e2d2a6';
+export const ASSET_V = '5f37ba2c';
 
 const SITE_HOST = 'artifacts.hoangtrung.dev';
 
@@ -697,6 +697,28 @@ function reviewUiHtml(ctx) {
     <button class="btn btn--primary" type="submit" data-review-inline-submit>Add comment</button>
   </div>
 </form>
+<div class="review-thread-pop" data-review-thread-pop role="dialog" aria-label="Comment thread" tabindex="-1" hidden>
+  <div class="review-thread-pop-head">
+    <span class="review-thread-pop-chips" data-review-thread-pop-chips></span>
+    <button class="icon-btn review-inline-close" type="button" data-review-thread-pop-close aria-label="Close thread" data-tip="Close">${icon('close')}</button>
+  </div>
+  <blockquote class="review-quote review-thread-pop-quote" data-review-thread-pop-quote></blockquote>
+  <p class="thread-meta" data-review-thread-pop-meta></p>
+  <div class="review-thread-pop-body" data-review-thread-pop-body></div>
+  <ol class="review-thread-pop-replies" data-review-thread-pop-replies></ol>
+  <p class="review-form-error" data-review-thread-pop-error role="alert" hidden></p>
+  <form class="review-thread-pop-reply" data-review-thread-pop-reply hidden>
+    <label class="sr-only" for="review-thread-reply">Reply</label>
+    <textarea class="review-input" id="review-thread-reply" data-review-thread-pop-input rows="2" maxlength="8000" placeholder="Reply…"></textarea>
+    <div class="review-inline-actions">
+      <button class="btn btn--primary" type="submit" data-review-thread-pop-send>Reply</button>
+    </div>
+  </form>
+  <div class="review-thread-pop-actions">
+    <span class="review-thread-pop-actions-main" data-review-thread-pop-actions></span>
+    <button class="btn review-thread-pop-open" type="button" data-review-thread-pop-open>Open in panel</button>
+  </div>
+</div>
 <button class="review-pill" data-review-pill type="button" hidden>${icon('comment')}<span data-review-pill-text>Feedback</span></button>
 ${versionsDialogHtml()}`;
 }

@@ -2145,6 +2145,114 @@ body.review-open .reader {
   transition: background-color var(--d1) var(--ease-out);
 }
 
+/* ---------- Thread popup (panel closed) ---------- */
+.review-thread-pop {
+  position: fixed;
+  z-index: var(--z-popover);
+  width: min(380px, calc(100vw - 16px));
+  max-height: min(72vh, 540px);
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transform: scale(0.97) translateY(4px);
+  transform-origin: var(--sel-origin, 0% 0%);
+  transition: opacity var(--d2) var(--ease-out), transform var(--d2) var(--ease-out);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.review-thread-pop[hidden] { display: none !important; }
+.review-thread-pop:focus { outline: none; }
+.review-thread-pop.is-open { opacity: 1; transform: scale(1) translateY(0); }
+.review-thread-pop-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.review-thread-pop-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.review-thread-pop-quote { margin: 0 0 8px; }
+.review-thread-pop-meta { margin: 0 0 6px; }
+.review-thread-pop-body { font-size: 13px; line-height: 1.55; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-thread-pop-replies { list-style: none; margin: 8px 0 0; padding: 0 0 0 10px; border-left: 1px solid var(--line-strong); }
+.review-thread-pop-reply { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.review-thread-pop-reply[hidden] { display: none; }
+.review-thread-pop-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.review-thread-pop-actions-main { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.review-thread-pop-open { margin-left: auto; height: 30px; padding: 0 10px; font-size: 12px; }
+.review-thread-pop .thread-action { height: 30px; }
+
+/* Thread-card emphasis when a highlight is clicked with the panel open. */
+.thread.is-flash {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  transition: background var(--d3) var(--ease-out), box-shadow var(--d3) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread.is-flash { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+}
+
+/* ---------- Review scrollbars (panel, lists, floating editors) ---------- */
+.review-body,
+.review-inline,
+.review-thread-pop,
+.versions-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.review-body::-webkit-scrollbar,
+.review-inline::-webkit-scrollbar,
+.review-thread-pop::-webkit-scrollbar,
+.versions-body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.review-body::-webkit-scrollbar-track,
+.review-inline::-webkit-scrollbar-track,
+.review-thread-pop::-webkit-scrollbar-track,
+.versions-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.review-body::-webkit-scrollbar-thumb,
+.review-inline::-webkit-scrollbar-thumb,
+.review-thread-pop::-webkit-scrollbar-thumb,
+.versions-body::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--r-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.review-body::-webkit-scrollbar-thumb:hover,
+.review-inline::-webkit-scrollbar-thumb:hover,
+.review-thread-pop::-webkit-scrollbar-thumb:hover,
+.versions-body::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: content-box;
+}
+.review-body::-webkit-scrollbar-corner,
+.review-inline::-webkit-scrollbar-corner,
+.review-thread-pop::-webkit-scrollbar-corner,
+.versions-body::-webkit-scrollbar-corner { background: transparent; }
+
+@media (pointer: coarse) {
+  .review-thread-pop-open,
+  .review-thread-pop .thread-action { height: 44px; min-height: 44px; }
+  .review-thread-pop .review-input { min-height: 44px; }
+  .review-thread-pop-reply .btn { height: 44px; min-height: 44px; }
+}
+
 /* ---------- Mobile reopen pill ---------- */
 .review-pill {
   position: fixed;

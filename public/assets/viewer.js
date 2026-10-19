@@ -1957,6 +1957,7 @@
     const accent = reviewToken('--accent') || 'CanvasText';
     const ink = reviewToken('--ink') || 'CanvasText';
     const muted = reviewToken('--muted') || 'CanvasText';
+    const thumb = reviewToken('--control-border') || reviewToken('--line-strong') || muted;
     style.textContent =
       '::highlight(review-open){background-color:color-mix(in srgb,' +
       accent +
@@ -1976,7 +1977,20 @@
       ' 55%,transparent);}' +
       '::highlight(review-pending){background-color:color-mix(in srgb,' +
       accent +
-      ' 14%,transparent);}';
+      ' 14%,transparent);}' +
+      // Theme-aware artifact scrollbars (both axes; never touches layout).
+      'html{scrollbar-width:thin;scrollbar-color:' +
+      thumb +
+      ' transparent;}' +
+      '::-webkit-scrollbar{width:10px;height:10px;}' +
+      '::-webkit-scrollbar-track{background:transparent;}' +
+      '::-webkit-scrollbar-thumb{background:' +
+      thumb +
+      ';border-radius:999px;border:2px solid transparent;background-clip:content-box;}' +
+      '::-webkit-scrollbar-thumb:hover{background:' +
+      accent +
+      ';background-clip:content-box;}' +
+      '::-webkit-scrollbar-corner{background:transparent;}';
   }
 
   function reviewSetHighlight(target, name, ranges) {
@@ -2476,6 +2490,7 @@
     if (!review.mode) {
       reviewHidePopover();
       reviewHideInline();
+      reviewHideThreadPopup();
     }
   }
 
@@ -2829,6 +2844,13 @@
     })
       .then(function (data) {
         if (data && data.thread) reviewReplaceThread(data.thread);
+        if (review.popupThread && review.popupThread.threadId === threadId) {
+          const updated = reviewFindThread(threadId);
+          if (updated) {
+            review.popupThread = updated;
+            reviewRenderThreadPopup(updated);
+          }
+        }
         showToast('Thread marked ' + status);
         reviewAnnounce('Thread marked ' + status);
         reviewLoadThreads({ quiet: true });
@@ -2913,13 +2935,21 @@
     reviewFocusThreadCard(threadId);
   }
 
-  function reviewFocusThreadCard(threadId) {
+  function reviewFocusThreadCard(threadId, flash) {
     if (!review) return;
     const card = review.refs.list.querySelector('[data-thread="' + threadId + '"]');
     if (!card) return;
     const quote = card.querySelector('.thread-quote');
     if (quote) quote.focus({ preventScroll: true });
     card.scrollIntoView({ block: 'nearest' });
+    if (flash) {
+      // Emphasis only: background + left rule, no layout movement.
+      card.classList.add('is-flash');
+      clearTimeout(review.flashTimer);
+      review.flashTimer = setTimeout(function () {
+        card.classList.remove('is-flash');
+      }, 900);
+    }
   }
 
   function reviewReduceMotion() {
@@ -3242,6 +3272,7 @@
     if (!matches) {
       reviewHidePopover();
       reviewHideInline();
+      reviewHideThreadPopup();
       review.composedAnchor = null;
       if (reviewComposerOpen()) reviewCancelComposer();
       reviewAnnounce('The embedded page navigated away from the artifact. Reload to add feedback.');
@@ -3331,6 +3362,9 @@
       reviewScheduleSelectionCheck(180);
     });
     doc.addEventListener('keydown', reviewAnnotationKeydown, true);
+    doc.addEventListener('click', function (event) {
+      reviewArtifactClick(event, target);
+    }, true);
     if (doc !== document) {
       // Events inside the artifact iframe do not bubble to the parent document: mirror the
       // click-outside/Escape routing there so the composer dismisses from either document.
@@ -3365,6 +3399,7 @@
       // A scrolling composer (long draft) must never dismiss itself or lose the draft.
       if (review.refs.inline && review.refs.inline.contains(event.target)) return;
       reviewHidePopover();
+      reviewHideThreadPopup();
     }, true);
     reviewWatchTarget(target);
   }
@@ -3594,6 +3629,7 @@
     review.pillDismissed = false;
     reviewHidePopover();
     reviewHideInline();
+    reviewHideThreadPopup();
     const refs = review.refs;
     refs.panel.hidden = false;
     document.body.classList.add('review-open');
@@ -4216,6 +4252,7 @@
     clearTimeout(review.selectionTimer);
     review.composedAnchor = anchorInfo.anchor;
     reviewHidePopover();
+    reviewHideThreadPopup();
     const refs = review.refs;
     const isReplace = kind === 'replace';
     review.inline = {
@@ -4328,6 +4365,309 @@
       });
   }
 
+  /* ------------------------------------ thread popup + highlight hit-testing */
+
+  /** Normalized text bounds for every anchored thread (used for highlight hit-testing). */
+  function reviewThreadBounds() {
+    const map = new Map();
+    if (!review) return map;
+    review.threads.forEach(function (thread) {
+      const state = review.anchorState && review.anchorState.get(thread.threadId);
+      if (!state || !state.anchored || !state.range || !state.target) return;
+      const target = state.target;
+      const index = reviewTextIndexFor(target);
+      if (!index) return;
+      const range = state.range;
+      const startBoundary = reviewTextBoundary(
+        target.doc,
+        range.startContainer,
+        range.startOffset,
+        'start',
+      );
+      const endBoundary = reviewTextBoundary(target.doc, range.endContainer, range.endOffset, 'end');
+      if (!startBoundary || !endBoundary) return;
+      const start = reviewBoundaryIndex(index, startBoundary.node, startBoundary.offset);
+      const end = reviewBoundaryIndex(index, endBoundary.node, endBoundary.offset);
+      if (start < 0 || end <= start) return;
+      map.set(thread.threadId, { start: start, end: end, thread: thread, target: target });
+    });
+    return map;
+  }
+
+  /** Map a click coordinate inside an artifact document to a normalized text offset. */
+  function reviewPointIndex(target, x, y) {
+    if (!target || !target.doc) return -1;
+    const doc = target.doc;
+    let node = null;
+    let offset = 0;
+    try {
+      if (typeof doc.caretRangeFromPoint === 'function') {
+        const range = doc.caretRangeFromPoint(x, y);
+        if (range) {
+          node = range.startContainer;
+          offset = range.startOffset;
+        }
+      } else if (typeof doc.caretPositionFromPoint === 'function') {
+        const position = doc.caretPositionFromPoint(x, y);
+        if (position) {
+          node = position.offsetNode;
+          offset = position.offset;
+        }
+      }
+    } catch (error) {
+      return -1;
+    }
+    if (!node) return -1;
+    const boundary = reviewTextBoundary(doc, node, offset, 'start');
+    if (!boundary) return -1;
+    const index = reviewTextIndexFor(target);
+    if (!index || !index.text) return -1;
+    const point = reviewBoundaryIndex(index, boundary.node, boundary.offset);
+    return point < 0 ? -1 : point;
+  }
+
+  /** Nearest anchored thread for a click inside the artifact (small character tolerance). */
+  function reviewHitThread(target, x, y) {
+    const point = reviewPointIndex(target, x, y);
+    if (point < 0) return null;
+    let best = null;
+    reviewThreadBounds().forEach(function (bounds) {
+      if (bounds.target !== target) return;
+      let distance = 0;
+      if (point < bounds.start) distance = bounds.start - point;
+      else if (point > bounds.end) distance = point - bounds.end;
+      if (distance > 8) return;
+      if (!best || distance < best.distance) best = { distance: distance, bounds: bounds };
+    });
+    return best ? best.bounds.thread : null;
+  }
+
+  function reviewArtifactClick(event, target) {
+    if (!review || (event.button != null && event.button !== 0)) return;
+    const eventTarget = event.target;
+    if (
+      eventTarget &&
+      eventTarget.closest &&
+      eventTarget.closest('a,button,input,textarea,select,label,[role="button"],[contenteditable="true"]')
+    ) {
+      return;
+    }
+    // Never steal a real text selection; drafts/panel composers own the interaction.
+    try {
+      const selection = target.doc.getSelection();
+      if (selection && !selection.isCollapsed) return;
+    } catch (error) {
+      /* ignore */
+    }
+    if (reviewInlineOpen() || reviewComposerOpen()) return;
+    const insideContainer = !!(target.container && target.container.contains(eventTarget));
+    if (review.popupThread) {
+      // Any non-interactive artifact click dismisses the open popup; only an actual highlight
+      // hit inside the reviewable body may immediately open the next one.
+      reviewHideThreadPopup();
+      if (!insideContainer) return;
+    }
+    if (!insideContainer) return;
+    const thread = reviewHitThread(target, event.clientX, event.clientY);
+    if (!thread) return;
+    if (review.open) reviewOpenThreadInPanel(thread);
+    else reviewShowThreadPopup(thread, event, target);
+  }
+
+  function reviewPositionThreadPopup(x, y) {
+    const el = review.refs && review.refs.threadPop;
+    if (!el) return;
+    const width = el.offsetWidth || 340;
+    const height = el.offsetHeight || 260;
+    const topbar = document.querySelector('[data-topbar]');
+    const barBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+    let left = x + 12;
+    if (left + width > window.innerWidth - 8) left = x - width - 12;
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+    let top = y + 12;
+    let originY = '0%';
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(barBottom + 8, y - height - 12);
+      originY = '100%';
+    }
+    el.style.left = Math.round(left) + 'px';
+    el.style.top = Math.round(top) + 'px';
+    const originX = Math.max(0, Math.min(100, ((x - left) / width) * 100));
+    el.style.setProperty('--sel-origin', originX + '% ' + originY);
+  }
+
+  function reviewThreadPopupActions(thread) {
+    const perms = thread.permissions || review.permissions || {};
+    const actions = [];
+    if (thread.status === 'addressed' && reviewCanResolve(perms)) actions.push(['resolved', 'Resolve']);
+    if (thread.status === 'resolved' && reviewCanReopen(perms)) actions.push(['open', 'Reopen']);
+    if (thread.status === 'open' && reviewCanMarkAddressed(perms)) actions.push(['addressed', 'Addressed']);
+    return actions;
+  }
+
+  function reviewRenderThreadPopup(thread) {
+    if (!review || !thread) return;
+    const refs = review.refs;
+    const anchor = thread.anchor || {};
+    refs.threadPopChips.textContent = '';
+    refs.threadPopChips.appendChild(
+      reviewEl('span', 'thread-kind', REVIEW_KIND_LABEL[thread.kind] || 'Comment'),
+    );
+    refs.threadPopChips.appendChild(
+      reviewEl('span', 'thread-status', REVIEW_STATUS_LABEL[thread.status] || thread.status),
+    );
+    if (thread.revisionNumber) {
+      refs.threadPopChips.appendChild(reviewEl('span', 'thread-outdated', 'v' + thread.revisionNumber));
+    }
+    const state = review.anchorState && review.anchorState.get(thread.threadId);
+    if (state && !state.anchored) {
+      refs.threadPopChips.appendChild(reviewEl('span', 'thread-lost', 'Location lost'));
+    }
+    refs.threadPopQuote.textContent =
+      anchor.type === 'document'
+        ? 'Whole document'
+        : reviewClip(anchor.exact || '', 200);
+    const author = thread.author || {};
+    refs.threadPopMeta.textContent = '';
+    refs.threadPopMeta.appendChild(reviewEl('span', 'thread-author', author.name || 'Anonymous'));
+    if (author.unverified) refs.threadPopMeta.appendChild(reviewEl('span', 'thread-unverified', 'unverified'));
+    refs.threadPopMeta.appendChild(reviewEl('span', 'thread-dot', '·'));
+    const time = reviewEl('span', '', reviewRelativeTime(thread.createdAt));
+    time.title = reviewShortDate(thread.createdAt);
+    refs.threadPopMeta.appendChild(time);
+
+    const messages = Array.isArray(thread.messages) && thread.messages.length
+      ? thread.messages
+      : [{ body: thread.body || '', createdAt: thread.createdAt, author: author }];
+    refs.threadPopBody.textContent = messages[0].body || '';
+    refs.threadPopReplies.textContent = '';
+    const replies = Array.isArray(thread.replies) && thread.replies.length ? thread.replies : messages.slice(1);
+    replies.forEach(function (reply) {
+      const item = reviewEl('li', 'thread-reply');
+      const meta = reviewEl('p', 'thread-meta');
+      meta.appendChild(reviewEl('span', 'thread-author', (reply.author && reply.author.name) || 'Anonymous'));
+      meta.appendChild(reviewEl('span', 'thread-dot', '·'));
+      const replyTime = reviewEl('span', '', reviewRelativeTime(reply.createdAt));
+      replyTime.title = reviewShortDate(reply.createdAt);
+      meta.appendChild(replyTime);
+      item.appendChild(meta);
+      item.appendChild(reviewEl('p', 'thread-body', reply.body || ''));
+      refs.threadPopReplies.appendChild(item);
+    });
+    const perms = thread.permissions || review.permissions || {};
+    const canReply = reviewCanReply(perms) && !review.readonly;
+    refs.threadPopForm.hidden = !canReply;
+    refs.threadPopInput.value = '';
+    refs.threadPopError.hidden = true;
+    refs.threadPopActions.textContent = '';
+    reviewThreadPopupActions(thread).forEach(function (action) {
+      refs.threadPopActions.appendChild(
+        reviewActionButton(action[0], thread.threadId, action[1], action[0] === 'open' ? 'history' : 'check'),
+      );
+    });
+  }
+
+  function reviewShowThreadPopup(thread, event, target) {
+    if (!review || !thread) return;
+    if (reviewInlineOpen() || reviewComposerOpen()) return;
+    clearTimeout(review.selectionTimer);
+    reviewHidePopover();
+    review.popupThread = thread;
+    reviewRenderThreadPopup(thread);
+    const refs = review.refs;
+    const frame = target && target.frame;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (frame) {
+      const rect = frame.getBoundingClientRect();
+      x += rect.left;
+      y += rect.top;
+    }
+    refs.threadPop.hidden = false;
+    refs.threadPop.classList.remove('is-open');
+    reviewPositionThreadPopup(x, y);
+    requestAnimationFrame(function () {
+      if (!review || !review.popupThread) return;
+      refs.threadPop.classList.add('is-open');
+      if (event.detail === 0 && !refs.threadPopForm.hidden) refs.threadPopInput.focus();
+    });
+  }
+
+  function reviewHideThreadPopup() {
+    if (!review || !review.refs || !review.refs.threadPop) return;
+    const refs = review.refs;
+    if (!review.popupThread && refs.threadPop.hidden) return;
+    review.popupThread = null;
+    refs.threadPop.classList.remove('is-open');
+    clearTimeout(review.popupTimer);
+    review.popupTimer = setTimeout(function () {
+      if (review && !review.popupThread && !review.refs.threadPop.classList.contains('is-open')) {
+        review.refs.threadPop.hidden = true;
+      }
+    }, 140);
+  }
+
+  function reviewThreadPopupReply(event) {
+    event.preventDefault();
+    const thread = review && review.popupThread;
+    if (!thread || !review) return;
+    const refs = review.refs;
+    const body = refs.threadPopInput.value.trim();
+    if (!body) {
+      refs.threadPopInput.focus();
+      return;
+    }
+    refs.threadPopSend.disabled = true;
+    refs.threadPopError.hidden = true;
+    review.postingReply = true;
+    reviewFetch('/api/feedback/' + encodeURIComponent(thread.threadId) + '/replies', {
+      method: 'POST',
+      body: { body: body, authorName: reviewStoredName(), idempotencyKey: reviewIdempotencyKey() },
+    })
+      .then(function (data) {
+        if (review.popupThread !== thread) return;
+        if (data && data.thread) {
+          reviewReplaceThread(data.thread);
+          review.popupThread = data.thread;
+          reviewRenderThreadPopup(data.thread);
+        }
+        showToast('Reply added');
+        reviewLoadThreads({ quiet: true });
+        reviewPaintHighlights();
+      })
+      .catch(function (error) {
+        if (review.popupThread !== thread) return;
+        reviewShowApiError(error, 'Reply could not be added.');
+        refs.threadPopError.textContent = (error && error.message) || 'Reply could not be added.';
+        refs.threadPopError.hidden = false;
+      })
+      .finally(function () {
+        review.postingReply = false;
+        refs.threadPopSend.disabled = false;
+      });
+  }
+
+  function reviewOpenThreadInPanel(thread) {
+    if (!review || !thread) return;
+    if (review.statusFilter !== thread.status) {
+      review.statusFilter = thread.status;
+      reviewUpdateFilters();
+      reviewSyncFeedbackUrl();
+    }
+    const inScope =
+      review.allRevisions || !thread.revisionId || thread.revisionId === review.viewRevisionId;
+    if (!inScope) {
+      review.allRevisions = true;
+      reviewUpdateFilters();
+      reviewSyncFeedbackUrl();
+      reviewLoadThreads({ quiet: true });
+    }
+    reviewRenderThreads();
+    setTimeout(function () {
+      if (review) reviewFocusThreadCard(thread.threadId, true);
+    }, 80);
+  }
+
   /* ------------------------------------------------------------ DOM wiring */
 
   function reviewFindRefs() {
@@ -4364,6 +4704,18 @@
       inlineSubmit: document.querySelector('[data-review-inline-submit]'),
       inlineCancel: document.querySelector('[data-review-inline-cancel]'),
       inlineClose: document.querySelector('[data-review-inline-close]'),
+      threadPop: document.querySelector('[data-review-thread-pop]'),
+      threadPopChips: document.querySelector('[data-review-thread-pop-chips]'),
+      threadPopQuote: document.querySelector('[data-review-thread-pop-quote]'),
+      threadPopMeta: document.querySelector('[data-review-thread-pop-meta]'),
+      threadPopBody: document.querySelector('[data-review-thread-pop-body]'),
+      threadPopReplies: document.querySelector('[data-review-thread-pop-replies]'),
+      threadPopError: document.querySelector('[data-review-thread-pop-error]'),
+      threadPopForm: document.querySelector('[data-review-thread-pop-reply]'),
+      threadPopInput: document.querySelector('[data-review-thread-pop-input]'),
+      threadPopSend: document.querySelector('[data-review-thread-pop-send]'),
+      threadPopActions: document.querySelector('[data-review-thread-pop-actions]'),
+      threadPopOpen: document.querySelector('[data-review-thread-pop-open]'),
       list: panel.querySelector('[data-review-list]'),
       composer: panel.querySelector('[data-review-composer]'),
       composerKicker: panel.querySelector('[data-review-composer-kicker]'),
@@ -4475,6 +4827,9 @@
       if (refs.popover && !refs.popover.hidden && !refs.popover.contains(event.target)) {
         reviewHidePopover();
       }
+      if (review.popupThread && refs.threadPop && !refs.threadPop.contains(event.target)) {
+        reviewHideThreadPopup();
+      }
     });
     if (refs.composer) {
       refs.composer.addEventListener('submit', reviewSubmitComposer);
@@ -4484,6 +4839,22 @@
           event.preventDefault();
           reviewSubmitComposer(event);
         }
+      });
+    }
+    if (refs.threadPop) {
+      refs.threadPop.querySelector('[data-review-thread-pop-close]').addEventListener('click', reviewHideThreadPopup);
+      refs.threadPopForm.addEventListener('submit', reviewThreadPopupReply);
+      refs.threadPopOpen.addEventListener('click', function () {
+        const thread = review.popupThread;
+        if (!thread) return;
+        reviewHideThreadPopup();
+        if (!review.open) reviewOpenPanel({ focus: true });
+        reviewOpenThreadInPanel(thread);
+      });
+      refs.threadPopActions.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-thread-action]');
+        if (!button) return;
+        reviewChangeStatus(button.getAttribute('data-thread-id'), button.getAttribute('data-thread-action'));
       });
     }
     if (refs.inline) {
@@ -4542,6 +4913,14 @@
       if (close) close.addEventListener('click', reviewCloseVersions);
       refs.versionsList.addEventListener('click', reviewVersionsClick);
     }
+    try {
+      const themeObserver = new window.MutationObserver(function () {
+        if (review) reviewPaintHighlights();
+      });
+      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    } catch (error) {
+      /* theme observation is best-effort */
+    }
     document.addEventListener('keydown', reviewGlobalKeydown);
     window.addEventListener('focus', function () {
       if (review && review.open && document.visibilityState === 'visible') {
@@ -4592,6 +4971,11 @@
       return;
     }
     if (event.key === 'Escape') {
+      if (review.popupThread) {
+        event.preventDefault();
+        reviewHideThreadPopup();
+        return;
+      }
       if (reviewInlineOpen()) {
         event.preventDefault();
         reviewHideInline();
@@ -4759,6 +5143,7 @@
       frameLoadedOnce: false,
       mutationTimer: 0,
       inline: null,
+      popupThread: null,
       pillDismissed: false,
       pollTimer: 0,
       selectionTimer: 0,
