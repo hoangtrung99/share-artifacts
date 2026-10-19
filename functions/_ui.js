@@ -26,6 +26,8 @@ const SPRITE = `<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11
 <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
 <symbol id="i-chevrons-down" viewBox="0 0 24 24"><path d="m6 5 6 6 6-6"/><path d="m6 13 6 6 6-6"/></symbol>
 <symbol id="i-chevrons-up" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6"/><path d="m6 19 6-6 6 6"/></symbol>
+<symbol id="i-comment" viewBox="0 0 24 24"><path d="M20 14.5a2 2 0 0 1-2 2H8.5L4 20V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2Z"/></symbol>
+<symbol id="i-history" viewBox="0 0 24 24"><path d="M3.2 12a8.8 8.8 0 1 0 2.7-6.2"/><path d="M3 4.5v4.7h4.7"/><path d="M12 8v4.2l2.8 1.7"/></symbol>
 <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10 4 4 4-4"/><path d="M5 18h14"/></symbol>
 <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7L11.5 7"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1.5-1.5"/></symbol>
 <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
@@ -73,6 +75,7 @@ export function shellChrome() {
 </div>
 
 <div class="more-popover" id="more-popover" role="menu" aria-label="More actions" hidden>
+  <button class="more-item" type="button" role="menuitem" data-action="versions" hidden><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span>Versions</span></button>
   <button class="more-item" type="button" role="menuitem" data-action="copy"><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span>Copy link</span></button>
   <button class="more-item" type="button" role="menuitem" data-action="raw"><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg><span>Open raw file</span></button>
   <button class="more-item" type="button" role="menuitem" data-action="print"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg><span>Print / save PDF</span></button>

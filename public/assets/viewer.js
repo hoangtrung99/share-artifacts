@@ -86,6 +86,14 @@
   let tipTimer = 0;
   let lastTipShownAt = 0;
 
+  function hoverFine() {
+    try {
+      return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    } catch (error) {
+      return true;
+    }
+  }
+
   function initTooltip() {
     tipEl = document.getElementById('tip');
     if (!tipEl) {
@@ -98,6 +106,7 @@
     }
 
     document.addEventListener('pointerover', function (event) {
+      if (!hoverFine()) return;
       const target = event.target.closest('[data-tip]');
       if (!target || target.contains(event.relatedTarget)) return;
       scheduleTip(target);
@@ -108,7 +117,8 @@
       hideTip();
     });
     document.addEventListener('focusin', function (event) {
-      if (programmaticFocus) return;
+      // Touch/keyboard-focus tooltips get stuck on coarse pointers; hover/fine only.
+      if (programmaticFocus || !hoverFine()) return;
       const target = event.target.closest('[data-tip]');
       if (target) showTip(target);
     });
@@ -1642,10 +1652,14 @@
 
   /**
    * Locate a TextQuoteSelector in normalized text.
-   * Unique `exact` wins; duplicates are disambiguated with prefix/suffix and an ambiguous
-   * no-context match returns null (never attach to the wrong occurrence). When `trustOffsets`
-   * is true (same revision the thread was written against), recorded offsets are validated
-   * first.
+   *
+   * Order of evidence (never trust offsets first):
+   *  1. enumerate every occurrence of `exact`;
+   *  2. one occurrence wins immediately;
+   *  3. otherwise score each occurrence with prefix/suffix context and require a unique best;
+   * If more than one occurrence remains tied after context scoring the anchor is unanchored:
+   * offsets never break an ambiguity tie, so reordered identical quotes can never silently attach
+   * to the wrong passage.
    */
   function reviewFindQuote(text, anchor, options) {
     if (typeof text !== 'string' || !text || !anchor || typeof anchor.exact !== 'string') return null;
@@ -1653,15 +1667,6 @@
     if (!exact) return null;
     const prefix = typeof anchor.prefix === 'string' ? anchor.prefix : '';
     const suffix = typeof anchor.suffix === 'string' ? anchor.suffix : '';
-    const opts = options || {};
-
-    if (opts.trustOffsets && Number.isInteger(anchor.start) && anchor.start >= 0) {
-      const start = anchor.start;
-      if (text.slice(start, start + exact.length) === exact && start + exact.length <= text.length) {
-        return { start, end: start + exact.length, score: 3 };
-      }
-    }
-
     const hits = [];
     let from = 0;
     while (hits.length < 200) {
@@ -1685,14 +1690,19 @@
         if (after === suffix) score += 2;
         else if (after && suffix.slice(0, after.length) === after) score += 1;
       }
-      return { start: index, end: index + exact.length, score };
+      return { start: index, end: index + exact.length, score: score };
     });
-    scored.sort(function (a, b) {
-      return b.score - a.score || a.start - b.start;
+    let best = -1;
+    scored.forEach(function (candidate) {
+      if (candidate.score > best) best = candidate.score;
     });
-    if (!scored.length || scored[0].score === 0) return null;
-    if (scored[1] && scored[1].score === scored[0].score) return null;
-    return scored[0];
+    const tied = scored.filter(function (candidate) {
+      return candidate.score === best;
+    });
+    // Offsets are deliberately NOT used to break ties: a tie means the quote context cannot
+    // prove which occurrence is meant, so the thread must show as unanchored instead.
+    if (best > 0 && tied.length === 1) return tied[0];
+    return null;
   }
 
   /* ------------------------------------------------ normalized text index */
@@ -1999,6 +2009,15 @@
       review.threads.forEach(function (thread) {
         if (review.anchorRanges.has(thread.threadId)) return;
         const anchor = thread.anchor;
+        if (anchor && anchor.type === 'document') {
+          review.anchorState.set(thread.threadId, {
+            anchored: true,
+            document: true,
+            target: target,
+            range: null,
+          });
+          return;
+        }
         if (!anchor || anchor.type !== 'text' || typeof anchor.exact !== 'string') {
           review.anchorState.set(thread.threadId, { anchored: false, target: target, range: null });
           return;
@@ -2139,10 +2158,14 @@
           review.viewRevisionId = data.revision.revisionId;
         }
         review.lastLoadedAt = Date.now();
+        reviewSyncArmed();
+        // Refresh the normalized index on every load: artifacts can mutate between polls.
+        reviewInvalidateIndexes();
         reviewSetState('');
         reviewUpdateBadge();
         reviewRenderThreads();
         reviewPaintHighlights();
+        reviewUpdateFrameGuard();
         reviewUpdateFilters();
         reviewUpdateFooter();
         reviewAnnounce(review.counts.open + ' open · ' + review.counts.addressed + ' addressed');
@@ -2179,16 +2202,28 @@
     // Public artifact feedback is not public: without a valid review-grant cookie (or an
     // owner project session) the API answers 401/403. Treat that as "no review access" and
     // hide the action entirely — never render a dead control or leaked counts.
-    if (code === 'feedback_not_configured' || error.status === 401 || error.status === 403 || error.status === 503) {
+    // 401/403 = no review access; 5xx (including 503 not-configured) = feature unavailable.
+    // Both hide the action silently instead of rendering a dead control or logging console noise.
+    if (
+      code === 'feedback_not_configured' ||
+      code === 'network' ||
+      error.status === 0 ||
+      error.status === 401 ||
+      error.status === 403 ||
+      error.status >= 500
+    ) {
       review.available = false;
       reviewUpdateAvailability();
       reviewUpdatePill();
+      reviewSyncArmed();
       if (review.open) {
         reviewSetState(
           'error',
           error.status === 503
             ? 'Review is not configured on this deployment.'
-            : 'A review link is required to see or add feedback on this artifact.',
+            : error.status >= 500 || error.status === 0
+              ? 'Review is temporarily unavailable.'
+              : 'A review link is required to see or add feedback on this artifact.',
         );
       }
       return;
@@ -2196,6 +2231,7 @@
     if (error.status === 404 || error.status === 405) {
       review.available = false;
       reviewUpdateAvailability();
+      reviewSyncArmed();
       return;
     }
     reviewSetState('error', (error && error.message) || 'Feedback could not be loaded.');
@@ -2225,6 +2261,7 @@
           review.available = false;
           reviewUpdateAvailability();
           reviewUpdatePill();
+          reviewSyncArmed();
         } else if (!review.viewRevisionId) {
           // The server pins even the default view to the exact revision shown; mirror that so
           // created threads always bind to the bytes the reviewer actually sees.
@@ -2236,7 +2273,17 @@
       })
       .catch(function (error) {
         if (opts.openDialog) reviewRenderVersionsError(error);
-        else if (error.status === 401 || error.status === 403) review.revisions = null;
+        else if (
+          error.status === 401 ||
+          error.status === 403 ||
+          error.status === 0 ||
+          error.status >= 500
+        ) {
+          review.revisions = null;
+          reviewUpdateVersionsEntry();
+          reviewUpdateAvailability();
+          reviewSyncArmed();
+        }
       })
       .finally(function () {
         review.loadingRevisions = false;
@@ -2301,7 +2348,7 @@
         'aria-label',
         'Feedback' + (open ? ' (' + open + ' open)' : ''),
       );
-      button.setAttribute('aria-pressed', String(!!review.mode));
+      button.setAttribute('aria-pressed', String(!!review.open));
     });
   }
 
@@ -2391,7 +2438,71 @@
         refs.emptyText.textContent = reviewEmptyMessage();
       }
     }
+    const documentAllowed =
+      reviewCanComment() &&
+      review.available !== false &&
+      review.frameReady !== false &&
+      !(review.frameExpected && !reviewFrameMatches());
+    if (refs.documentButton) {
+      // Empty-state entry point: discoverable only when there is nothing in the list.
+      refs.documentButton.hidden = !(isEmpty && review.statusFilter === 'open' && documentAllowed);
+    }
+    if (refs.documentAction) {
+      // Header entry point: works even when the Open list is not empty (small icon action).
+      refs.documentAction.hidden = !documentAllowed;
+    }
     reviewUpdateBadge();
+  }
+
+  function reviewCanComment() {
+    if (!review || review.readonly) return false;
+    return !(review.permissions && review.permissions.canComment === false);
+  }
+
+  /** Selection capture is armed whenever the session may write — no panel required. */
+  function reviewCanSelectToComment() {
+    if (!review || review.available === false || review.readonly) return false;
+    if (!reviewCanComment()) return false;
+    if (document.querySelector('iframe.viewer-frame') && !reviewFrameMatches()) return false;
+    return true;
+  }
+
+  function reviewSyncArmed() {
+    if (!review) return;
+    review.mode = !!(review.permissions && reviewCanSelectToComment());
+    reviewUpdateBadge();
+    reviewUpdateHint();
+    reviewUpdatePill();
+    if (!review.mode) {
+      reviewHidePopover();
+      reviewHideInline();
+    }
+  }
+
+  function reviewInlineOpen() {
+    return !!(review && review.refs && review.refs.inline && !review.refs.inline.hidden);
+  }
+
+  function reviewStoredName() {
+    try {
+      return window.localStorage.getItem('artifacts-review-name') || '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function reviewRememberName(name) {
+    try {
+      if (name) window.localStorage.setItem('artifacts-review-name', name);
+    } catch (error) {
+      /* storage unavailable */
+    }
+  }
+
+  function reviewShowInlineError(message) {
+    if (!review) return;
+    review.refs.inlineError.textContent = message || '';
+    review.refs.inlineError.hidden = !message;
   }
 
   function reviewEmptyMessage() {
@@ -2401,8 +2512,8 @@
       return 'No open feedback on this artifact.';
     }
     return review.allRevisions
-      ? 'No open feedback across revisions yet.'
-      : 'No open feedback yet. Select text in the artifact to add the first comment.';
+      ? 'No open feedback across revisions yet. Select text, or comment on the whole document.'
+      : 'No open feedback yet. Select text in the artifact, or comment on the whole document.';
   }
 
   function reviewThreadCard(thread, pending) {
@@ -2415,12 +2526,15 @@
     quote.type = 'button';
     quote.setAttribute('data-thread-action', 'jump');
     quote.setAttribute('data-thread-id', thread.threadId);
-    quote.title = 'Jump to the commented passage';
+    quote.title =
+      anchor.type === 'document' ? 'Jump to the top of the artifact' : 'Jump to the commented passage';
     quote.appendChild(
       reviewEl(
         'span',
         'thread-quote-text',
-        reviewClip(anchor.exact || (anchor.element && anchor.element.text) || '(no quote)', 240),
+        anchor.type === 'document'
+          ? 'Whole document'
+          : reviewClip(anchor.exact || (anchor.element && anchor.element.text) || '(no quote)', 240),
       ),
     );
     const quoteMeta = reviewEl('span', 'thread-quote-meta');
@@ -2498,20 +2612,19 @@
           reviewActionButton('reply', thread.threadId, 'Reply', 'reply'),
         );
       }
-      if (thread.status === 'open' && !review.readonly) {
-        if (reviewCanMarkAddressed(perms)) {
+      if (!review.readonly) {
+        // Transitions follow the lifecycle exactly: open --(admin only)--> addressed
+        // --Resolve--> resolved --Reopen--> open. No action is offered out of order, and a
+        // read-only session never sees Reopen.
+        if (thread.status === 'open' && reviewCanMarkAddressed(perms)) {
           actions.appendChild(reviewActionButton('addressed', thread.threadId, 'Addressed', 'check'));
         }
-        if (reviewCanResolve(perms)) {
-          actions.appendChild(reviewActionButton('resolved', thread.threadId, 'Resolved', 'check'));
+        if (thread.status === 'addressed' && reviewCanResolve(perms)) {
+          actions.appendChild(reviewActionButton('resolved', thread.threadId, 'Resolve', 'check'));
         }
-      } else if (thread.status === 'addressed' && !review.readonly) {
-        if (reviewCanResolve(perms)) {
-          actions.appendChild(reviewActionButton('resolved', thread.threadId, 'Resolved', 'check'));
+        if (thread.status === 'resolved' && reviewCanReopen(perms)) {
+          actions.appendChild(reviewActionButton('open', thread.threadId, 'Reopen', 'history'));
         }
-        actions.appendChild(reviewActionButton('open', thread.threadId, 'Reopen', 'history'));
-      } else if (thread.status === 'resolved' && !review.readonly) {
-        actions.appendChild(reviewActionButton('open', thread.threadId, 'Reopen', 'history'));
       }
       if (actions.children.length) card.appendChild(actions);
     }
@@ -2522,6 +2635,11 @@
     if (review.permissions && review.permissions.canReply === false) return false;
     if (perms && perms.canReply === false) return false;
     return true;
+  }
+
+  function reviewCanReopen(perms) {
+    if (perms && typeof perms.canReopen === 'boolean') return perms.canReopen;
+    return false;
   }
 
   function reviewCanMarkAddressed(perms) {
@@ -2724,34 +2842,57 @@
   }
 
   function reviewJumpToThread(threadId) {
-    const state = review && review.anchorState && review.anchorState.get(threadId);
+    let state = review && review.anchorState && review.anchorState.get(threadId);
+    if (state && !state.anchored) {
+      // The artifact DOM may have changed since the last resolve (tabs, filters, lazy content):
+      // rebuild the index once and retry before declaring the anchor lost.
+      reviewInvalidateIndexes();
+      reviewPaintHighlights();
+      state = review.anchorState.get(threadId);
+    }
+    if (state && state.document) {
+      const target = state.target || review.targets[0];
+      const behavior = reviewReduceMotion() ? 'auto' : 'smooth';
+      if (target && target.frame) {
+        try {
+          target.doc.defaultView.scrollTo({ top: 0, behavior: behavior });
+        } catch (error) {
+          /* ignore */
+        }
+      } else {
+        window.scrollTo({ top: 0, behavior: behavior });
+      }
+      review.pendingFocusThread = threadId;
+      reviewFocusThreadCard(threadId);
+      return;
+    }
     if (!state || !state.anchored || !state.range) {
       showToast('Could not find this passage in the current revision.', 'error');
       return;
     }
     const range = state.range;
     const target = state.target;
+    const behavior = reviewReduceMotion() ? 'auto' : 'smooth';
     const scroll = function () {
       try {
-        const rect = range.getBoundingClientRect();
+        const element =
+          range.startContainer.nodeType === 1
+            ? range.startContainer
+            : range.startContainer.parentElement;
         if (target.frame) {
-          const frameRect = target.frame.getBoundingClientRect();
-          const top = frameRect.top + rect.top;
-          window.scrollTo({
-            top: Math.max(0, window.scrollY + top - window.innerHeight / 2),
-            behavior: reviewReduceMotion() ? 'auto' : 'smooth',
-          });
-        } else {
-          const element =
-            range.startContainer.nodeType === 1
-              ? range.startContainer
-              : range.startContainer.parentElement;
-          if (element) {
-            element.scrollIntoView({
-              block: 'center',
-              behavior: reviewReduceMotion() ? 'auto' : 'smooth',
+          // HTML artifact: scroll the artifact document itself, never the outer page.
+          const win = target.doc.defaultView;
+          if (element && typeof element.scrollIntoView === 'function') {
+            element.scrollIntoView({ block: 'center', behavior: behavior });
+          } else if (win) {
+            const rect = range.getBoundingClientRect();
+            win.scrollTo({
+              top: Math.max(0, win.scrollY + rect.top - win.innerHeight / 2),
+              behavior: behavior,
             });
           }
+        } else if (element) {
+          element.scrollIntoView({ block: 'center', behavior: behavior });
         }
         reviewFlashAnchor(range);
       } catch (error) {
@@ -2840,18 +2981,30 @@
       return;
     }
     if (!anchorInfo || !anchorInfo.anchor) return;
+    if (anchorInfo.anchor.type === 'document' && document.querySelector('iframe.viewer-frame')) {
+      // Whole-document comments must also be pinned to the artifact bytes currently shown.
+      if (!reviewUpdateFrameGuard()) {
+        showToast('The embedded page navigated away from the artifact — reload to comment.', 'error');
+        return;
+      }
+    }
     clearTimeout(review.selectionTimer);
     review.composedAnchor = anchorInfo.anchor;
     reviewHidePopover();
+    const isDocument = anchorInfo.anchor.type === 'document';
     review.composer = {
-      kind: kind,
+      kind: isDocument ? 'comment' : kind,
       anchor: anchorInfo.anchor,
       anchorInfo: anchorInfo,
+      target: anchorInfo.target || null,
+      document: isDocument,
       idempotencyKey: reviewIdempotencyKey(),
     };
     const refs = review.refs;
-    refs.composerQuote.textContent = reviewClip(anchorInfo.anchor.exact, 220);
-    refs.composerQuote.title = anchorInfo.anchor.exact || '';
+    refs.composerQuote.textContent = isDocument
+      ? 'Whole document'
+      : reviewClip(anchorInfo.anchor.exact, 220);
+    refs.composerQuote.title = isDocument ? 'Whole document' : anchorInfo.anchor.exact || '';
     refs.input.value = '';
     refs.formError.hidden = true;
     refs.replacement.value = kind === 'replace' ? anchorInfo.anchor.exact : '';
@@ -2906,21 +3059,13 @@
       reviewShowFormError('This artifact has no published revision yet — feedback starts with the next publish.');
       return;
     }
-    const composer = review.composer;
-    const payload = {
-      kind: kind,
-      anchor: composer.anchor,
-      body: body,
-      authorName: reviewAuthorName() || undefined,
-      idempotencyKey: composer.idempotencyKey,
-    };
-    if (review.artifactId) payload.artifactId = review.artifactId;
-    else {
-      payload.project = review.project;
-      payload.file = review.file;
+    if (composerTargetInvalid()) {
+      reviewShowFormError('The embedded page navigated away from the artifact — reload before commenting.');
+      return;
     }
-    payload.revisionId = review.viewRevisionId;
-    if (replacement) payload.replacement = replacement;
+    const composer = review.composer;
+    const payload = reviewThreadPayload(composer, body, replacement, reviewAuthorName());
+    reviewRememberName(reviewAuthorName());
 
     review.submitting = true;
     refs.submit.disabled = true;
@@ -2961,7 +3106,7 @@
     }
     reviewAnnounce('Adding feedback…');
 
-    reviewFetch('/api/feedback', { method: 'POST', body: payload })
+    reviewPostThread(payload)
       .then(function () {
         review.pendingThread = null;
         review.composer = null;
@@ -2986,6 +3131,18 @@
       });
   }
 
+  function composerTargetInvalid() {
+    if (!review || !review.composer) return false;
+    // Whole-document comments have no target element, but they still bind to the artifact the
+    // shell rendered: if the iframe now shows something else, both text and document anchors
+    // must be blocked (otherwise the POST could record artifact A while showing B).
+    if (review.composer.document) {
+      return !!document.querySelector('iframe.viewer-frame') && !reviewFrameMatches();
+    }
+    const target = review.composer.target;
+    return !!(target && target.frame && review.frameReady === false);
+  }
+
   function reviewShowFormError(message) {
     if (!review) return;
     review.refs.formError.textContent = message;
@@ -3006,6 +3163,107 @@
     return targets;
   }
 
+  /** The artifact URL the shell rendered (raw path + pinned ?rev=); any navigation away is not
+   *  the artifact and must never receive feedback. */
+  function reviewFrameExpected() {
+    const frame = document.querySelector('iframe.viewer-frame');
+    if (!frame) return null;
+    try {
+      const url = new URL(frame.getAttribute('src') || '', window.location.href);
+      return { pathname: url.pathname, revision: url.searchParams.get('rev') || '' };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /** True while the iframe still shows the rendered artifact document. */
+  function reviewFrameMatches() {
+    if (!review || !review.frameExpected) return true;
+    const frame = document.querySelector('iframe.viewer-frame');
+    if (!frame) return true;
+    try {
+      const current = new URL(frame.contentWindow.location.href);
+      if (current.pathname !== review.frameExpected.pathname) return false;
+      if (review.frameExpected.revision) {
+        return current.searchParams.get('rev') === review.frameExpected.revision;
+      }
+      return true;
+    } catch (error) {
+      // same-origin viewer: a SecurityError means navigation left our origin
+      return false;
+    }
+  }
+
+  function reviewUpdateFrameGuard() {
+    if (!review) return false;
+    const matches = reviewFrameMatches();
+    const changed = review.frameReady !== matches;
+    review.frameReady = matches;
+    if (review.refs && review.refs.frameNote) {
+      review.refs.frameNote.hidden = matches;
+    }
+    if (!matches) {
+      reviewHidePopover();
+      reviewHideInline();
+      review.composedAnchor = null;
+      if (reviewComposerOpen()) reviewCancelComposer();
+      reviewAnnounce('The embedded page navigated away from the artifact. Reload to add feedback.');
+    }
+    if (changed) reviewRenderThreads();
+    return matches;
+  }
+
+  function reviewInvalidateTextIndex(target) {
+    if (!target) return;
+    target.index = null;
+    target.indexDoc = null;
+  }
+
+  function reviewInvalidateIndexes() {
+    if (!review) return;
+    review.targets.forEach(reviewInvalidateTextIndex);
+  }
+
+  /** Rebuild anchored ranges after the artifact DOM mutated (interactive HTML, tabs, filters). */
+  function reviewWatchTarget(target) {
+    if (!review || !target || !target.container || target.observer) return;
+    try {
+      const win = target.doc.defaultView;
+      if (!win || typeof win.MutationObserver !== 'function') return;
+      target.observer = new win.MutationObserver(function () {
+        clearTimeout(review.mutationTimer);
+        review.mutationTimer = setTimeout(function () {
+          if (!review) return;
+          reviewInvalidateIndexes();
+          reviewRenderThreads();
+          reviewPaintHighlights();
+          reviewUpdateFrameGuard();
+        }, 360);
+      });
+      target.observer.observe(target.container, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    } catch (error) {
+      /* observation is best-effort */
+    }
+  }
+
+  function reviewDetachTargets() {
+    if (!review) return;
+    (review.targets || []).forEach(function (target) {
+      if (target.observer) {
+        try {
+          target.observer.disconnect();
+        } catch (error) {
+          /* ignore */
+        }
+        target.observer = null;
+      }
+    });
+  }
+
   function reviewFrameDocument(frame) {
     try {
       const doc = frame.contentDocument;
@@ -3021,19 +3279,24 @@
     target.attached = true;
     const doc = target.doc;
     const check = function () {
+      // A fresh user selection may revisit the same passage; allow the toolbar again.
+      if (review) review.composedAnchor = null;
       reviewScheduleSelectionCheck(10);
     };
     doc.addEventListener('mouseup', check, true);
     doc.addEventListener('keyup', function (event) {
-      if (event.shiftKey || event.key === 'Shift' || event.key === 'Escape') reviewScheduleSelectionCheck(10);
+      if (event.shiftKey || event.key === 'Shift' || event.key === 'Escape') check();
     }, true);
     doc.addEventListener('selectionchange', function () {
       reviewScheduleSelectionCheck(180);
     });
     doc.addEventListener('keydown', reviewAnnotationKeydown, true);
     doc.addEventListener('scroll', function () {
-      if (review) reviewHidePopover();
+      if (!review) return;
+      reviewHidePopover();
+      reviewHideInline();
     }, true);
+    reviewWatchTarget(target);
   }
 
   function reviewSelectionTarget() {
@@ -3053,6 +3316,7 @@
       } catch (error) {
         continue;
       }
+      if (target.frame && review && review.frameReady === false) continue;
       if (!target.container || !target.container.contains(range.commonAncestorContainer)) continue;
       return { target: target, selection: selection, range: range };
     }
@@ -3065,7 +3329,7 @@
     review.selectionTimer = setTimeout(function () {
       if (!review) return;
       // A composer already owns the anchor; do not re-show the selection toolbar over it.
-      if (reviewComposerOpen() || review.submitting) {
+      if (reviewComposerOpen() || reviewInlineOpen() || review.submitting) {
         reviewHidePopover();
         return;
       }
@@ -3074,6 +3338,11 @@
         return;
       }
       if (review.readonly || (review.permissions && review.permissions.canComment === false)) {
+        reviewHidePopover();
+        return;
+      }
+      // Never capture a selection from an artifact that navigated somewhere else.
+      if (review.frameExpected && !reviewUpdateFrameGuard()) {
         reviewHidePopover();
         return;
       }
@@ -3114,15 +3383,13 @@
     });
   }
 
-  function reviewPositionPopover() {
-    if (!review || !review.pendingAnchor) return;
-    const refs = review.refs;
-    const info = review.pendingAnchor;
-    let rect = null;
+  /** Anchor rectangle in viewport coordinates (iframe ranges get their frame offset added). */
+  function reviewAnchorRect(info) {
+    if (!info) return null;
     try {
       const rects = info.range.getClientRects();
-      rect = rects.length ? rects[rects.length - 1] : info.range.getBoundingClientRect();
-      if (info.target.frame) {
+      let rect = rects.length ? rects[rects.length - 1] : info.range.getBoundingClientRect();
+      if (info.target && info.target.frame) {
         const frameRect = info.target.frame.getBoundingClientRect();
         rect = {
           left: frameRect.left + rect.left,
@@ -3133,30 +3400,49 @@
           height: rect.height,
         };
       }
+      return rect;
     } catch (error) {
-      rect = null;
+      return null;
     }
-    if (!rect || (!rect.width && !rect.height)) {
-      reviewHidePopover();
-      return;
-    }
-    const popover = refs.popover;
-    const width = popover.offsetWidth || 240;
-    const height = popover.offsetHeight || 36;
+  }
+
+  /** Place a fixed floating element near the selection, clamped to the viewport. */
+  function reviewPositionFloating(element, info, fallbackWidth, fallbackHeight) {
+    if (!element || !info) return false;
+    const rect = reviewAnchorRect(info);
+    if (!rect || (!rect.width && !rect.height)) return false;
+    const width = element.offsetWidth || fallbackWidth;
+    const height = element.offsetHeight || fallbackHeight;
     const topbar = document.querySelector('[data-topbar]');
     const barBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
     let top = rect.top - height - 10;
-    const originY = '100%';
+    let originY = '100%';
     if (top < barBottom + 8) {
       top = rect.bottom + 10;
+      originY = '0%';
     }
     let left = rect.left + rect.width / 2 - width / 2;
     left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
     top = Math.max(barBottom + 8, Math.min(top, window.innerHeight - height - 8));
-    popover.style.left = Math.round(left) + 'px';
-    popover.style.top = Math.round(top) + 'px';
+    element.style.left = Math.round(left) + 'px';
+    element.style.top = Math.round(top) + 'px';
     const originX = Math.max(0, Math.min(100, ((rect.left + rect.width / 2 - left) / width) * 100));
-    popover.style.setProperty('--sel-origin', originX + '% ' + originY);
+    element.style.setProperty('--sel-origin', originX + '% ' + originY);
+    return true;
+  }
+
+  function reviewPositionPopover() {
+    if (!review || !review.pendingAnchor) return;
+    if (!reviewPositionFloating(review.refs.popover, review.pendingAnchor, 240, 36)) {
+      reviewHidePopover();
+    }
+  }
+
+  function reviewPositionInline() {
+    if (!review || !review.inline) return;
+    if (!reviewPositionFloating(review.refs.inline, review.inline.anchorInfo, 320, 220)) {
+      reviewHideInline();
+    }
   }
 
   function reviewHidePopover() {
@@ -3189,7 +3475,7 @@
     if (!anchor) return;
     event.preventDefault();
     review.pendingAnchor = { anchor: anchor, target: found.target, range: found.range };
-    reviewStartComposer('comment', review.pendingAnchor);
+    reviewStartInlineComposer('comment', review.pendingAnchor);
   }
 
   /* ----------------------------------------------------------- panel state */
@@ -3206,8 +3492,10 @@
     if (!review || review.available === false) return;
     const opts = options || {};
     const wasOpen = review.open;
-    review.mode = true;
     review.open = true;
+    review.pillDismissed = false;
+    reviewHidePopover();
+    reviewHideInline();
     const refs = review.refs;
     refs.panel.hidden = false;
     document.body.classList.add('review-open');
@@ -3246,7 +3534,7 @@
     const opts = options || {};
     const refs = review.refs;
     review.open = false;
-    review.mode = false;
+    review.pillDismissed = false;
     refs.panel.classList.remove('is-open');
     document.body.classList.remove('review-open');
     reviewSyncModalState(false);
@@ -3271,6 +3559,7 @@
     if (!review) return;
     const refs = review.refs;
     review.open = false;
+    review.pillDismissed = true;
     refs.panel.classList.remove('is-open');
     document.body.classList.remove('review-open');
     reviewSyncModalState(false);
@@ -3352,7 +3641,7 @@
   function reviewUpdatePill() {
     if (!review) return;
     const refs = review.refs;
-    const show = reviewIsMobile() && review.mode && !review.open;
+    const show = reviewIsMobile() && review.mode && !review.open && review.pillDismissed;
     if (!refs.pill) return;
     refs.pill.hidden = !show;
     if (show) {
@@ -3427,6 +3716,7 @@
     reviewUpdateReadonlyNote();
     reviewUpdateHint();
     reviewUpdateVersionsEntry();
+    reviewSyncArmed();
   }
 
   function revisionLatest(revisions) {
@@ -3491,7 +3781,10 @@
     closeMoreMenu(false);
     hideTip();
     review.refs.versionsModal.hidden = false;
-    review.versionsLastFocus = document.activeElement;
+    // The Versions item lives in the More popover, which closes before the dialog opens, so
+    // restore focus to the visible More trigger instead of the now-hidden menu item.
+    review.versionsLastFocus =
+      document.querySelector('[data-more]') || document.activeElement;
     document.body.style.overflow = 'hidden';
     setReviewDialogInert(true);
     requestAnimationFrame(function () {
@@ -3521,9 +3814,15 @@
     }, 200);
     document.body.style.overflow = '';
     setReviewDialogInert(false);
-    const target = review.versionsLastFocus;
+    let target = review.versionsLastFocus;
     review.versionsLastFocus = null;
-    if (target && document.contains(target)) focusEl(target);
+    if (!target || !document.contains(target) || target.hidden || target.getClientRects().length === 0) {
+      target =
+        document.querySelector('[data-more]') ||
+        document.querySelector('[data-review-toggle]') ||
+        null;
+    }
+    if (target && document.contains(target) && target.getClientRects().length > 0) focusEl(target);
   }
 
   let reviewDialogInerted = [];
@@ -3677,7 +3976,11 @@
       );
       lines.push('');
       const anchor = thread.anchor || {};
-      lines.push('> ' + String(anchor.exact || '').replace(/\n/g, '\n> '));
+      lines.push(
+        anchor.type === 'document'
+          ? '> Whole document'
+          : '> ' + String(anchor.exact || '').replace(/\n/g, '\n> '),
+      );
       lines.push('');
       lines.push(
         '-' +
@@ -3755,6 +4058,164 @@
     });
   }
 
+  /* ------------------------------------------ create-thread request (shared) */
+
+  /** One POST shape for both the panel composer and the inline selection composer. */
+  function reviewThreadPayload(composer, body, replacement, authorName) {
+    const payload = {
+      kind: composer.kind,
+      anchor: composer.anchor,
+      body: body,
+      authorName: authorName || undefined,
+      idempotencyKey: composer.idempotencyKey,
+    };
+    if (review.artifactId) payload.artifactId = review.artifactId;
+    else {
+      payload.project = review.project;
+      payload.file = review.file;
+    }
+    payload.revisionId = review.viewRevisionId;
+    if (replacement) payload.replacement = replacement;
+    return payload;
+  }
+
+  function reviewPostThread(payload) {
+    return reviewFetch('/api/feedback', { method: 'POST', body: payload });
+  }
+
+  /* ------------------------------------------ inline selection composer */
+
+  function reviewInlinePermissionText() {
+    if (review && review.readonly) return 'Old revisions are read-only.';
+    return review && review.readonlyReason
+      ? review.readonlyReason
+      : 'A review link is needed to add feedback.';
+  }
+
+  function reviewStartInlineComposer(kind, anchorInfo) {
+    if (!review || review.available === false) return;
+    if (!reviewCanSelectToComment()) {
+      showToast(reviewInlinePermissionText(), 'error');
+      return;
+    }
+    if (!anchorInfo || !anchorInfo.anchor || anchorInfo.anchor.type !== 'text') return;
+    if (anchorInfo.target && anchorInfo.target.frame && !reviewUpdateFrameGuard()) {
+      showToast('The embedded page navigated away from the artifact — reload to comment.', 'error');
+      return;
+    }
+    clearTimeout(review.selectionTimer);
+    review.composedAnchor = anchorInfo.anchor;
+    reviewHidePopover();
+    const refs = review.refs;
+    const isReplace = kind === 'replace';
+    review.inline = {
+      kind: kind,
+      anchor: anchorInfo.anchor,
+      anchorInfo: anchorInfo,
+      target: anchorInfo.target || null,
+      idempotencyKey: reviewIdempotencyKey(),
+    };
+    refs.inlineKicker.textContent =
+      kind === 'replace' ? 'Suggest replacement' : kind === 'remove' ? 'Suggest removal' : 'New comment';
+    refs.inlineQuote.textContent = reviewClip(anchorInfo.anchor.exact, 180);
+    refs.inlineQuote.title = anchorInfo.anchor.exact || '';
+    const identity =
+      review.permissions && review.permissions.identity && review.permissions.identity.name;
+    refs.inlineName.hidden = !!identity;
+    refs.inlineName.value = identity || refs.inlineName.value || reviewStoredName();
+    refs.inlineBody.value = '';
+    refs.inlineReplacement.value = isReplace ? anchorInfo.anchor.exact : '';
+    refs.inlineReplacement.hidden = !isReplace;
+    reviewShowInlineError('');
+    refs.inlineSubmit.disabled = false;
+    refs.inlineSubmit.removeAttribute('aria-busy');
+    refs.inlineSubmit.textContent = isReplace
+      ? 'Suggest replacement'
+      : kind === 'remove'
+        ? 'Suggest removal'
+        : 'Add comment';
+    refs.inline.hidden = false;
+    refs.inline.classList.remove('is-open');
+    reviewPositionInline();
+    requestAnimationFrame(function () {
+      if (!review || !review.inline) return;
+      refs.inline.classList.add('is-open');
+      refs.inlineBody.focus();
+    });
+  }
+
+  function reviewHideInline() {
+    if (!review || !review.refs || !review.refs.inline) return;
+    const refs = review.refs;
+    // Keep the toolbar suppressed for the passage that was just dismissed until the user
+    // makes a new selection (mouseup/keyup clears composedAnchor).
+    if (review.inline) review.composedAnchor = review.inline.anchor;
+    review.inline = null;
+    if (refs.inline.hidden) return;
+    refs.inline.classList.remove('is-open');
+    clearTimeout(review.inlineTimer);
+    review.inlineTimer = setTimeout(function () {
+      if (review && !review.refs.inline.classList.contains('is-open')) {
+        review.refs.inline.hidden = true;
+      }
+    }, 140);
+  }
+
+  function reviewSubmitInline(event) {
+    event.preventDefault();
+    if (!review || !review.inline || review.submitting) return;
+    const refs = review.refs;
+    const inline = review.inline;
+    const body = refs.inlineBody.value.trim();
+    const kind = inline.kind;
+    const replacement = kind === 'replace' ? refs.inlineReplacement.value.trim() : '';
+    if (!body) {
+      reviewShowInlineError('Write a comment before submitting.');
+      refs.inlineBody.focus();
+      return;
+    }
+    if (kind === 'replace' && !replacement) {
+      reviewShowInlineError('The suggested replacement is empty.');
+      refs.inlineReplacement.focus();
+      return;
+    }
+    if (!review.viewRevisionId) {
+      reviewShowInlineError('This artifact has no published revision yet — feedback starts with the next publish.');
+      return;
+    }
+    if (inline.target && inline.target.frame && !reviewUpdateFrameGuard()) {
+      reviewShowInlineError('The embedded page navigated away from the artifact — reload before commenting.');
+      return;
+    }
+    const identity =
+      review.permissions && review.permissions.identity && review.permissions.identity.name;
+    const authorName = identity || (refs.inlineName.hidden ? reviewStoredName() : refs.inlineName.value.trim());
+    reviewRememberName(authorName);
+    const payload = reviewThreadPayload(inline, body, replacement, authorName);
+    review.submitting = true;
+    refs.inlineSubmit.disabled = true;
+    refs.inlineSubmit.setAttribute('aria-busy', 'true');
+    reviewShowInlineError('');
+    reviewAnnounce('Adding feedback…');
+    reviewPostThread(payload)
+      .then(function () {
+        review.submitting = false;
+        refs.inlineSubmit.disabled = false;
+        refs.inlineSubmit.removeAttribute('aria-busy');
+        reviewHideInline();
+        showToast('Feedback added');
+        reviewAnnounce('Feedback added');
+        reviewLoadThreads({ quiet: true });
+      })
+      .catch(function (error) {
+        review.submitting = false;
+        refs.inlineSubmit.disabled = false;
+        refs.inlineSubmit.removeAttribute('aria-busy');
+        reviewShowApiError(error, 'Feedback could not be added.');
+        reviewShowInlineError((error && error.message) || 'Feedback could not be added.');
+      });
+  }
+
   /* ------------------------------------------------------------ DOM wiring */
 
   function reviewFindRefs() {
@@ -3778,6 +4239,19 @@
       retry: panel.querySelector('[data-review-retry]'),
       empty: panel.querySelector('[data-review-empty]'),
       emptyText: panel.querySelector('[data-review-empty-text]'),
+      documentButton: panel.querySelector('[data-review-document-empty]'),
+      documentAction: panel.querySelector('[data-review-document-action]'),
+      frameNote: panel.querySelector('[data-review-frame-note]'),
+      inline: document.querySelector('[data-review-inline]'),
+      inlineKicker: document.querySelector('[data-review-inline-kicker]'),
+      inlineQuote: document.querySelector('[data-review-inline-quote]'),
+      inlineName: document.querySelector('[data-review-inline-name]'),
+      inlineBody: document.querySelector('[data-review-inline-body]'),
+      inlineReplacement: document.querySelector('[data-review-inline-replacement]'),
+      inlineError: document.querySelector('[data-review-inline-error]'),
+      inlineSubmit: document.querySelector('[data-review-inline-submit]'),
+      inlineCancel: document.querySelector('[data-review-inline-cancel]'),
+      inlineClose: document.querySelector('[data-review-inline-close]'),
       list: panel.querySelector('[data-review-list]'),
       composer: panel.querySelector('[data-review-composer]'),
       composerKicker: panel.querySelector('[data-review-composer-kicker]'),
@@ -3867,13 +4341,20 @@
       refs.popover.addEventListener('click', function (event) {
         const button = event.target.closest('[data-review-kind]');
         if (!button || !review || !review.pendingAnchor) return;
-        reviewStartComposer(button.getAttribute('data-review-kind') || 'comment', review.pendingAnchor);
+        reviewStartInlineComposer(
+          button.getAttribute('data-review-kind') || 'comment',
+          review.pendingAnchor,
+        );
       });
     }
     document.addEventListener('pointerdown', function (event) {
-      if (!review || !refs.popover || refs.popover.hidden) return;
-      if (refs.popover.contains(event.target)) return;
-      reviewHidePopover();
+      if (!review) return;
+      if (refs.inline && !refs.inline.hidden && !refs.inline.contains(event.target)) {
+        reviewHideInline();
+      }
+      if (refs.popover && !refs.popover.hidden && !refs.popover.contains(event.target)) {
+        reviewHidePopover();
+      }
     });
     if (refs.composer) {
       refs.composer.addEventListener('submit', reviewSubmitComposer);
@@ -3885,6 +4366,19 @@
         }
       });
     }
+    if (refs.inline) {
+      refs.inline.addEventListener('submit', reviewSubmitInline);
+      refs.inlineCancel.addEventListener('click', reviewHideInline);
+      refs.inlineClose.addEventListener('click', reviewHideInline);
+      refs.inlineBody.addEventListener('keydown', function (event) {
+        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+          event.preventDefault();
+          reviewSubmitInline(event);
+        }
+      });
+      refs.inlineName.value = reviewStoredName();
+    }
+    if (refs.name) refs.name.value = reviewStoredName();
     document.querySelectorAll('[data-review-format]').forEach(function (button) {
       button.addEventListener('click', function () {
         review.exportFormat = button.getAttribute('data-review-format') || 'md';
@@ -3904,6 +4398,15 @@
         reviewOpenPanel({ focus: true });
       });
     }
+    document.querySelectorAll('[data-review-document-empty], [data-review-document-action]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        reviewStartComposer('comment', {
+          anchor: { version: 1, type: 'document' },
+          target: null,
+          range: null,
+        });
+      });
+    });
     const versionsItem = document.querySelector('[data-action="versions"]');
     if (versionsItem) {
       versionsItem.addEventListener('click', function (event) {
@@ -3944,8 +4447,12 @@
     const frame = document.querySelector('iframe.viewer-frame');
     if (frame) {
       frame.addEventListener('load', function () {
+        if (!review) return;
+        reviewDetachTargets();
         review.targets = reviewTargetElements();
         review.targets.forEach(reviewAttachTarget);
+        reviewInvalidateIndexes();
+        reviewUpdateFrameGuard();
         reviewPaintHighlights();
       });
     }
@@ -3961,6 +4468,11 @@
       return;
     }
     if (event.key === 'Escape') {
+      if (reviewInlineOpen()) {
+        event.preventDefault();
+        reviewHideInline();
+        return;
+      }
       if (reviewComposerOpen()) {
         event.preventDefault();
         reviewCancelComposer();
@@ -4017,6 +4529,20 @@
     if (event.key === 'Escape') {
       event.preventDefault();
       reviewCloseVersions();
+      return;
+    }
+    // Roving keyboard navigation over revision rows (DESIGN §4): ArrowUp/Down/Home/End move,
+    // Enter activates the focused row (native button behaviour).
+    const rows = Array.prototype.slice.call(modal.querySelectorAll('[data-version-open]'));
+    if (rows.length && ['ArrowDown', 'ArrowUp', 'Home', 'End'].indexOf(event.key) >= 0) {
+      event.preventDefault();
+      const index = rows.indexOf(document.activeElement);
+      let next;
+      if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = rows.length - 1;
+      else if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % rows.length;
+      else next = index < 0 ? rows.length - 1 : (index - 1 + rows.length) % rows.length;
+      focusEl(rows[next]);
       return;
     }
     if (event.key !== 'Tab') return;
@@ -4103,6 +4629,11 @@
       composer: null,
       pendingFocusThread: '',
       composedAnchor: null,
+      frameExpected: null,
+      frameReady: true,
+      mutationTimer: 0,
+      inline: null,
+      pillDismissed: false,
       pollTimer: 0,
       selectionTimer: 0,
       popoverTimer: 0,
@@ -4112,6 +4643,7 @@
     };
     review.targets = reviewTargetElements();
     review.targets.forEach(reviewAttachTarget);
+    review.frameExpected = reviewFrameExpected();
     reviewBindEvents();
     reviewApplyPinnedRevision();
     const hashMatch = String(window.location.hash || '').match(/^#thread-(.+)$/);

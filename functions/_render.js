@@ -21,7 +21,7 @@ import {
   categoryLabel,
 } from './_store.js';
 
-export const ASSET_V = '4a3ef6d1';
+export const ASSET_V = '6405525b';
 
 const SITE_HOST = 'artifacts.hoangtrung.dev';
 
@@ -608,6 +608,7 @@ function reviewUiHtml(ctx) {
       <p class="review-hint" data-review-hint hidden>Select text in the artifact to add feedback.</p>
     </div>
     <div class="review-head-actions">
+      <button class="icon-btn review-document-action" type="button" data-review-document-action aria-label="Comment on whole document" data-tip="Comment on whole document" hidden>${icon('comment')}</button>
       <button class="icon-btn review-back" type="button" data-review-back aria-label="Back to selection" data-tip="Back to selection">${icon('chevron-down')}</button>
       <button class="icon-btn" type="button" data-review-close aria-label="Close feedback" data-tip="Close">${icon('close')}</button>
     </div>
@@ -621,6 +622,7 @@ function reviewUiHtml(ctx) {
     <label class="review-scope" data-review-scope-wrap hidden><input type="checkbox" data-review-scope> <span>All revisions</span></label>
   </div>
   <p class="review-note" data-review-note hidden></p>
+  <p class="review-note review-frame-note" data-review-frame-note hidden>This embedded page navigated away from the artifact. Reload to add feedback.</p>
   <p class="sr-only" data-review-live aria-live="polite"></p>
   <div class="review-body" data-review-body>
     <div class="skeleton-list review-loading" data-review-loading hidden aria-hidden="true">
@@ -636,6 +638,7 @@ function reviewUiHtml(ctx) {
     <div class="review-state" data-review-empty hidden>
       ${icon('comment')}
       <p data-review-empty-text></p>
+      <button class="btn" type="button" data-review-document-empty hidden>${icon('comment')}<span>Comment on whole document</span></button>
     </div>
     <ol class="thread-list" data-review-list></ol>
   </div>
@@ -676,6 +679,24 @@ function reviewUiHtml(ctx) {
   <button class="review-pop-btn" type="button" data-review-kind="replace">Replace</button>
   <button class="review-pop-btn" type="button" data-review-kind="remove">Remove</button>
 </div>
+<form class="review-inline" data-review-inline hidden novalidate>
+  <div class="review-inline-head">
+    <p class="micro review-inline-kicker" data-review-inline-kicker>New comment</p>
+    <button class="icon-btn review-inline-close" type="button" data-review-inline-close aria-label="Cancel feedback" data-tip="Cancel">${icon('close')}</button>
+  </div>
+  <blockquote class="review-quote review-inline-quote" data-review-inline-quote></blockquote>
+  <label class="sr-only" for="review-inline-name">Your name (optional)</label>
+  <input class="review-input review-name" id="review-inline-name" data-review-inline-name type="text" maxlength="80" placeholder="Your name (optional)" autocomplete="nickname">
+  <label class="sr-only" for="review-inline-body">Feedback</label>
+  <textarea class="review-input" id="review-inline-body" data-review-inline-body rows="3" maxlength="8000" placeholder="Write feedback…"></textarea>
+  <label class="sr-only" for="review-inline-replacement">Suggested replacement</label>
+  <textarea class="review-input" id="review-inline-replacement" data-review-inline-replacement rows="2" maxlength="8000" placeholder="Suggested replacement…" hidden></textarea>
+  <p class="review-form-error" data-review-inline-error role="alert" hidden></p>
+  <div class="review-inline-actions">
+    <button class="btn" type="button" data-review-inline-cancel>Cancel</button>
+    <button class="btn btn--primary" type="submit" data-review-inline-submit>Add comment</button>
+  </div>
+</form>
 <button class="review-pill" data-review-pill type="button" hidden>${icon('comment')}<span data-review-pill-text>Feedback</span></button>
 ${versionsDialogHtml()}`;
 }
