@@ -40,7 +40,7 @@ and hand the user a shareable link — auto-classifying the project, or asking w
    directory to `ls`:
    ```bash
    curl -s https://artifacts.hoangtrung.dev/api/catalog | jq '.projects'
-   # [{"name":"verups","protected":true,"ghost":false,"count":null}, …]
+   # [{"name":"example-project","protected":true,"ghost":false,"count":null}, …]
    ```
    `count` is `null` for a protected project — the catalog does not expose its file list.
 2. Read the artifact's `<title>` / headings to understand its topic.
