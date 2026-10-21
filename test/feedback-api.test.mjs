@@ -1188,6 +1188,87 @@ test('race: capacity-rejected reply changes no thread state and cannot cross-lin
   assert.equal(await currentTxid(env), txidBefore, 'no event/receipt may be appended');
 });
 
+test('race: reply passing the pre-check is rejected by the transactional guard, changing nothing', async () => {
+  const { fixture, env } = await publicFixture();
+  const created = await call('', {
+    method: 'POST',
+    env,
+    body: commentBody(fixture, { idempotencyKey: 'reply-race-create', body: 'thread A' }),
+  });
+  assert.equal(created.response.status, 201);
+  const threadId = created.payload.thread.threadId;
+
+  const before = await getThreadRow(env, threadId);
+  assert.equal(Number(before.version), 1);
+  assert.equal(await currentTxid(env), Number(before.last_event_id));
+  assert.equal(await countArtifactMessages(env, fixture.artifactId), 1);
+
+  // Deterministic post-pre-check race: the route's capacity pre-check sees a thread with room, then
+  // a "concurrent writer" fills the thread to the cap *inside the batch hook* before the guarded
+  // message/event/UPDATE statements execute. The guarded inserts must reject and the transactional
+  // UPDATE guard must leave the thread completely untouched.
+  const shim = env.FEEDBACK_DB;
+  const originalPrepare = shim.prepare.bind(shim);
+  const originalBatch = shim.batch.bind(shim);
+  let injected = false;
+  env.FEEDBACK_DB = {
+    prepare: (sql) => originalPrepare(sql),
+    async batch(statements) {
+      const isReplyBatch =
+        statements.length === 3 &&
+        String(statements[0]?.sql || '').includes("'message.create'") &&
+        String(statements[1]?.sql || '').includes('INSERT INTO messages') &&
+        String(statements[2]?.sql || '').includes('EXISTS (SELECT 1 FROM messages WHERE message_id');
+      if (!injected && isReplyBatch) {
+        injected = true;
+        const fill = [];
+        for (let seq = 2; seq <= MAX_MESSAGES_PER_THREAD; seq++) {
+          fill.push({
+            sql: `INSERT INTO messages (
+                    message_id, thread_id, seq, body, kind, replacement, author_name, author_kind,
+                    created_at, client_id, client_actor, payload_hash
+                  ) VALUES (?, ?, ?, ?, 'comment', NULL, 'Guest', 'guest',
+                            '2026-10-19T00:00:00.000Z', NULL, 'guest:fixture', NULL)`,
+            params: [`msg_reply_race_${seq}`, threadId, seq, `fill ${seq}`],
+          });
+        }
+        await originalBatch(fill.map((statement) => originalPrepare(statement.sql).bind(...statement.params)));
+      }
+      return originalBatch(statements);
+    },
+  };
+
+  let rejected;
+  try {
+    rejected = await call([threadId, 'replies'], {
+      method: 'POST',
+      env,
+      body: { body: 'should be rejected by the guard', idempotencyKey: 'reply-race-overflow' },
+    });
+  } finally {
+    env.FEEDBACK_DB = shim;
+  }
+  assert.ok(injected, 'race hook must have run for the reply batch');
+  assert.equal(rejected.response.status, 429);
+  assert.equal(rejected.payload.code, 'feedback_capacity');
+
+  // Nothing about the thread may change on a guarded rejection.
+  const after = await getThreadRow(env, threadId);
+  assert.equal(Number(after.version), Number(before.version), 'version must not advance');
+  assert.equal(after.last_event_id, before.last_event_id, 'last_event_id must not move');
+  assert.equal(after.updated_at, before.updated_at, 'updated_at must not change');
+  assert.equal(await currentTxid(env), Number(before.last_event_id), 'no event/receipt may be appended');
+  assert.equal(
+    Number((await first(env, 'SELECT COUNT(*) AS count FROM messages WHERE thread_id = ?', [threadId])).count),
+    MAX_MESSAGES_PER_THREAD,
+    'only the concurrent-writer filler messages exist (the rejected reply wrote nothing)',
+  );
+  const events = Number(
+    (await first(env, "SELECT COUNT(*) AS count FROM events WHERE thread_id = ? AND type = 'message.create'", [threadId])).count,
+  );
+  assert.equal(events, 0, 'no message.create event may exist for the rejected reply');
+});
+
 test('whole-document comments are accepted and stored verbatim', async () => {
   const { fixture, env } = await publicFixture();
   const created = await call('', {
