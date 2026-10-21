@@ -35,6 +35,7 @@ dirty (avoid unless deliberate).
 | D1 database / binding | `artifacts-feedback` / `FEEDBACK_DB` (id in `wrangler.jsonc`) |
 | Health | `/api/health` |
 | Secrets | `COOKIE_SECRET`, `GHOST_MASTER_PW`, `PW_<PROJECT>`, `FEEDBACK_ADMIN_TOKEN` |
+| Vars | `FEEDBACK_REQUIRE_GRANT` (optional; `1`/`true` = legacy grant-required feedback, unset = open) |
 
 ## D1 / feedback setup
 
@@ -48,6 +49,12 @@ Set the binding block in `wrangler.jsonc` (binding `FEEDBACK_DB`), set secrets w
 With no binding the feedback API returns `503 feedback_not_configured` and the viewer hides the
 actions; the rest of the site keeps working.
 
+**Feedback policy flag (temporary):** feedback is OPEN by default (anonymous public artifacts can
+read/write; authors are `guest`). To restore the old grant-required policy, set the Pages env var
+`FEEDBACK_REQUIRE_GRANT=1` (or `true`) for the `artifacts` project and redeploy so Functions pick it
+up; remove it (or set `0`) and redeploy to return to open mode. Its value is not secret, but treat it
+as deployment configuration (dashboard or `wrangler`), never artifact content.
+
 ## Verification after deploy
 
 ```bash
@@ -57,7 +64,10 @@ curl -s -o /dev/null -w '%{http_code}\n' 'https://artifacts.hoangtrung.dev/api/r
 curl -s -o /dev/null -w '%{http_code}\n' 'https://artifacts.hoangtrung.dev/api/feedback?project=<p>&file=<f>'
 ```
 Expected: health 200; asset version matches `ASSET_V` in `functions/_render.js`; public revision
-metadata 200; feedback anonymous 403; protected content 401 without cookie.
+metadata 200; feedback anonymous **200 in open mode** (403 only when `FEEDBACK_REQUIRE_GRANT=1`);
+protected content 401 without cookie. Open-mode feedback is capacity-capped (100 messages/thread,
+500/artifact → `429 feedback_capacity`) and write-limited per client IP, so a load/smoke test that
+posts many comments can legitimately hit 429 — treat that as expected, not a deploy failure.
 
 ## CI
 

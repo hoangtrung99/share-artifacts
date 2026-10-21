@@ -258,22 +258,34 @@ exactly as before.
   old-revision banner offers "Back to latest" (read-only review). Version-history metadata
   (`GET /api/revisions`) is anonymous for public artifacts; protected/ghost projects still
   require their project/ghost cookie. History contains revision metadata only — no feedback data.
-- **Reviewing.** A reviewer opens an artifact with a review grant and selects text; the
+- **Reviewing (open by default).** Any viewer who can open the artifact can select text and leave
+  feedback — no review link required (anonymous authors are shown as `Guest · UNVERIFIED`; a typed
+  display name is kept). Protected/ghost projects still require their project/ghost cookie.
+  Review grants remain supported but are now optional. A reviewer selects text; the
   Comment/Replace/Remove popover appears immediately and a compact inline composer sends the
   feedback **without opening the side panel** (the panel remains available for threads, replies,
   filters, versions and export). Threads have replies and `open -> addressed -> resolved` status;
   every thread stores the revision it was written against and reports `unanchored` instead of
   attaching to the wrong passage. Comments are plain text; highlights use the CSS Custom Highlight
   API and never mutate artifact DOM.
-- **Access.** `/r/<token>` redeems a grant into a HttpOnly, artifact-scoped cookie and
-  redirects without the token. Project/share cookies are read-only; only
-  `FEEDBACK_ADMIN_TOKEN` can mark `addressed`, manage grants or read/export without a grant.
-  Public artifacts do not expose their review threads unless a grant is presented. Version-history
-  metadata is the exception: it is public for public artifacts (old snapshots already are), while
+- **Access.** Feedback is **open by default**: public artifacts = anonymous read + create/reply/
+  resolve/reopen; protected/ghost projects = their project/ghost cookie (fail closed) then full
+  read + write. `FEEDBACK_ADMIN_TOKEN` remains the site-owner credential (mark `addressed`, manage
+  grants, mark/grant-only operations) and `/r/<token>` review grants still work as an optional
+  extra credential. Set the env var `FEEDBACK_REQUIRE_GRANT=1` (or `true`) to restore the previous
+  grant-required policy exactly: public feedback needs a grant/admin, project/share cookies are
+  read-only. Version-history metadata stays public for public artifacts (old snapshots already are);
   protected/ghost projects keep their project/ghost cookie gate.
+  Hard accumulation caps keep open-mode responses bounded: **100 messages per thread** and
+  **500 messages per artifact** (the 101st message / over-cap create returns `429
+  feedback_capacity`). Write/read rate limits are per identity: `admin`, `grant:<id>`,
+  `project:<client-IP>` for project/ghost sessions, `guest:<client-IP>` for anonymous — one IP
+  exhausting its bucket never throttles another IP. Only Cloudflare's `CF-Connecting-IP` is used
+  (a missing header maps to a shared `unknown` bucket; `X-Forwarded-For` is ignored).
 - **D1 setup (owner).** `npx wrangler d1 create artifacts-feedback` ->
   `npx wrangler d1 migrations apply artifacts-feedback --remote` -> uncomment the
-  `d1_databases` block in `wrangler.jsonc` and set the `FEEDBACK_ADMIN_TOKEN` secret. The
+  `d1_databases` block in `wrangler.jsonc`, set the `FEEDBACK_ADMIN_TOKEN` secret, and optionally
+  set `FEEDBACK_REQUIRE_GRANT=1` to re-enable grant-required feedback (default: open). The
   migration lives in `migrations/0001_feedback.sql`.
 - **Agent CLI (read-only).** `pnpm run feedback -- list|export|revisions ...` reads the API with
   `ARTIFACTS_COOKIE` or the admin token; `pnpm run feedback:grant -- create|list|revoke ...`

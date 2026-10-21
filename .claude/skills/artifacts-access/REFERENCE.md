@@ -7,8 +7,9 @@
 | `cf_auth_<project>` | one project | project password session (HMAC, password-version bound, 180d) |
 | `cf_ghost` | all ghost projects | ghost master unlock (7d, bound to `GHOST_MASTER_PW`) |
 | share link `/s/<token>` | one project + path | redeems into `cf_auth_<project>` for the link TTL |
-| review link `/r/<token>` | one artifact | sets `cf_review_<artifactId16>` (HttpOnly, SameSite=Strict, Secure, TTL ≤ grant) |
+| review link `/r/<token>` | one artifact | optional in open mode; sets `cf_review_<artifactId16>` (HttpOnly, SameSite=Strict, Secure, TTL ≤ grant) |
 | `FEEDBACK_ADMIN_TOKEN` | site owner | CLI-only read/export, mark addressed, grant management |
+| `FEEDBACK_REQUIRE_GRANT` | all feedback routes | optional Pages env var; `1`/`true` = legacy grant-required policy. Unset = **open feedback (default)** |
 | `COOKIE_SECRET` | all HMAC tokens | rotating revokes every session/share/review cookie |
 | `GHOST_MASTER_PW` | ghost layer | master password; rotating revokes ghost sessions |
 | `PW_<SNAKE(PROJECT)>` | one project | the project password (Pages secret) |
@@ -19,13 +20,20 @@
   It lets `/api/*` through, so each API route enforces its own access.
 - `/api/revisions` is readable anonymously for **public** artifacts (metadata only); protected and
   ghost projects require their cookies.
-- `/api/feedback*` and exports always require: admin token, a valid review-grant cookie for that
-  artifact, or a project/ghost session **for protected/ghost projects** (read-only). Writes require
-  admin or grant.
+- `/api/feedback*` and exports: **open by default** — public artifacts are readable/writable
+  anonymously (`guest`, per-IP limits); protected/ghost still require their project/ghost cookie.
+  Review grants stay supported but optional. With `FEEDBACK_REQUIRE_GRANT=1|true` the old policy
+  returns: public feedback needs a grant/admin, project/ghost sessions are read-only.
 - Feedback routes fail closed on malformed protected/ghost registry JSON and on unreadable revision
   manifests (`503 registry_unavailable`).
 - Mutations: same-origin `Origin` required (otherwise `403 csrf`), JSON content type, bounded sizes,
-  best-effort isolate rate limits (30 writes / 120 reads per minute per artifact+credential).
+  best-effort isolate rate limits (30 writes / 120 reads per minute per artifact+identity). Limiter
+  identities: `admin`, `grant:<id>`, `project:<client-IP>` (gate-cookie sessions, per IP so one IP
+  cannot throttle another), `guest:<client-IP>` (anonymous). Idempotency/audit actor stays `project`
+  / `guest:<ip>`. Client IP is `CF-Connecting-IP` only (missing → shared `unknown`;
+  `X-Forwarded-For` ignored).
+- Open-feedback capacity caps: 100 messages per thread / 500 per artifact; excess →
+  `429 feedback_capacity` (nothing written).
 
 ## CSRF/curl recipes
 
@@ -37,7 +45,7 @@ curl -s -X POST -H 'content-type: application/json' \
   -d '{"project":"<p>","file":"<f>","scope":"comment","ttlSeconds":604800}' \
   https://artifacts.hoangtrung.dev/api/feedback/grants
 
-# reviewer read: redeem first, then reuse the cookie
+# optional reviewer identity: redeem first, then reuse the cookie (not needed in open mode)
 curl -s -c /tmp/review.cookies -o /dev/null "https://artifacts.hoangtrung.dev/r/<token>"
 COOKIE=$(awk '$6 ~ /^cf_review_/ {print $6"="$7}' /tmp/review.cookies)
 curl -s -H "Cookie: $COOKIE" "https://artifacts.hoangtrung.dev/api/feedback?project=<p>&file=<f>"
@@ -56,6 +64,6 @@ Do not reuse production secrets locally. The node tests already demonstrate this
 |---|---|
 | rotate `PW_<PROJECT>` | that project's sessions + share links + reviewer links gated by it |
 | rotate `COOKIE_SECRET` | every auth/share/ghost/review cookie |
-| revoke a review grant | that artifact's review cookie on next request |
+| revoke a review grant | that artifact's review cookie (optional credential in open mode) |
 | unpublish artifact/project | routes 404 (tombstones), feedback history kept server-side |
 | `--unprotect` / `--unghost` | gates removed (takes effect after caches) |

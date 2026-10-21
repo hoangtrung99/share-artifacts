@@ -10,9 +10,14 @@
 //   GET|POST /api/feedback/grants               admin-only review grants
 //   DELETE /api/feedback/grants/<grantId>       revoke a grant (admin only)
 //
-// Access (see _feedback-access.js): site owner (FEEDBACK_ADMIN_TOKEN) > review-grant cookie
-// (set by GET /r/<token>) > project/ghost cookie (read only). Public artifacts do NOT expose their
-// discussion publicly. Fail-safe: unbound FEEDBACK_DB → 503 feedback_not_configured.
+// Access (see _feedback-access.js): OPEN feedback by default — any viewer who can read the artifact
+// can read/write feedback (anonymous viewers of public artifacts included); protected/ghost projects
+// still require their project/ghost cookie. The site owner (FEEDBACK_ADMIN_TOKEN) keeps exclusive
+// powers (mark addressed, manage grants). Review-grant cookies remain supported but optional.
+// Set FEEDBACK_REQUIRE_GRANT=1|true to restore the old grant-required/read-only-project policy.
+// Anonymous authors are kind `guest` (unverified) and are rate-limited/idempotency-scoped per
+// client IP (`guest:<CF-Connecting-IP>`), never in one shared bucket.
+// Fail-safe: unbound FEEDBACK_DB → 503 feedback_not_configured.
 //
 // Scope (MVP): text-selection threads and whole-document comments bound to an immutable revision.
 // No change feed (the UI polls the list), no element pinpointing, comments are plain text.
@@ -41,8 +46,12 @@ import {
 } from '../../_feedback.js';
 import { resolveFeedbackAccess } from '../../_feedback-access.js';
 import {
+  MAX_MESSAGES_PER_ARTIFACT,
+  MAX_MESSAGES_PER_THREAD,
+  countArtifactMessages,
   countStatuses,
   currentTxid,
+  messageCapacityExceeded,
   findMessageByClientId,
   findStatusReceipt,
   findThreadByClientId,
@@ -109,16 +118,59 @@ async function payloadHash(parts) {
   return sha256Hex(JSON.stringify(parts));
 }
 
-function actorIdentity(access, grant) {
-  if (access.admin) return 'admin';
-  if (grant) return `grant:${grant.grant_id}`;
-  return 'reader';
+/**
+ * Per-client IP. Only Cloudflare's `CF-Connecting-IP` is trusted (production always sets it); a
+ * missing header maps to the shared `unknown` bucket. `X-Forwarded-For` is deliberately ignored:
+ * it is client-controlled and must never be able to mint a fresh rate-limit/idempotency identity.
+ */
+function clientIp(request) {
+  const cf = request.headers.get('cf-connecting-ip');
+  return cf && cf.trim() ? cf.trim() : 'unknown';
 }
 
+/**
+ * Server-derived idempotency/rate-limit identity. Anonymous open-mode writers are keyed per client
+ * IP so one visitor cannot exhaust every anonymous bucket; project/ghost sessions share a stable
+ * key; grant/admin keep their own identities.
+ */
+function actorIdentity(access, grant, request) {
+  if (access.admin) return 'admin';
+  if (grant) return `grant:${grant.grant_id}`;
+  if (access.authenticated) return 'project';
+  return `guest:${clientIp(request)}`;
+}
+
+/**
+ * Rate-limit identity: unlike the idempotency actor, gate-cookie (project/ghost) sessions are keyed
+ * per client IP (`project:<ip>`) so one IP exhausting its bucket cannot 429 another IP sharing the
+ * same project cookie. Grant/admin buckets stay stable.
+ */
+function rateLimitIdentity(access, grant, request) {
+  if (access.admin) return 'admin';
+  if (grant) return `grant:${grant.grant_id}`;
+  if (access.authenticated) return `project:${clientIp(request)}`;
+  return `guest:${clientIp(request)}`;
+}
+
+/**
+ * Author identity for open-mode writers: admin → owner, grant → reviewer, everyone else (anonymous
+ * public viewers and project/ghost sessions) → unverified `guest` with default name "Guest" unless
+ * the client supplied an authorName.
+ */
 function actorFor(access) {
-  return access.admin
-    ? { kind: 'owner', name: 'Owner' }
-    : { kind: 'reviewer', name: 'Reviewer' };
+  if (access.admin) return { kind: 'owner', name: 'Owner' };
+  if (access.reviewer) return { kind: 'reviewer', name: 'Reviewer' };
+  return { kind: 'guest', name: 'Guest' };
+}
+
+/** Stable 429 for the open-feedback accumulation caps (no row was written). */
+function capacityError() {
+  return new ApiError(
+    429,
+    'feedback_capacity',
+    'This artifact has reached the feedback message capacity; no new messages can be added.',
+    { maxMessagesPerArtifact: MAX_MESSAGES_PER_ARTIFACT, maxMessagesPerThread: MAX_MESSAGES_PER_THREAD },
+  );
 }
 
 function limitOrThrow(key, limit) {
@@ -195,7 +247,7 @@ async function handleList({ request, env }) {
   const url = new URL(request.url);
   const artifact = await requireArtifact(env, url);
   const { access } = await resolveFeedbackAccess(env, request, artifact);
-  limitOrThrow(`r:${actorIdentity(access, null)}:${artifact.artifactId}`, READ_LIMIT);
+  limitOrThrow(`r:${rateLimitIdentity(access, null, request)}:${artifact.artifactId}`, READ_LIMIT);
 
   const limit = parseLimit(url.searchParams.get('limit'), 50, 100);
   const cursor = parseCursor(url.searchParams.get('cursor'));
@@ -249,7 +301,7 @@ async function handleCreate({ request, env }) {
   const input = normalizeCreateBody(body);
   const artifact = await requireArtifact(env, url, input);
   const { access, grant } = await resolveFeedbackAccess(env, request, artifact, { write: true });
-  limitOrThrow(`w:${actorIdentity(access, grant)}:${artifact.artifactId}`, WRITE_LIMIT);
+  limitOrThrow(`w:${rateLimitIdentity(access, grant, request)}:${artifact.artifactId}`, WRITE_LIMIT);
 
   const revision = await resolveRevisionForArtifact(env, artifact, input.revisionId);
   if (!revision) {
@@ -261,7 +313,7 @@ async function handleCreate({ request, env }) {
   }
 
   const actor = actorFor(access);
-  const actorId = actorIdentity(access, grant);
+  const actorId = actorIdentity(access, grant, request);
   const hash = await payloadHash({
     operation: 'thread.create',
     artifactId: artifact.artifactId,
@@ -288,12 +340,21 @@ async function handleCreate({ request, env }) {
     });
   }
 
+  if ((await countArtifactMessages(env, artifact.artifactId)) >= MAX_MESSAGES_PER_ARTIFACT) {
+    throw new ApiError(
+      429,
+      'feedback_capacity',
+      'This artifact has reached the feedback message capacity; no new messages can be added.',
+      { maxMessagesPerArtifact: MAX_MESSAGES_PER_ARTIFACT, maxMessagesPerThread: MAX_MESSAGES_PER_THREAD },
+    );
+  }
+
   const createdAt = new Date().toISOString();
   const threadId = newId('th');
   const messageId = newId('msg');
   const author = { kind: actor.kind, name: normalizeAuthorName(input.authorName, actor.name) };
   try {
-    await insertThread(env, {
+    const inserted = await insertThread(env, {
       threadId,
       artifactId: artifact.artifactId,
       project: artifact.project,
@@ -310,6 +371,9 @@ async function handleCreate({ request, env }) {
       messageId,
       body: input.body,
     });
+    // The transaction-time capacity guard rejected the insert (e.g. a concurrent request consumed
+    // the last slot after our pre-check): return the stable 429, never hydrate a missing row.
+    if (!inserted.ok) throw capacityError();
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       const winner = await findThreadByClientId(env, artifact.artifactId, input.idempotencyKey);
@@ -332,6 +396,7 @@ async function handleCreate({ request, env }) {
   }
 
   const row = await getThreadRow(env, threadId);
+  if (!row) throw capacityError(); // guarded insert created nothing: never hydrate a null row
   return json(
     {
       thread: await threadJson(env, row, access, artifact),
@@ -352,7 +417,7 @@ async function handleGetThread({ request, env, threadId }) {
   const row = await loadThreadOr404(env, threadId);
   const artifact = await resolveArtifactForThread(env, row);
   const { access } = await resolveFeedbackAccess(env, request, artifact);
-  limitOrThrow(`r:${actorIdentity(access, null)}:${artifact.artifactId}`, READ_LIMIT);
+  limitOrThrow(`r:${rateLimitIdentity(access, null, request)}:${artifact.artifactId}`, READ_LIMIT);
   return json({
     thread: await threadJson(env, row, access, artifact),
     permissions: basePermissions(access),
@@ -368,10 +433,10 @@ async function handleReply({ request, env, threadId }) {
   const row = await loadThreadOr404(env, threadId);
   const artifact = await resolveArtifactForThread(env, row);
   const { access, grant } = await resolveFeedbackAccess(env, request, artifact, { write: true });
-  limitOrThrow(`w:${actorIdentity(access, grant)}:${artifact.artifactId}`, WRITE_LIMIT);
+  limitOrThrow(`w:${rateLimitIdentity(access, grant, request)}:${artifact.artifactId}`, WRITE_LIMIT);
 
   const actor = actorFor(access);
-  const actorId = actorIdentity(access, grant);
+  const actorId = actorIdentity(access, grant, request);
   const hash = await payloadHash({
     operation: 'message.create',
     threadId,
@@ -394,6 +459,15 @@ async function handleReply({ request, env, threadId }) {
       message: messageFromRow(replay),
       txid: await currentTxid(env),
     });
+  }
+
+  if (await messageCapacityExceeded(env, threadId, artifact.artifactId)) {
+    throw new ApiError(
+      429,
+      'feedback_capacity',
+      'This thread or artifact has reached the feedback message capacity; no new replies can be added.',
+      { maxMessagesPerArtifact: MAX_MESSAGES_PER_ARTIFACT, maxMessagesPerThread: MAX_MESSAGES_PER_THREAD },
+    );
   }
 
   const createdAt = new Date().toISOString();
@@ -426,7 +500,17 @@ async function handleReply({ request, env, threadId }) {
   }
 
   const freshRow = await getThreadRow(env, threadId);
-  if (!result.ok) throw conflict(await threadJson(env, freshRow, access, artifact));
+  if (!result.ok) {
+    if ('capacity' in result && result.capacity) {
+      throw new ApiError(
+        429,
+        'feedback_capacity',
+        'This thread or artifact has reached the feedback message capacity; no new replies can be added.',
+        { maxMessagesPerArtifact: MAX_MESSAGES_PER_ARTIFACT, maxMessagesPerThread: MAX_MESSAGES_PER_THREAD },
+      );
+    }
+    throw conflict(await threadJson(env, freshRow, access, artifact));
+  }
   const winner = await findMessageByClientId(env, threadId, input.idempotencyKey);
   return json(
     {
@@ -463,7 +547,7 @@ async function handlePatchThread({ request, env, threadId }) {
   const row = await loadThreadOr404(env, threadId);
   const artifact = await resolveArtifactForThread(env, row);
   const { access, grant } = await resolveFeedbackAccess(env, request, artifact, { write: true });
-  limitOrThrow(`w:${actorIdentity(access, grant)}:${artifact.artifactId}`, WRITE_LIMIT);
+  limitOrThrow(`w:${rateLimitIdentity(access, grant, request)}:${artifact.artifactId}`, WRITE_LIMIT);
 
   if (patch.status === 'addressed' && !access.canMarkAddressed) {
     throw new ApiError(403, 'forbidden', 'Only the site owner can mark a thread addressed.');
@@ -473,7 +557,7 @@ async function handlePatchThread({ request, env, threadId }) {
   }
 
   const actor = actorFor(access);
-  const actorId = actorIdentity(access, grant);
+  const actorId = actorIdentity(access, grant, request);
   const idempotencyKey = typeof body?.idempotencyKey === 'string' ? body.idempotencyKey : null;
   const hash = await payloadHash({
     operation: 'status.change',
@@ -572,7 +656,7 @@ async function handleExport({ request, env }) {
   const url = new URL(request.url);
   const artifact = await requireArtifact(env, url);
   const { access } = await resolveFeedbackAccess(env, request, artifact);
-  limitOrThrow(`r:${actorIdentity(access, null)}:${artifact.artifactId}`, READ_LIMIT);
+  limitOrThrow(`r:${rateLimitIdentity(access, null, request)}:${artifact.artifactId}`, READ_LIMIT);
   const format = (url.searchParams.get('format') || 'json').toLowerCase();
   if (format !== 'json' && format !== 'md') {
     throw new ApiError(400, 'invalid_request', 'format must be json or md.');

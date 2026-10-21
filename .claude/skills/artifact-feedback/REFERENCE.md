@@ -14,10 +14,27 @@
 | POST/GET/DELETE | `/api/feedback/grants[/<grantId>]` | owner grant management |
 | GET | `/r/<token>` | redeem grant → HttpOnly artifact cookie → viewer |
 
-Headers: `X-Feedback-Admin: <FEEDBACK_ADMIN_TOKEN>` (owner CLI) or the review cookie; protected/ghost
-artifacts still require the project/ghost cookie — a grant never bypasses it. `Origin` must be
-same-origin for mutations; bodies are JSON. Errors: `{error, code}` (`auth_required`, `forbidden`,
-`version_conflict`, `idempotency_conflict`, `invalid_revision`, `feedback_not_configured`, …).
+Headers: `X-Feedback-Admin: <FEEDBACK_ADMIN_TOKEN>` (owner CLI) or an optional review cookie.
+**Feedback is open by default**: public artifacts need no credential (anonymous authors are
+`guest`, unverified); protected/ghost artifacts require their project/ghost cookie — a grant never
+bypasses that gate. Anonymous rate-limit/idempotency identity is `guest:<CF-Connecting-IP>`
+(per client). `Origin` must be same-origin for mutations; bodies are JSON. Errors: `{error, code}`
+(`auth_required`, `forbidden`, `version_conflict`, `idempotency_conflict`, `invalid_revision`,
+`feedback_not_configured`, …).
+
+**Policy switch (temporary default-open):** set the Pages env var `FEEDBACK_REQUIRE_GRANT=1` (or
+`true`) to restore the previous grant-required policy exactly — public feedback needs a grant/admin,
+project/share cookies are read-only. Unset/`0` = open. The flag is reversible with a redeploy.
+
+**Capacity caps (open mode):** max **100 messages per thread** and **500 messages per artifact**
+(the thread's first message counts). Exceeding either returns `429 { error, code:
+"feedback_capacity", maxMessagesPerThread, maxMessagesPerArtifact }` and writes nothing; thread/list
+hydration is clamped to 100 messages per thread. Handle this as "thread/artifact full", not a retry.
+
+**Rate-limit identity:** 30 writes / 120 reads per minute per identity — `admin`, `grant:<id>`,
+`project:<client-IP>` (gate-cookie sessions) or `guest:<client-IP>` (anonymous). One IP exhausting
+its bucket never throttles another IP; `X-Forwarded-For` is ignored (trusted `CF-Connecting-IP` only,
+missing → shared `unknown`).
 
 ## Thread shape (abridged)
 
@@ -30,7 +47,7 @@ same-origin for mutations; bodies are JSON. Errors: `{error, code}` (`auth_requi
               "suffix": "…", "start": 0, "end": 42, "heading": "…", "headingPath": ["…"],
               "element": {"tag":"p","id":"intro","role":null,"selector":"#intro","text":"…"} },
   "replacement": null, "addressedRevisionId": null,
-  "author": {"name":"An","kind":"owner|reviewer|guest","unverified":true},
+  "author": {"name":"An|Guest","kind":"owner|reviewer|guest","unverified":true},
   "messages": [{"messageId":"msg_…","seq":1,"body":"…","author":{…},"createdAt":"…"}],
   "permissions": {"canReply":true,"canChangeStatus":false,"canResolve":true,"canReopen":false}
 }
@@ -46,8 +63,8 @@ history even when unanchored.
 | Transition | Who | How |
 |---|---|---|
 | `open → addressed` | owner only | `pnpm run feedback -- addressed --thread <id> --revision <newRevisionId>` |
-| `addressed → resolved` | owner or reviewer | reviewer clicks **Resolve** in popup/panel (or PATCH with `expectedVersion`) |
-| `resolved → open` | owner or reviewer | **Reopen** |
+| `addressed → resolved` | owner/reviewer**/open-mode writer** | reviewer clicks **Resolve** in popup/panel (or PATCH with `expectedVersion`) |
+| `resolved → open` | owner/reviewer**/open-mode writer** | **Reopen** |
 | `open → resolved` | not allowed | a fixing revision must be recorded first |
 
 Resolve uses the recorded `addressedRevisionId`; callers cannot retarget it. `expectedVersion`
@@ -75,17 +92,18 @@ ARTIFACTS_COOKIE="$COOKIE" pnpm run feedback -- list --artifact <id> --format js
   redirects to the extensionless viewer without the token.
 - The token is stored server-side as SHA-256; revoke with `feedback:grant -- revoke`. Expiry and
   revocation win on the next request.
-- Public artifact: anyone with the grant can read/comment on that artifact. Protected/ghost:
-  grant holders still pass the project/ghost gate first.
-- Project/share cookie sessions are read-only; only the admin token (CLI) can mark addressed/manage
-  grants. This is deliberate: share links reuse the same project cookie.
+- In open mode grants are optional: they identify the holder as `reviewer`; anyone who can read the
+  artifact can already comment. Protected/ghost grant holders still pass the project/ghost gate.
+- Open mode: project/share cookie sessions can write feedback (author shown as `guest`). In legacy
+  `FEEDBACK_REQUIRE_GRANT` mode they are read-only again. Only the admin token (CLI) can mark
+  addressed/manage grants in either mode — share links reuse the same project cookie.
 
 ## Troubleshooting
 
 | Symptom | Meaning |
 |---|---|
 | `503 feedback_not_configured` | D1 binding absent (local/dev) — feature disabled, rest of site fine |
-| `403 forbidden` on list | no grant/admin credential for a public artifact |
+| `403 forbidden` on list | only in legacy grant-required mode: no grant/admin credential for a public artifact |
 | `401 auth_required` | protected/ghost project cookie missing or expired |
 | `409 version_conflict` | thread changed; refetch and retry with the returned version |
 | `400 invalid_revision` | resolving before addressed, or wrong revision id |
@@ -100,5 +118,6 @@ npx wrangler pages dev dist --port 8788 --persist-to DIR --d1=FEEDBACK_DB \
   --binding FEEDBACK_ADMIN_TOKEN=demo-admin-token
 ```
 
-Apply `migrations/0001_feedback.sql` to the local D1 sqlite, then create grants through
+Apply `migrations/0001_feedback.sql` to the local D1 sqlite. Open mode needs no grants; for legacy
+mode start the server with `--binding FEEDBACK_REQUIRE_GRANT=1` and create grants through
 `POST /api/feedback/grants` (header `X-Feedback-Admin`) or `pnpm run feedback:grant`.

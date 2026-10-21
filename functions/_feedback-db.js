@@ -15,6 +15,12 @@ import { threadPermissions } from './_feedback.js';
 
 const THREAD_STATUSES = ['open', 'addressed', 'resolved'];
 
+// Hard accumulation caps (open-feedback hardening). Without these, anonymous writes could grow a
+// thread/artifact until responses become multi-megabyte. Enforced atomically inside the insert
+// transaction via SQL guards; the routes also pre-check for a fast, explicit error.
+export const MAX_MESSAGES_PER_THREAD = 100;
+export const MAX_MESSAGES_PER_ARTIFACT = 500;
+
 function randomHex(bytes) {
   const view = new Uint8Array(bytes);
   crypto.getRandomValues(view);
@@ -112,14 +118,51 @@ export async function findThreadByClientId(env, artifactId, clientId) {
   ]);
 }
 
+/**
+ * Message count for one thread.
+ * @param {{ FEEDBACK_DB: any }} env
+ * @param {string} threadId
+ */
+export async function countThreadMessages(env, threadId) {
+  const row = await first(env, 'SELECT COUNT(*) AS count FROM messages WHERE thread_id = ?', [threadId]);
+  return Number(row?.count || 0);
+}
+
+/**
+ * Message count for every thread of one artifact (enforces the artifact-wide cap).
+ * @param {{ FEEDBACK_DB: any }} env
+ * @param {string} artifactId
+ */
+export async function countArtifactMessages(env, artifactId) {
+  const row = await first(
+    env,
+    `SELECT COUNT(*) AS count
+       FROM messages m JOIN threads t ON t.thread_id = m.thread_id
+      WHERE t.artifact_id = ?`,
+    [artifactId],
+  );
+  return Number(row?.count || 0);
+}
+
+/**
+ * True when a reply would exceed either accumulation cap.
+ * @param {{ FEEDBACK_DB: any }} env
+ * @param {string} threadId
+ * @param {string} artifactId
+ */
+export async function messageCapacityExceeded(env, threadId, artifactId) {
+  if ((await countThreadMessages(env, threadId)) >= MAX_MESSAGES_PER_THREAD) return true;
+  return (await countArtifactMessages(env, artifactId)) >= MAX_MESSAGES_PER_ARTIFACT;
+}
+
 /** @param {{ FEEDBACK_DB: any }} env @param {string} threadId */
 export async function listMessages(env, threadId) {
   return all(
     env,
     `SELECT message_id, thread_id, seq, body, kind, replacement, author_name, author_kind,
             created_at, client_id, client_actor, payload_hash
-       FROM messages WHERE thread_id = ? ORDER BY seq ASC`,
-    [threadId],
+       FROM messages WHERE thread_id = ? ORDER BY seq ASC LIMIT ?`,
+    [threadId, MAX_MESSAGES_PER_THREAD],
   );
 }
 
@@ -136,6 +179,7 @@ export async function findMessageByClientId(env, threadId, clientId) {
 
 /**
  * New thread + its first message + create event, atomically.
+ * @returns {Promise<{ ok: true, threadId: string } | { ok: false, capacity: boolean, threadId: string }>}
  * @param {{ FEEDBACK_DB: any }} env
  * @param {object} input
  */
@@ -157,13 +201,21 @@ export async function insertThread(env, input) {
     messageId,
     body,
   } = input;
-  await batch(env, [
+  const results = await batch(env, [
     {
+      // Capacity guard: refuse to create the thread row when the artifact is already at the
+      // message cap. All statements run in one transaction, so the cap cannot be slipped past.
       sql: `INSERT INTO threads (
               thread_id, artifact_id, project, file, revision_id, kind, status, version,
               anchor_json, replacement, addressed_revision_id, created_at, created_by_name,
               created_by_kind, updated_at, last_event_id, client_id, client_actor, payload_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+            )
+            SELECT ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?
+             WHERE (
+               SELECT COUNT(*)
+                 FROM messages m JOIN threads t ON t.thread_id = m.thread_id
+                WHERE t.artifact_id = ?
+             ) < ?`,
       params: [
         threadId,
         artifactId,
@@ -180,24 +232,32 @@ export async function insertThread(env, input) {
         clientId,
         clientActor,
         payloadHash,
+        artifactId,
+        MAX_MESSAGES_PER_ARTIFACT,
       ],
     },
     {
       sql: `INSERT INTO events (
               artifact_id, thread_id, type, actor_kind, actor_name, created_at,
               idempotency_key, payload_hash
-            ) VALUES (?, ?, 'thread.create', ?, ?, ?, ?, ?)`,
-      params: [artifactId, threadId, author.kind, author.name, createdAt, clientId, payloadHash],
+            )
+            SELECT ?, ?, 'thread.create', ?, ?, ?, ?, ?
+             WHERE EXISTS (SELECT 1 FROM threads WHERE thread_id = ?)`,
+      params: [artifactId, threadId, author.kind, author.name, createdAt, clientId, payloadHash, threadId],
     },
     {
-      sql: 'UPDATE threads SET last_event_id = (SELECT MAX(event_id) FROM events) WHERE thread_id = ?',
-      params: [threadId],
+      sql: `UPDATE threads
+               SET last_event_id = (SELECT MAX(event_id) FROM events WHERE thread_id = ?)
+             WHERE thread_id = ?`,
+      params: [threadId, threadId],
     },
     {
       sql: `INSERT INTO messages (
               message_id, thread_id, seq, body, kind, replacement, author_name, author_kind,
               created_at, client_id, client_actor, payload_hash
-            ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            SELECT ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?
+             WHERE EXISTS (SELECT 1 FROM threads WHERE thread_id = ?)`,
       params: [
         messageId,
         threadId,
@@ -210,15 +270,20 @@ export async function insertThread(env, input) {
         clientId,
         clientActor,
         payloadHash,
+        threadId,
       ],
     },
   ]);
-  return { threadId };
+  if (results[0]?.changes === 0) return { ok: false, capacity: true, threadId };
+  if (results[3]?.changes === 0) {
+    return { ok: false, capacity: (await countArtifactMessages(env, artifactId)) >= MAX_MESSAGES_PER_ARTIFACT, threadId };
+  }
+  return { ok: true, threadId };
 }
 
 /**
- * Append a reply with optimistic CAS on the thread version.
- * @returns {Promise<{ ok: true } | { ok: false, conflict: true }>}
+ * Append a reply with optimistic CAS on the thread version and atomic accumulation caps.
+ * @returns {Promise<{ ok: true } | { ok: false, conflict: true } | { ok: false, capacity: true }>}
  */
 export async function insertMessage(env, input) {
   const { messageId, thread, body, kind, replacement, author, createdAt, clientId, clientActor, payloadHash } = input;
@@ -231,7 +296,13 @@ export async function insertMessage(env, input) {
               idempotency_key, payload_hash
             )
             SELECT ?, ?, 'message.create', ?, ?, ?, ?, ?
-             WHERE EXISTS (SELECT 1 FROM threads WHERE thread_id = ? AND version = ?)`,
+             WHERE EXISTS (SELECT 1 FROM threads WHERE thread_id = ? AND version = ?)
+               AND (SELECT COUNT(*) FROM messages WHERE thread_id = ?) < ?
+               AND (
+                 SELECT COUNT(*)
+                   FROM messages m JOIN threads t ON t.thread_id = m.thread_id
+                  WHERE t.artifact_id = ?
+               ) < ?`,
       params: [
         thread.artifact_id,
         thread.thread_id,
@@ -242,6 +313,10 @@ export async function insertMessage(env, input) {
         payloadHash,
         thread.thread_id,
         thread.version,
+        thread.thread_id,
+        MAX_MESSAGES_PER_THREAD,
+        thread.artifact_id,
+        MAX_MESSAGES_PER_ARTIFACT,
       ],
     },
     {
@@ -252,7 +327,13 @@ export async function insertMessage(env, input) {
             SELECT ?, ?,
                    (SELECT IFNULL(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?),
                    ?, ?, ?, ?, ?, ?, ?, ?, ?
-             WHERE EXISTS (SELECT 1 FROM threads WHERE thread_id = ? AND version = ?)`,
+             WHERE EXISTS (SELECT 1 FROM threads WHERE thread_id = ? AND version = ?)
+               AND (SELECT COUNT(*) FROM messages WHERE thread_id = ?) < ?
+               AND (
+                 SELECT COUNT(*)
+                   FROM messages m JOIN threads t ON t.thread_id = m.thread_id
+                  WHERE t.artifact_id = ?
+               ) < ?`,
       params: [
         messageId,
         thread.thread_id,
@@ -268,19 +349,30 @@ export async function insertMessage(env, input) {
         payloadHash,
         thread.thread_id,
         thread.version,
+        thread.thread_id,
+        MAX_MESSAGES_PER_THREAD,
+        thread.artifact_id,
+        MAX_MESSAGES_PER_ARTIFACT,
       ],
     },
     {
+      // Guarded UPDATE: only runs when the guarded message INSERT above actually wrote a row, so a
+      // capacity-rejected reply changes nothing (no event, no version bump, no last_event_id move).
+      // last_event_id is scoped to this thread's own events (never another thread's event id).
       sql: `UPDATE threads
-               SET last_event_id = (SELECT MAX(event_id) FROM events),
+               SET last_event_id = (SELECT MAX(event_id) FROM events WHERE thread_id = ?),
                    updated_at = ?,
                    version = version + 1
-             WHERE thread_id = ? AND version = ?`,
-      params: [createdAt, thread.thread_id, thread.version],
+             WHERE thread_id = ? AND version = ?
+               AND EXISTS (SELECT 1 FROM messages WHERE message_id = ?)`,
+      params: [thread.thread_id, createdAt, thread.thread_id, thread.version, messageId],
     },
   ]);
   if (results[0]?.changes === 0 || results[1]?.changes === 0 || results[2]?.changes === 0) {
-    return { ok: false, conflict: true };
+    // Distinguish "capacity reached" from a plain CAS conflict so routes can return the stable
+    // 429 feedback_capacity error instead of a misleading 409.
+    const capacity = await messageCapacityExceeded(env, thread.thread_id, thread.artifact_id);
+    return capacity ? { ok: false, capacity: true } : { ok: false, conflict: true };
   }
   return { ok: true };
 }
@@ -333,11 +425,11 @@ export async function updateThreadStatus(env, input) {
       sql: `UPDATE threads
                SET status = ?,
                    addressed_revision_id = ?,
-                   last_event_id = (SELECT MAX(event_id) FROM events),
+                   last_event_id = (SELECT MAX(event_id) FROM events WHERE thread_id = ?),
                    updated_at = ?,
                    version = version + 1
              WHERE thread_id = ? AND version = ?`,
-      params: [status, addressedRevisionId, updatedAt, thread.thread_id, thread.version],
+      params: [status, addressedRevisionId, thread.thread_id, updatedAt, thread.thread_id, thread.version],
     },
   ]);
   if (results[0]?.changes === 0 || results[1]?.changes === 0) return { ok: false, conflict: true };

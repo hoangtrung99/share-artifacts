@@ -360,21 +360,37 @@ export function reviewGrantCookie(artifactId, token, maxAgeSeconds) {
 }
 
 /**
- * Effective capabilities for a caller.
- *  - `admin`       — FEEDBACK_ADMIN_TOKEN (site owner; the ONLY credential that can mark addressed
- *                    or manage grants). A project/share cookie is NOT owner proof.
- *  - `reviewer`    — validated artifact-scoped review grant (comment/reply/resolve/reopen).
- *  - `authenticated` — project/ghost cookie (read access only).
- * @param {{ admin?: boolean, reviewer?: boolean, authenticated?: boolean }} input
+ * True when the legacy grant-required policy is enabled via `FEEDBACK_REQUIRE_GRANT=1|true`.
+ * Default/unset = open feedback (temporary product policy): every viewer who can read the artifact
+ * can also read/write feedback. Set the flag to restore the old grant-required behavior exactly.
+ * @param {{ FEEDBACK_REQUIRE_GRANT?: unknown }} env
  */
-export function accessCapabilities({ admin = false, reviewer = false, authenticated = false }) {
+export function requireGrantMode(env) {
+  const value = env?.FEEDBACK_REQUIRE_GRANT;
+  if (value === undefined || value === null || value === '') return false;
+  return ['1', 'true'].includes(String(value).trim().toLowerCase());
+}
+
+/**
+ * Effective capabilities for a caller.
+ *  - `admin`        — FEEDBACK_ADMIN_TOKEN (site owner; the ONLY credential that can mark addressed
+ *                     or manage grants). A project/share cookie is NOT owner proof.
+ *  - `reviewer`     — validated artifact-scoped review grant (optional in open mode).
+ *  - `authenticated`— project/ghost cookie session.
+ *  - `open`         — open-feedback policy (`!FEEDBACK_REQUIRE_GRANT`): any caller who passed the
+ *                     project/ghost gate (including anonymous viewers of public artifacts) can
+ *                     read and write feedback. Addressed stays admin-only.
+ * @param {{ admin?: boolean, reviewer?: boolean, authenticated?: boolean, open?: boolean }} input
+ */
+export function accessCapabilities({ admin = false, reviewer = false, authenticated = false, open = false }) {
   return {
     admin,
     reviewer,
     authenticated,
-    canWrite: admin || reviewer,
+    open,
+    canWrite: admin || reviewer || open,
     canMarkAddressed: admin,
-    canResolve: admin || reviewer,
+    canResolve: admin || reviewer || open,
     canExport: true,
   };
 }
