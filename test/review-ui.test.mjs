@@ -219,6 +219,187 @@ test('race 3: status/render churn keeps the in-flight draft and only the replied
   assert.equal(review.replyOwnsPopup(null, 'th_1'), false);
 });
 
+test('author labels: anonymous guests are Guest, typed names win', () => {
+  assert.equal(review.authorLabel({ kind: 'guest', name: 'Guest', unverified: true }), 'Guest');
+  assert.equal(review.authorLabel({ kind: 'guest', name: 'An', unverified: true }), 'An');
+  assert.equal(review.authorLabel({ kind: 'guest' }), 'Guest');
+  assert.equal(review.authorLabel({ kind: 'owner' }), 'Anonymous');
+  assert.equal(review.authorLabel(null), 'Anonymous');
+  // Every author surface renders the unverified marker through the shared helper.
+  const viewer = read('shell-assets/viewer.js');
+  assert.match(viewer, /function reviewAppendAuthorMeta/);
+  assert.match(viewer, /value\.kind === 'guest' \? 'Guest'/);
+  const uses = (viewer.match(/reviewAppendAuthorMeta\(/g) || []).length;
+  assert.ok(uses >= 5, 'expected definition + 4 author surfaces, got ' + uses);
+});
+
+test('escapeMarkdown mirrors backend mdText escaping', () => {
+  assert.equal(review.escapeMarkdown('# heading'), '\\# heading');
+  assert.equal(review.escapeMarkdown('---'), '\\---');
+  assert.equal(review.escapeMarkdown('1. ordered'), '1\\. ordered');
+  assert.equal(review.escapeMarkdown('a <b> [x](y)'), 'a &lt;b\\> \\[x\\]\\(y\\)');
+  assert.equal(review.escapeMarkdown('back\\slash'), 'back\\\\slash');
+  // Setext underlines: 2+ hyphens or 1+ equals after content become literal text.
+  assert.equal(review.escapeMarkdown('Approved\n--'), 'Approved\n\\--');
+  assert.equal(review.escapeMarkdown('Title\n==='), 'Title\n\\===');
+  assert.equal(review.escapeMarkdown('Mixed prose\nand more\n--\nAfter'), 'Mixed prose\nand more\n\\--\nAfter');
+  // Fence selection grows past the longest backtick run so content can never close it.
+  assert.equal(review.markdownFence('plain text'), '```');
+  assert.equal(review.markdownFence('a ``` b'), '````');
+  assert.equal(review.markdownFence('a ```` b'), '`````');
+});
+
+test('markdown export escapes hostile open-mode comment fields', () => {
+  const quote = '# heading\n---\n[x](url)\n![img](url)\n**bold**\n<script>alert(1)</script>\n- item\n+ plus\n1. ordered\n> quote';
+  const md = review.buildMarkdown({
+    title: 'Feedback — demo',
+    artifact: { project: 'demo', file: 'sample.html', routePath: 'demo/sample' },
+    revisionNumber: 2,
+    counts: { open: 1, addressed: 0, resolved: 0 },
+    totalThreads: 1,
+    exportedAt: 'Oct 21, 2026',
+    threads: [
+      {
+        kind: 'comment',
+        status: 'open',
+        revisionNumber: 2,
+        author: { name: '# owner', kind: 'guest', unverified: true },
+        createdAt: '2026-10-21T00:00:00.000Z',
+        anchor: { type: 'text', exact: quote },
+        messages: [
+          {
+            body: 'Body [x](url) ![img](url) **bold** <script>alert(2)</script>\n# heading\n1. ordered\n- item',
+            replacement: '# heading\n---\n<script>x</script>',
+          },
+        ],
+        replies: [{ author: { name: '[evil](url)' }, body: 'Reply --- \n> quote' }],
+      },
+    ],
+  });
+  const beforeReplacement = md.slice(0, md.indexOf('Suggested replacement:'));
+  // Our own structural line is the only bare horizontal rule outside the raw code fence.
+  assert.equal(beforeReplacement.split('\n').filter((line) => line === '---').length, 1);
+  // No user text becomes a heading, link, image, HTML, list, rule or blockquote.
+  assert.ok(!/^# heading$/m.test(beforeReplacement));
+  assert.ok(!beforeReplacement.includes('[x](url)'));
+  assert.ok(!beforeReplacement.includes('![img](url)'));
+  assert.ok(!beforeReplacement.includes('<script>'));
+  assert.ok(!/^1\. ordered$/m.test(beforeReplacement));
+  assert.ok(!/^- item$/m.test(md));
+  assert.ok(!/^> quote$/m.test(md));
+  // Structural characters survive escaped (including inside the quote block and fence).
+  assert.ok(md.includes('\\# heading'));
+  assert.ok(md.includes('\\[x\\]\\(url\\)'));
+  assert.ok(md.includes('!\\[img\\]\\(url\\)'));
+  assert.ok(md.includes('\\*\\*bold\\*\\*'));
+  assert.ok(md.includes('&lt;script\\>'));
+  assert.ok(md.includes('\\- item'));
+  assert.ok(md.includes('\\+ plus'));
+  assert.ok(md.includes('1\\. ordered'));
+  assert.ok(md.includes('\\> quote'));
+  assert.ok(md.includes('> \\# heading'));
+  // The replacement is code: raw inside a fence, never inline-escaped.
+  assert.ok(md.includes('Suggested replacement:'));
+  assert.ok(md.includes('```\n# heading\n---\n<script>x</script>\n```'));
+  // The author name and reply author cannot inject Markdown.
+  assert.ok(!md.includes('[evil](url)'));
+  assert.ok(md.includes('\\[evil\\]\\(url\\)'));
+});
+
+test('markdown export neutralizes setext heading underlines', () => {
+  const md = review.buildMarkdown({
+    title: 'Setext check',
+    artifact: { project: 'demo', file: 'sample.html' },
+    revisionNumber: 2,
+    counts: { open: 1, addressed: 0, resolved: 0 },
+    totalThreads: 1,
+    exportedAt: 'Oct 21, 2026',
+    threads: [
+      {
+        kind: 'comment',
+        status: 'open',
+        author: { name: 'Guest', kind: 'guest', unverified: true },
+        createdAt: '2026-10-21T00:00:00.000Z',
+        anchor: { type: 'text', exact: 'Title\n===' },
+        messages: [{ body: 'Approved\n--\nMixed prose line\nand another line\n---' }],
+        replies: [{ author: { name: 'Guest' }, body: 'Nope\n--' }],
+      },
+    ],
+  });
+  // The quote block escapes its own setext underlines; user body/reply lines never become one.
+  assert.ok(md.includes('> Title'));
+  assert.ok(md.includes('> \\==='));
+  assert.ok(md.includes('Approved'));
+  assert.ok(md.includes('\\--'));
+  assert.ok(!/\n--\n/.test(md));
+  assert.ok(!/\n===\n/.test(md));
+  const lines = md.split('\n');
+  assert.equal(lines.filter((line) => line === '---').length, 1);
+});
+
+test('markdown export keeps replacement raw inside a longer fence', () => {
+  const replacement = 'Use this snippet:\n```js\nconst value = [1];\n```\n# heading\n---\n<script>alert(1)</script>';
+  const md = review.buildMarkdown({
+    title: 'Fence check',
+    artifact: { project: 'demo', file: 'sample.html' },
+    revisionNumber: 2,
+    counts: { open: 1, addressed: 0, resolved: 0 },
+    totalThreads: 1,
+    exportedAt: 'Oct 21, 2026',
+    threads: [
+      {
+        kind: 'replace',
+        status: 'open',
+        author: { name: 'Guest', kind: 'guest', unverified: true },
+        createdAt: '2026-10-21T00:00:00.000Z',
+        anchor: { type: 'document' },
+        messages: [{ body: 'Suggested code fix.', replacement: replacement }],
+        replies: [],
+      },
+    ],
+  });
+  // One backtick longer than the inner ``` run; content stays raw (no added backslashes).
+  assert.ok(md.includes('````\n' + replacement + '\n````'));
+  assert.ok(!md.includes('\\# heading'));
+  assert.ok(!md.includes('\\`\\`\\`js'));
+  const replacementBlock = md.slice(md.indexOf('Suggested replacement:'));
+  assert.ok(replacementBlock.includes('# heading'));
+  assert.ok(replacementBlock.includes('<script>alert(1)</script>'));
+});
+
+test('markdown export keeps ordinary prose readable', () => {
+  const md = review.buildMarkdown({
+    title: 'Quarterly capacity review',
+    artifact: { project: 'demo', file: 'sample.html' },
+    revisionNumber: 2,
+    counts: { open: 1, addressed: 0, resolved: 0 },
+    totalThreads: 1,
+    exportedAt: 'Oct 21, 2026',
+    threads: [
+      {
+        kind: 'comment',
+        status: 'open',
+        author: { name: 'An Nguyen', kind: 'guest', unverified: true },
+        createdAt: '2026-10-21T00:00:00.000Z',
+        anchor: { type: 'document' },
+        messages: [
+          {
+            body: 'The rollback failed twice (expected). Check the logs before retrying.',
+            replacement: 'kubectl rollout restart deploy/api -n demo',
+          },
+        ],
+        replies: [{ author: { name: 'An Nguyen' }, body: 'Confirmed: retry after the check.' }],
+      },
+    ],
+  });
+  assert.ok(md.includes('# Feedback — Quarterly capacity review'));
+  assert.ok(md.includes('> Whole document'));
+  assert.ok(md.includes('- An Nguyen · 2026-10-21T00:00:00.000Z'));
+  assert.ok(md.includes('The rollback failed twice \\(expected\\). Check the logs before retrying.'));
+  assert.ok(md.includes('**Reply — An Nguyen:** Confirmed: retry after the check.'));
+  assert.ok(md.includes('kubectl rollout restart deploy/api -n demo'));
+});
+
 test('relative time, bytes, clip and revision-id helpers', () => {
   const now = Date.parse('2026-10-19T06:00:00.000Z');
   assert.equal(review.relativeTime('2026-10-19T05:59:30.000Z', now), 'just now');

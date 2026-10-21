@@ -1606,6 +1606,25 @@
     return value.slice(0, Math.max(0, length - 1)).trimEnd() + '…';
   }
 
+  /** Display label for an author; anonymous open-mode writers are "Guest". */
+  function reviewAuthorLabel(author) {
+    const value = author || {};
+    if (value.name) return value.name;
+    return value.kind === 'guest' ? 'Guest' : 'Anonymous';
+  }
+
+  /** Author + optional UNVERIFIED marker ("Guest · UNVERIFIED"). */
+  function reviewAppendAuthorMeta(meta, author) {
+    const value = author || {};
+    meta.appendChild(reviewEl('span', 'thread-author', reviewAuthorLabel(value)));
+    if (value.unverified) {
+      meta.appendChild(reviewEl('span', 'thread-dot', '·'));
+      const unverified = reviewEl('span', 'thread-unverified', 'unverified');
+      unverified.title = 'Guest display name — not a verified account.';
+      meta.appendChild(unverified);
+    }
+  }
+
   function reviewFormatBytes(bytes) {
     const value = Number(bytes);
     if (!Number.isFinite(value) || value < 0) return '';
@@ -2200,6 +2219,7 @@
           }
         }
         review.lastLoadedAt = Date.now();
+        reviewUpdateReadonlyNote();
         reviewSyncArmed();
         // Refresh the normalized index on every load: artifacts can mutate between polls.
         reviewInvalidateIndexes();
@@ -2695,12 +2715,7 @@
 
     const meta = reviewEl('p', 'thread-meta');
     const author = thread.author || {};
-    meta.appendChild(reviewEl('span', 'thread-author', author.name || 'Anonymous'));
-    if (author.unverified) {
-      const unverified = reviewEl('span', 'thread-unverified', 'unverified');
-      unverified.title = 'Guest display name — not a verified account.';
-      meta.appendChild(unverified);
-    }
+    reviewAppendAuthorMeta(meta, author);
     meta.appendChild(reviewEl('span', 'thread-dot', '·'));
     const time = reviewEl('span', '', reviewRelativeTime(thread.createdAt));
     time.title = reviewShortDate(thread.createdAt);
@@ -2729,7 +2744,7 @@
       replies.forEach(function (reply) {
         const item = reviewEl('li', 'thread-reply');
         const replyMeta = reviewEl('p', 'thread-meta');
-        replyMeta.appendChild(reviewEl('span', 'thread-author', (reply.author && reply.author.name) || 'Anonymous'));
+        reviewAppendAuthorMeta(replyMeta, reply.author);
         replyMeta.appendChild(reviewEl('span', 'thread-dot', '·'));
         const replyTime = reviewEl('span', '', reviewRelativeTime(reply.createdAt));
         replyTime.title = reviewShortDate(reply.createdAt);
@@ -3253,7 +3268,7 @@
       status: 'open',
       version: 0,
       anchor: composer.anchor,
-      author: { name: reviewAuthorName() || 'You', kind: 'guest', unverified: !reviewAuthorName() },
+      author: { name: reviewAuthorName() || 'Guest', kind: 'guest', unverified: !reviewAuthorName() },
       createdAt: now,
       updatedAt: now,
       messages: [
@@ -3263,7 +3278,7 @@
           body: body,
           kind: kind,
           replacement: replacement || null,
-          author: { name: reviewAuthorName() || 'You', kind: 'guest', unverified: true },
+          author: { name: reviewAuthorName() || 'Guest', kind: 'guest', unverified: true },
           createdAt: now,
         },
       ],
@@ -4223,31 +4238,71 @@
     };
   }
 
-  function reviewExportMarkdown() {
-    const artifact = review.artifact || { project: review.project, file: review.file };
+  /**
+   * Escape user-controlled text for the client-side Markdown export. Mirrors the backend
+   * mdText escaping: inline backslash-escapes structural punctuation, neutralizes line-leading
+   * headings/lists/rules/setext underlines/ordered lists and escapes raw HTML angle brackets.
+   */
+  /**
+   * Fence for a code block that contains arbitrary text: one backtick longer than the longest
+   * backtick run in the content (minimum 3), so the content can never close the fence.
+   */
+  function reviewMarkdownFence(value) {
+    const runs = String(value == null ? '' : value).match(/`+/g) || [];
+    const longest = runs.reduce(function (max, run) {
+      return Math.max(max, run.length);
+    }, 2);
+    return '`'.repeat(Math.max(3, longest + 1));
+  }
+
+  function reviewEscapeMarkdown(value) {
+    const inlineEscaped = String(value == null ? '' : value)
+      .replace(/\r\n?/g, '\n')
+      .replace(/\\/g, '\\\\')
+      .replace(/([`*_{}\[\]()#!|~>])/g, '\\$1')
+      .replace(/</g, '&lt;');
+    return inlineEscaped
+      .split('\n')
+      .map(function (line) {
+        if (/^\s*([-+])\s/.test(line) || /^\s*-{2,}\s*$/.test(line) || /^\s*=+\s*$/.test(line)) {
+          return line.replace(/^(\s*)/, '$1\\');
+        }
+        if (/^\s*\d+[.)]\s/.test(line)) return line.replace(/^(\s*)(\d+)([.)])/, '$1$2\\$3');
+        return line;
+      })
+      .join('\n');
+  }
+
+  /**
+   * Pure Markdown export builder. Every user-controlled value (quote, author, body, replies,
+   * replacement) is escaped here; JSON export keeps raw values because it is never rendered.
+   */
+  function reviewMarkdownFor(data) {
+    const input = data || {};
+    const artifact = input.artifact || {};
     const lines = [];
-    lines.push('# Feedback — ' + (review.title || artifact.routePath || review.file || 'Artifact'));
+    lines.push('# Feedback — ' + reviewEscapeMarkdown(input.title || artifact.routePath || input.file || 'Artifact'));
     lines.push('');
     lines.push(
       'Project: ' +
-        (artifact.project || review.project) +
+        reviewEscapeMarkdown(artifact.project || input.project || '') +
         ' · File: ' +
-        (artifact.file || review.file) +
-        (review.revisionNumber ? ' · Viewing revision ' + review.revisionNumber : ''),
+        reviewEscapeMarkdown(artifact.file || input.file || '') +
+        (input.revisionNumber ? ' · Viewing revision ' + input.revisionNumber : ''),
     );
-    lines.push('Exported: ' + reviewShortDate(new Date()));
-    if (review.counts) {
+    lines.push('Exported: ' + reviewEscapeMarkdown(input.exportedAt || reviewShortDate(new Date())));
+    if (input.counts) {
       lines.push(
         'Open: ' +
-          review.counts.open +
+          input.counts.open +
           ' · Addressed: ' +
-          review.counts.addressed +
+          input.counts.addressed +
           ' · Resolved: ' +
-          review.counts.resolved,
+          input.counts.resolved,
       );
     }
     lines.push('');
-    reviewFilteredThreads().forEach(function (thread) {
+    (input.threads || []).forEach(function (thread) {
       const messages = thread.messages || [];
       const first = messages[0] || { body: thread.body || '' };
       lines.push('---');
@@ -4261,40 +4316,63 @@
       );
       lines.push('');
       const anchor = thread.anchor || {};
-      lines.push(
-        anchor.type === 'document'
-          ? '> Whole document'
-          : '> ' + String(anchor.exact || '').replace(/\n/g, '\n> '),
-      );
+      if (anchor.type === 'document') {
+        lines.push('> Whole document');
+      } else {
+        lines.push(
+          reviewEscapeMarkdown(anchor.exact || '')
+            .split('\n')
+            .map(function (line) {
+              return line ? '> ' + line : '>';
+            })
+            .join('\n'),
+        );
+      }
       lines.push('');
+      const author = thread.author || {};
+      const authorName = author.name ? reviewEscapeMarkdown(author.name) : '';
       lines.push(
         '-' +
-          (thread.author && thread.author.name ? ' ' + thread.author.name : '') +
-          (thread.createdAt ? ' · ' + thread.createdAt : ''),
+          (authorName ? ' ' + authorName : '') +
+          (thread.createdAt ? ' · ' + reviewEscapeMarkdown(thread.createdAt) : ''),
       );
       lines.push('');
-      lines.push(String(first.body || ''));
+      lines.push(reviewEscapeMarkdown(first.body || ''));
       lines.push('');
       if (first.replacement) {
         lines.push('Suggested replacement:');
         lines.push('');
-        lines.push('```');
-        lines.push(first.replacement);
-        lines.push('```');
+        // Replacement text is code, not inline Markdown: keep it raw inside a fence that is
+        // longer than any backtick run it contains (so it cannot close early or inject blocks).
+        const replacementFence = reviewMarkdownFence(first.replacement);
+        lines.push(replacementFence);
+        lines.push(String(first.replacement));
+        lines.push(replacementFence);
         lines.push('');
       }
       (thread.replies || []).forEach(function (reply) {
-        lines.push(
-          '**Reply' +
-            (reply.author && reply.author.name ? ' — ' + reply.author.name : '') +
-            ':** ' +
-            String(reply.body || ''),
-        );
+        const replyName = reply.author && reply.author.name ? reviewEscapeMarkdown(reply.author.name) : '';
+        lines.push('**Reply' + (replyName ? ' — ' + replyName : '') + ':** ' + reviewEscapeMarkdown(reply.body || ''));
         lines.push('');
       });
     });
-    if (review.threads.length === 0) lines.push('_No feedback in this view._');
+    if (!input.totalThreads) lines.push('_No feedback in this view._');
     return lines.join('\n') + '\n';
+  }
+
+  function reviewExportMarkdown() {
+    const artifact = review.artifact || { project: review.project, file: review.file };
+    return reviewMarkdownFor({
+      title: review.title,
+      artifact: artifact,
+      file: review.file,
+      project: review.project,
+      revisionNumber: review.revisionNumber,
+      counts: review.counts,
+      threads: reviewFilteredThreads(),
+      totalThreads: review.threads ? review.threads.length : 0,
+      exportedAt: reviewShortDate(new Date()),
+    });
   }
 
   function reviewDownload() {
@@ -4729,8 +4807,7 @@
         : reviewClip(anchor.exact || '', 200);
     const author = thread.author || {};
     refs.threadPopMeta.textContent = '';
-    refs.threadPopMeta.appendChild(reviewEl('span', 'thread-author', author.name || 'Anonymous'));
-    if (author.unverified) refs.threadPopMeta.appendChild(reviewEl('span', 'thread-unverified', 'unverified'));
+    reviewAppendAuthorMeta(refs.threadPopMeta, author);
     refs.threadPopMeta.appendChild(reviewEl('span', 'thread-dot', '·'));
     const time = reviewEl('span', '', reviewRelativeTime(thread.createdAt));
     time.title = reviewShortDate(thread.createdAt);
@@ -4745,7 +4822,7 @@
     replies.forEach(function (reply) {
       const item = reviewEl('li', 'thread-reply');
       const meta = reviewEl('p', 'thread-meta');
-      meta.appendChild(reviewEl('span', 'thread-author', (reply.author && reply.author.name) || 'Anonymous'));
+      reviewAppendAuthorMeta(meta, reply.author);
       meta.appendChild(reviewEl('span', 'thread-dot', '·'));
       const replyTime = reviewEl('span', '', reviewRelativeTime(reply.createdAt));
       replyTime.title = reviewShortDate(reply.createdAt);
@@ -5426,6 +5503,10 @@
       formatBytes: reviewFormatBytes,
       clip: reviewClip,
       isRevisionId: reviewIsRevisionId,
+      authorLabel: reviewAuthorLabel,
+      escapeMarkdown: reviewEscapeMarkdown,
+      markdownFence: reviewMarkdownFence,
+      buildMarkdown: reviewMarkdownFor,
       refreshBlocked: reviewRefreshBlocked,
       shouldReplacePopupThread: reviewShouldReplacePopupThread,
       shouldPreservePopupReplyText: reviewShouldPreservePopupReplyText,
