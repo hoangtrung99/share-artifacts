@@ -4264,7 +4264,8 @@
     return inlineEscaped
       .split('\n')
       .map(function (line) {
-        if (/^\s*([-+])\s/.test(line) || /^\s*-{2,}\s*$/.test(line) || /^\s*=+\s*$/.test(line)) {
+        // A setext underline is one or more hyphens/equals alone on a line; neutralize it.
+        if (/^\s*([-+])\s/.test(line) || /^\s*-+\s*$/.test(line) || /^\s*=+\s*$/.test(line)) {
           return line.replace(/^(\s*)/, '$1\\');
         }
         if (/^\s*\d+[.)]\s/.test(line)) return line.replace(/^(\s*)(\d+)([.)])/, '$1$2\\$3');

@@ -242,6 +242,11 @@ test('escapeMarkdown mirrors backend mdText escaping', () => {
   // Setext underlines: 2+ hyphens or 1+ equals after content become literal text.
   assert.equal(review.escapeMarkdown('Approved\n--'), 'Approved\n\\--');
   assert.equal(review.escapeMarkdown('Title\n==='), 'Title\n\\===');
+  // Setext underline with a single hyphen/equals is also a valid underline.
+  assert.equal(review.escapeMarkdown('Approved\n-'), 'Approved\n\\-');
+  assert.equal(review.escapeMarkdown('Title\n='), 'Title\n\\=');
+  // Normal list items keep their existing escaped behavior (not setext-only).
+  assert.equal(review.escapeMarkdown('- item'), '\\- item');
   assert.equal(review.escapeMarkdown('Mixed prose\nand more\n--\nAfter'), 'Mixed prose\nand more\n\\--\nAfter');
   // Fence selection grows past the longest backtick run so content can never close it.
   assert.equal(review.markdownFence('plain text'), '```');
@@ -320,18 +325,22 @@ test('markdown export neutralizes setext heading underlines', () => {
         status: 'open',
         author: { name: 'Guest', kind: 'guest', unverified: true },
         createdAt: '2026-10-21T00:00:00.000Z',
-        anchor: { type: 'text', exact: 'Title\n===' },
-        messages: [{ body: 'Approved\n--\nMixed prose line\nand another line\n---' }],
-        replies: [{ author: { name: 'Guest' }, body: 'Nope\n--' }],
+        anchor: { type: 'text', exact: 'Title\n=' },
+        messages: [{ body: 'Approved\n-\nMixed prose line\nand another line\n--\n---' }],
+        replies: [{ author: { name: 'Guest' }, body: 'Nope\n=' }],
       },
     ],
   });
   // The quote block escapes its own setext underlines; user body/reply lines never become one.
   assert.ok(md.includes('> Title'));
-  assert.ok(md.includes('> \\==='));
+  assert.ok(md.includes('> \\='));
   assert.ok(md.includes('Approved'));
+  assert.ok(md.includes('Approved\n\\-'));
   assert.ok(md.includes('\\--'));
+  assert.ok(md.includes('Mixed prose line\nand another line'));
+  assert.ok(!/\n-\n/.test(md));
   assert.ok(!/\n--\n/.test(md));
+  assert.ok(!/\n=/ .test(md));
   assert.ok(!/\n===\n/.test(md));
   const lines = md.split('\n');
   assert.equal(lines.filter((line) => line === '---').length, 1);
